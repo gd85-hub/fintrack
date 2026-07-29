@@ -1,10 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  type ViewStyle,
   View,
 } from 'react-native';
 
@@ -397,7 +399,10 @@ const styles = StyleSheet.create({
     bottom: theme.spacing.floatingOffset,
     height: theme.sizes.floatingButton,
     justifyContent: 'center',
-    position: 'absolute',
+    position: Platform.select({
+      web: 'fixed',
+      default: 'absolute',
+    }) as ViewStyle['position'],
     right: theme.spacing.floatingOffset,
     width: theme.sizes.floatingButton,
   },
