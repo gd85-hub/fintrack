@@ -1,0 +1,2 @@
+[functions.sync-fx]
+verify_jwt = true
