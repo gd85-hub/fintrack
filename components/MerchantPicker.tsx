@@ -17,14 +17,16 @@ import {
 import { theme } from '../lib/theme';
 
 type MerchantPickerProps = {
+  allowCreate?: boolean;
   merchants: Merchant[];
   merchantTypes: MerchantType[];
   value: string | null;
   onChange: (merchantId: string | null) => void;
-  onCreated: (merchant: Merchant) => void;
+  onCreated?: (merchant: Merchant) => void;
 };
 
 export function MerchantPicker({
+  allowCreate = true,
   merchants,
   merchantTypes,
   value,
@@ -62,7 +64,7 @@ export function MerchantPicker({
 
     try {
       const merchant = await createMerchant(trimmedName, typeId);
-      onCreated(merchant);
+      onCreated?.(merchant);
       onChange(merchant.id);
       setName('');
       setTypeId(null);
@@ -221,16 +223,20 @@ export function MerchantPicker({
                     </Pressable>
                   ))}
 
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => setAdding(true)}
-                    style={({ pressed }) => [
-                      styles.addRow,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.addRowText}>+ Добавить место</Text>
-                  </Pressable>
+                  {allowCreate ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setAdding(true)}
+                      style={({ pressed }) => [
+                        styles.addRow,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={styles.addRowText}>
+                        + Добавить место
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </>
               )}
             </ScrollView>

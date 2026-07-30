@@ -6,6 +6,7 @@ import {
   DisplayCurrencyProvider,
   useDisplayCurrency,
 } from '../../contexts/DisplayCurrencyContext';
+import { ReceiptDraftProvider } from '../../contexts/ReceiptDraftContext';
 
 function AppNavigator() {
   const { loading } = useDisplayCurrency();
@@ -30,7 +31,9 @@ export default function AppLayout() {
 
   return (
     <DisplayCurrencyProvider>
-      <AppNavigator />
+      <ReceiptDraftProvider>
+        <AppNavigator />
+      </ReceiptDraftProvider>
     </DisplayCurrencyProvider>
   );
 }

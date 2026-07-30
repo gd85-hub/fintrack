@@ -1,6 +1,6 @@
-# Fintrack — Phase 1
+# Fintrack — Phase 2
 
-Expo + TypeScript personal expense tracker for Android and Web. The app uses Supabase Auth and Postgres, supports manual expenses in RSD, USD, and EUR, and stores all three converted amounts using National Bank of Serbia rates.
+Expo + TypeScript personal expense tracker for Android and Web. The app uses Supabase Auth and Postgres, supports manual expenses in RSD, USD, and EUR, and imports Serbian fiscal receipts from SUF verification QR codes.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Use the public anonymous key only. Never put the Supabase service-role key in th
 
 ## Database
 
-Phase 1 does not change the database schema. Apply the existing migration at `supabase/migrations/20260729000000_phase_0_foundation.sql` once on a new project:
+Phase 2 does not change the database schema. Apply the existing migration at `supabase/migrations/20260729000000_phase_0_foundation.sql` once on a new project:
 
 1. Paste it into the Supabase SQL Editor and run it.
 2. Or link the project with the Supabase CLI and run:
@@ -54,6 +54,46 @@ supabase functions deploy sync-fx
 
 `supabase/config.toml` explicitly keeps JWT verification enabled. The function upserts on the `fx_rates` primary key, so invoking it repeatedly for the same date is safe.
 
+## Deploy the `parse-receipt` Edge Function
+
+The source is in `supabase/functions/parse-receipt/`. It fetches only HTTPS SUF verification URLs from the explicit allowlist, validates redirects, uses a 15-second timeout, and returns structured failures instead of throwing. Keep JWT verification enabled so only authenticated app users can invoke it.
+
+### Option A: Supabase Dashboard
+
+The function has multiple source files, so upload it as an archive:
+
+1. From the repository root, create the archive in PowerShell:
+
+   ```powershell
+   Compress-Archive -Path supabase/functions/parse-receipt/* -DestinationPath parse-receipt.zip -Force
+   ```
+
+2. Open **Edge Functions** in the Supabase Dashboard.
+3. Click **Deploy a new function** → **Via Editor**.
+4. Drag `parse-receipt.zip` into the editor.
+5. Set the function name to `parse-receipt`.
+6. Keep **Verify JWT** enabled and click **Deploy function**.
+7. Delete the local archive after deployment; it is only a transport artifact.
+
+The archive must contain `index.ts`, `parser.ts`, and `deno.json` at its root.
+
+### Option B: Supabase CLI
+
+Link the project and deploy the whole function directory:
+
+```bash
+supabase link --project-ref your-project-ref
+supabase functions deploy parse-receipt
+```
+
+For local Edge Function testing:
+
+```bash
+supabase functions serve parse-receipt
+```
+
+The client invokes `parse-receipt` with the signed-in user's JWT. A request body has the shape `{ "url": "https://suf.purs.gov.rs/v/?vl=...", "debug": false }`. Set `debug` to `true` only during parser diagnostics; the app never persists the returned raw page.
+
 ## Install and run
 
 ```bash
@@ -78,9 +118,24 @@ npm run web
 npm run typecheck
 npm test
 npx expo install --check
+npx expo export --platform web
+npx expo export --platform android
 ```
 
-## Phase 1 behavior
+## Phase 2 receipt flow
+
+- On Android, tap the camera floating button and grant camera access. Scan the QR code once; scanning pauses while the receipt is processed.
+- If camera access is denied, open system settings or switch to manual URL entry.
+- On Web, the same route shows manual SUF URL entry and does not import the native camera implementation.
+- Review the detected merchant, merchant type, line items, categories, and excluded positions before saving.
+- New receipt positions default to the system category with slug `uncategorized`.
+- Merchant matching is case-insensitive and checks both the primary name and aliases.
+- Saving creates one receipt and one expense per included position. All positions use the same resolved FX-rate pair and rate date.
+- The Home screen's `Не распознано` chip filters the month to items that still need categorization.
+
+The live SUF page format may evolve. If a real receipt cannot be parsed, reproduce it with `debug: true`, remove personal data from the captured response, add it as a test fixture, and update `supabase/functions/parse-receipt/parser.ts`.
+
+## Existing expense behavior
 
 - Manual expenses can be created, edited, and deleted.
 - Expense dates use device-local calendar parts rather than UTC conversion.
@@ -94,4 +149,4 @@ The Kurs API exposes the last applicable NBS value for weekends and holidays. Th
 
 ## Scope
 
-Phase 1 deliberately excludes receipts, QR/OCR, subscriptions UI, category management, analytics beyond month/day totals, budgets, incomes, accounts, offline queues, notifications, and dark mode.
+Phase 2 supports Serbian fiscal QR receipts only. It still excludes photo/email OCR, subscriptions UI, category management, analytics beyond month/day totals, budgets, incomes, accounts, offline queues, notifications, and dark mode.

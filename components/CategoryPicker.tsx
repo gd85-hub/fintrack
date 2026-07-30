@@ -13,12 +13,14 @@ import { theme } from '../lib/theme';
 
 type CategoryPickerProps = {
   categories: Category[];
+  label?: string;
   value: string | null;
   onChange: (categoryId: string) => void;
 };
 
 export function CategoryPicker({
   categories,
+  label = 'Категория',
   value,
   onChange,
 }: CategoryPickerProps) {
@@ -44,7 +46,7 @@ export function CategoryPicker({
   return (
     <>
       <View style={styles.field}>
-        <Text style={styles.label}>Категория</Text>
+        <Text style={styles.label}>{label}</Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => setVisible(true)}
@@ -71,7 +73,7 @@ export function CategoryPicker({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Категория</Text>
+              <Text style={styles.modalTitle}>{label}</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setVisible(false)}

@@ -1,2 +1,5 @@
 [functions.sync-fx]
 verify_jwt = true
+
+[functions.parse-receipt]
+verify_jwt = true

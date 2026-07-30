@@ -39,6 +39,9 @@ export const theme = {
   sizes: {
     border: 1,
     buttonHeight: 48,
+    cameraHeight: 440,
+    cameraMarker: 240,
+    cameraMarkerBorder: 3,
     dateCell: 42,
     dateColumn: '14.285714%' as const,
     floatingButton: 56,
@@ -57,6 +60,7 @@ export const theme = {
     xl: 32,
     xxl: 48,
     floatingOffset: 24,
-    listBottom: 104,
+    floatingStackOffset: 92,
+    listBottom: 176,
   },
 } as const;

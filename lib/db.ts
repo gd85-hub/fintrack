@@ -6,10 +6,12 @@ import {
   type Currency,
   decimalToCents,
 } from './money';
+import { receiptDate, type ParsedReceipt } from './receipts';
 import { supabase } from './supabase';
 
 type CategoryQueryRow = {
   id: string;
+  slug: string | null;
   emoji: string;
   name: string;
   group: string;
@@ -28,6 +30,7 @@ type MerchantQueryRow = {
   id: string;
   name: string;
   type_id: string | null;
+  aliases: string[];
   created_at: string;
 };
 
@@ -45,7 +48,7 @@ type ExpenseQueryRow = {
   fx_rate_date: string | null;
   note: string | null;
   created_at: string;
-  category: { emoji: string; name: string } | null;
+  category: { emoji: string; name: string; slug: string | null } | null;
   merchant: { name: string } | null;
 };
 
@@ -57,6 +60,7 @@ type ExistingExpenseRow = {
 
 export type Category = {
   id: string;
+  slug: string | null;
   emoji: string;
   name: string;
   group: string;
@@ -75,6 +79,7 @@ export type Merchant = {
   id: string;
   name: string;
   typeId: string | null;
+  aliases: string[];
   createdAt: string;
 };
 
@@ -85,6 +90,7 @@ export type Expense = {
   categoryId: string;
   categoryEmoji: string;
   categoryName: string;
+  categorySlug: string | null;
   merchantId: string | null;
   merchantName: string | null;
   originalAmountCents: number;
@@ -107,6 +113,22 @@ export type ExpenseInput = {
   note: string;
 };
 
+export type FiscalReceiptExpenseInput = {
+  amountCents: number;
+  categoryId: string;
+  description: string;
+};
+
+export type FiscalReceiptMerchantInput =
+  | { existingId: string }
+  | { name: string; typeId: string };
+
+export type SaveFiscalReceiptInput = {
+  receipt: ParsedReceipt;
+  merchant: FiscalReceiptMerchantInput;
+  expenses: FiscalReceiptExpenseInput[];
+};
+
 function mapExpense(row: ExpenseQueryRow): Expense {
   return {
     id: row.id,
@@ -115,6 +137,7 @@ function mapExpense(row: ExpenseQueryRow): Expense {
     categoryId: row.category_id,
     categoryEmoji: row.category?.emoji ?? '',
     categoryName: row.category?.name ?? '',
+    categorySlug: row.category?.slug ?? null,
     merchantId: row.merchant_id,
     merchantName: row.merchant?.name ?? null,
     originalAmountCents: decimalToCents(row.original_amount),
@@ -143,7 +166,7 @@ async function authenticatedUserId(): Promise<string> {
 export async function listCategories(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
-    .select('id,emoji,name,group,sort')
+    .select('id,slug,emoji,name,group,sort')
     .eq('active', true)
     .order('sort', { ascending: true });
 
@@ -153,6 +176,7 @@ export async function listCategories(): Promise<Category[]> {
 
   return (data as unknown as CategoryQueryRow[]).map((row) => ({
     id: row.id,
+    slug: row.slug,
     emoji: row.emoji,
     name: row.name,
     group: row.group,
@@ -183,7 +207,7 @@ export async function listMerchantTypes(): Promise<MerchantType[]> {
 export async function listMerchants(): Promise<Merchant[]> {
   const { data, error } = await supabase
     .from('merchants')
-    .select('id,name,type_id,created_at')
+    .select('id,name,type_id,aliases,created_at')
     .eq('active', true)
     .order('name', { ascending: true });
 
@@ -195,6 +219,7 @@ export async function listMerchants(): Promise<Merchant[]> {
     id: row.id,
     name: row.name,
     typeId: row.type_id,
+    aliases: row.aliases,
     createdAt: row.created_at,
   }));
 }
@@ -202,6 +227,7 @@ export async function listMerchants(): Promise<Merchant[]> {
 export async function createMerchant(
   name: string,
   typeId: string,
+  aliases: string[] = [],
 ): Promise<Merchant> {
   const userId = await authenticatedUserId();
   const { data, error } = await supabase
@@ -210,8 +236,9 @@ export async function createMerchant(
       user_id: userId,
       name: name.trim(),
       type_id: typeId,
+      aliases,
     })
-    .select('id,name,type_id,created_at')
+    .select('id,name,type_id,aliases,created_at')
     .single();
 
   if (error) {
@@ -223,12 +250,13 @@ export async function createMerchant(
     id: row.id,
     name: row.name,
     typeId: row.type_id,
+    aliases: row.aliases,
     createdAt: row.created_at,
   };
 }
 
 const EXPENSE_SELECT =
-  'id,occurred_on,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name),merchant:merchants!expenses_merchant_id_fkey(name)';
+  'id,occurred_on,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
 
 export async function listExpensesByMonth(
   yyyyMm: string,
@@ -349,6 +377,155 @@ export async function deleteExpense(id: string): Promise<void> {
   const { error } = await supabase.from('expenses').delete().eq('id', id);
 
   if (error) {
+    throw error;
+  }
+}
+
+function receiptPayloadWithoutRaw(receipt: ParsedReceipt) {
+  const {
+    raw: _raw,
+    merchantName,
+    taxId,
+    occurredAt,
+    totalCents,
+    currency,
+    paymentType,
+    items,
+  } = receipt;
+  return {
+    ok: true,
+    merchantName,
+    taxId,
+    occurredAt,
+    totalCents,
+    currency,
+    paymentType,
+    items,
+  };
+}
+
+export async function saveFiscalReceipt(
+  input: SaveFiscalReceiptInput,
+): Promise<void> {
+  if (input.expenses.length === 0) {
+    throw new Error('Выберите хотя бы одну позицию чека.');
+  }
+
+  const occurredOn = receiptDate(input.receipt.occurredAt);
+  const userId = await authenticatedUserId();
+  let merchantId: string;
+
+  if ('existingId' in input.merchant) {
+    merchantId = input.merchant.existingId;
+  } else {
+    const merchantName = input.merchant.name.trim();
+    if (!merchantName || !input.merchant.typeId) {
+      throw new Error('Укажите название и тип места.');
+    }
+    const originalName = input.receipt.merchantName.trim();
+    const aliases =
+      originalName.localeCompare(merchantName, undefined, {
+        sensitivity: 'accent',
+      }) === 0
+        ? []
+        : [originalName];
+    const { data, error } = await supabase
+      .from('merchants')
+      .insert({
+        user_id: userId,
+        name: merchantName,
+        type_id: input.merchant.typeId,
+        aliases,
+      })
+      .select('id')
+      .single();
+    if (error) {
+      throw error;
+    }
+    const row = data as unknown as { id: string };
+    merchantId = row.id;
+  }
+
+  const rates = await ratesForExpense(occurredOn);
+  let receiptId: string | null = null;
+
+  try {
+    const { data, error: receiptError } = await supabase
+      .from('receipts')
+      .insert({
+        user_id: userId,
+        source: 'fiscal_qr',
+        merchant_id: merchantId,
+        tax_id: input.receipt.taxId,
+        occurred_at: input.receipt.occurredAt,
+        total: centsToDecimal(input.receipt.totalCents),
+        currency: input.receipt.currency,
+        payment_type: input.receipt.paymentType,
+        raw_json: receiptPayloadWithoutRaw(input.receipt),
+        parsed_ok: true,
+      })
+      .select('id')
+      .single();
+    if (receiptError) {
+      throw receiptError;
+    }
+    const receiptRow = data as unknown as { id: string };
+    receiptId = receiptRow.id;
+
+    const expenseRows = input.expenses.map((expense) => {
+      const converted = convertAll(
+        expense.amountCents,
+        'RSD',
+        rates.usdRsd,
+        rates.eurRsd,
+      );
+      return {
+        user_id: userId,
+        occurred_on: occurredOn,
+        occurred_at: input.receipt.occurredAt,
+        description: expense.description.trim(),
+        category_id: expense.categoryId,
+        merchant_id: merchantId,
+        original_amount: centsToDecimal(expense.amountCents),
+        original_currency: 'RSD',
+        amount_rsd: centsToDecimal(converted.rsd),
+        amount_usd: centsToDecimal(converted.usd),
+        amount_eur: centsToDecimal(converted.eur),
+        fx_rate_date: rates.date,
+        note: null,
+        source: 'fiscal_qr',
+        receipt_id: receiptId,
+      };
+    });
+    const { error: expensesError } = await supabase
+      .from('expenses')
+      .insert(expenseRows);
+    if (expensesError) {
+      throw expensesError;
+    }
+  } catch (error: unknown) {
+    if (receiptId) {
+      const { error: cleanupExpensesError } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('receipt_id', receiptId);
+      if (cleanupExpensesError) {
+        console.error(
+          'Unable to clean up receipt expenses:',
+          cleanupExpensesError.message,
+        );
+      }
+      const { error: cleanupReceiptError } = await supabase
+        .from('receipts')
+        .delete()
+        .eq('id', receiptId);
+      if (cleanupReceiptError) {
+        console.error(
+          'Unable to clean up receipt:',
+          cleanupReceiptError.message,
+        );
+      }
+    }
     throw error;
   }
 }

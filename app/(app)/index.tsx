@@ -70,6 +70,7 @@ export default function HomeScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
+  const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,7 +104,24 @@ export default function HomeScreen() {
     }, [retryKey, visibleMonth]),
   );
 
-  const groups = useMemo(() => groupExpenses(expenses), [expenses]);
+  const uncategorizedExpenses = useMemo(
+    () =>
+      expenses.filter(
+        (expense) => expense.categorySlug === 'uncategorized',
+      ),
+    [expenses],
+  );
+  const visibleExpenses = useMemo(
+    () =>
+      uncategorizedOnly && uncategorizedExpenses.length > 0
+        ? uncategorizedExpenses
+        : expenses,
+    [expenses, uncategorizedExpenses, uncategorizedOnly],
+  );
+  const groups = useMemo(
+    () => groupExpenses(visibleExpenses),
+    [visibleExpenses],
+  );
   const monthTotal = useMemo(
     () =>
       expenses.reduce(
@@ -112,6 +130,15 @@ export default function HomeScreen() {
         0,
       ),
     [displayCurrency, expenses],
+  );
+  const uncategorizedTotal = useMemo(
+    () =>
+      uncategorizedExpenses.reduce(
+        (sum, expense) =>
+          sum + amountForCurrency(expense, displayCurrency),
+        0,
+      ),
+    [displayCurrency, uncategorizedExpenses],
   );
   const canMoveForward = visibleMonth < currentMonth;
 
@@ -192,6 +219,29 @@ export default function HomeScreen() {
           onChange={setDisplayCurrency}
           value={displayCurrency}
         />
+
+        {uncategorizedExpenses.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: uncategorizedOnly }}
+            onPress={() => setUncategorizedOnly((current) => !current)}
+            style={({ pressed }) => [
+              styles.triageChip,
+              uncategorizedOnly && styles.triageChipSelected,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.triageChipText,
+                uncategorizedOnly && styles.triageChipTextSelected,
+              ]}
+            >
+              Не распознано: {uncategorizedExpenses.length} ·{' '}
+              {formatMoney(uncategorizedTotal)} {displayCurrency}
+            </Text>
+          </Pressable>
+        ) : null}
 
         {errorMessage ? (
           <View style={styles.errorState}>
@@ -279,6 +329,19 @@ export default function HomeScreen() {
             })
           : null}
       </ScrollView>
+
+      <Pressable
+        accessibilityLabel="Сканировать чек"
+        accessibilityRole="button"
+        onPress={() => router.push('/(app)/receipt/scan')}
+        style={({ pressed }) => [
+          styles.floatingButton,
+          styles.scanFloatingButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.scanFloatingButtonText}>📷</Text>
+      </Pressable>
 
       <Pressable
         accessibilityLabel="Добавить трату"
@@ -450,6 +513,12 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: theme.colors.surface,
   },
+  scanFloatingButton: {
+    bottom: theme.spacing.floatingStackOffset,
+  },
+  scanFloatingButtonText: {
+    fontSize: theme.fontSizes.body,
+  },
   screen: {
     backgroundColor: theme.colors.background,
     flex: 1,
@@ -462,5 +531,24 @@ const styles = StyleSheet.create({
   signOutText: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.label,
+  },
+  triageChip: {
+    alignSelf: 'center',
+    borderColor: theme.colors.accent,
+    borderRadius: theme.radii.chip,
+    borderWidth: theme.sizes.border,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  triageChipSelected: {
+    backgroundColor: theme.colors.accent,
+  },
+  triageChipText: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
+  },
+  triageChipTextSelected: {
+    color: theme.colors.white,
   },
 });
