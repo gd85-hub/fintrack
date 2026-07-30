@@ -9,6 +9,10 @@ export const theme = {
     '#0891b2',
     '#475569',
   ],
+  fixedVariablePalette: {
+    fixed: '#7c3aed',
+    variable: '#2563eb',
+  },
   colors: {
     accent: '#2563eb',
     accentMuted: '#dbeafe',

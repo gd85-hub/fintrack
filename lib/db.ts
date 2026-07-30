@@ -90,7 +90,11 @@ type AnalyticsExpenseQueryRow = {
   amount_rsd: number | string | null;
   amount_usd: number | string | null;
   amount_eur: number | string | null;
-  category: { name: string };
+  category: {
+    emoji: string;
+    name: string;
+    type: ExpenseCategoryType;
+  };
   merchant: { name: string } | null;
 };
 
@@ -190,18 +194,48 @@ export type MonthlyMerchantBreakdown = {
   totalEur: number;
 };
 
+export type ExpenseCategoryType = 'fixed' | 'variable';
+
 export type AnalyticsExpense = {
   id: string;
   occurredOn: string;
   createdAt: string;
   description: string;
   categoryId: string;
+  categoryEmoji: string;
   categoryName: string;
+  categoryType: ExpenseCategoryType;
   merchantId: string | null;
   merchantName: string | null;
   amountRsd: number;
   amountUsd: number;
   amountEur: number;
+};
+
+export type FixedVariableCategoryBreakdown = {
+  categoryId: string;
+  emoji: string;
+  name: string;
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+  count: number;
+};
+
+export type FixedVariableBucketBreakdown = {
+  type: ExpenseCategoryType;
+  categories: FixedVariableCategoryBreakdown[];
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+  count: number;
+};
+
+export type MonthlyFixedVariableBreakdown = {
+  buckets: FixedVariableBucketBreakdown[];
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
 };
 
 export type ExpenseInput = {
@@ -527,6 +561,84 @@ export async function merchantBreakdownByMonth(
   };
 }
 
+export function buildFixedVariableBreakdown(
+  expenses: readonly AnalyticsExpense[],
+): MonthlyFixedVariableBreakdown {
+  const buckets: Record<
+    ExpenseCategoryType,
+    FixedVariableBucketBreakdown
+  > = {
+    fixed: {
+      type: 'fixed',
+      categories: [],
+      totalRsd: 0,
+      totalUsd: 0,
+      totalEur: 0,
+      count: 0,
+    },
+    variable: {
+      type: 'variable',
+      categories: [],
+      totalRsd: 0,
+      totalUsd: 0,
+      totalEur: 0,
+      count: 0,
+    },
+  };
+  const categories: Record<
+    ExpenseCategoryType,
+    Map<string, FixedVariableCategoryBreakdown>
+  > = {
+    fixed: new Map(),
+    variable: new Map(),
+  };
+  let totalRsd = 0;
+  let totalUsd = 0;
+  let totalEur = 0;
+
+  for (const expense of expenses) {
+    const bucket = buckets[expense.categoryType];
+    bucket.totalRsd += expense.amountRsd;
+    bucket.totalUsd += expense.amountUsd;
+    bucket.totalEur += expense.amountEur;
+    bucket.count += 1;
+    totalRsd += expense.amountRsd;
+    totalUsd += expense.amountUsd;
+    totalEur += expense.amountEur;
+
+    const current = categories[expense.categoryType].get(
+      expense.categoryId,
+    );
+    if (current) {
+      current.totalRsd += expense.amountRsd;
+      current.totalUsd += expense.amountUsd;
+      current.totalEur += expense.amountEur;
+      current.count += 1;
+      continue;
+    }
+
+    categories[expense.categoryType].set(expense.categoryId, {
+      categoryId: expense.categoryId,
+      emoji: expense.categoryEmoji,
+      name: expense.categoryName,
+      totalRsd: expense.amountRsd,
+      totalUsd: expense.amountUsd,
+      totalEur: expense.amountEur,
+      count: 1,
+    });
+  }
+
+  buckets.fixed.categories = [...categories.fixed.values()];
+  buckets.variable.categories = [...categories.variable.values()];
+
+  return {
+    buckets: [buckets.fixed, buckets.variable],
+    totalRsd,
+    totalUsd,
+    totalEur,
+  };
+}
+
 export async function listExpensesForAnalytics(
   yyyyMm: string,
 ): Promise<AnalyticsExpense[]> {
@@ -534,7 +646,7 @@ export async function listExpensesForAnalytics(
   const { data, error } = await supabase
     .from('expenses')
     .select(
-      'id,occurred_on,created_at,description,category_id,merchant_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(name),merchant:merchants!expenses_merchant_id_fkey(name)',
+      'id,occurred_on,created_at,description,category_id,merchant_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,type),merchant:merchants!expenses_merchant_id_fkey(name)',
     )
     .gte('occurred_on', first)
     .lte('occurred_on', last)
@@ -551,7 +663,9 @@ export async function listExpensesForAnalytics(
     createdAt: row.created_at,
     description: row.description,
     categoryId: row.category_id,
+    categoryEmoji: row.category.emoji,
     categoryName: row.category.name,
+    categoryType: row.category.type,
     merchantId: row.merchant_id,
     merchantName: row.merchant?.name ?? null,
     amountRsd: decimalToCents(row.amount_rsd),

@@ -7,6 +7,8 @@ import {
 } from '@jest/globals';
 
 import {
+  type AnalyticsExpense,
+  buildFixedVariableBreakdown,
   categoryBreakdownByMonth,
   listExpensesForAnalytics,
   merchantBreakdownByMonth,
@@ -301,7 +303,11 @@ describe('listExpensesForAnalytics', () => {
           amount_rsd: '100.10',
           amount_usd: '1.00',
           amount_eur: '0.90',
-          category: { name: 'Продукты' },
+          category: {
+            emoji: '🛒',
+            name: 'Продукты',
+            type: 'variable',
+          },
           merchant: { name: 'Maxi' },
         },
       ],
@@ -322,7 +328,9 @@ describe('listExpensesForAnalytics', () => {
         createdAt: '2026-07-29T15:45:00Z',
         description: '',
         categoryId: 'food',
+        categoryEmoji: '🛒',
         categoryName: 'Продукты',
+        categoryType: 'variable',
         merchantId: 'maxi',
         merchantName: 'Maxi',
         amountRsd: 10010,
@@ -336,5 +344,120 @@ describe('listExpensesForAnalytics', () => {
     expect(secondOrder).toHaveBeenCalledWith('created_at', {
       ascending: false,
     });
+  });
+});
+
+describe('buildFixedVariableBreakdown', () => {
+  test('groups categories and preserves the month totals in every currency', () => {
+    const expenses: AnalyticsExpense[] = [
+      {
+        id: 'rent',
+        occurredOn: '2026-07-01',
+        createdAt: '2026-07-01T08:00:00Z',
+        description: 'Аренда',
+        categoryId: 'rent',
+        categoryEmoji: '🏠',
+        categoryName: 'Аренда',
+        categoryType: 'fixed',
+        merchantId: null,
+        merchantName: null,
+        amountRsd: 7000000,
+        amountUsd: 63636,
+        amountEur: 59701,
+      },
+      {
+        id: 'groceries-1',
+        occurredOn: '2026-07-03',
+        createdAt: '2026-07-03T18:00:00Z',
+        description: 'Продукты',
+        categoryId: 'groceries',
+        categoryEmoji: '🛒',
+        categoryName: 'Продукты',
+        categoryType: 'variable',
+        merchantId: 'maxi',
+        merchantName: 'Maxi',
+        amountRsd: 50000,
+        amountUsd: 455,
+        amountEur: 426,
+      },
+      {
+        id: 'groceries-2',
+        occurredOn: '2026-07-10',
+        createdAt: '2026-07-10T18:00:00Z',
+        description: 'Продукты',
+        categoryId: 'groceries',
+        categoryEmoji: '🛒',
+        categoryName: 'Продукты',
+        categoryType: 'variable',
+        merchantId: 'maxi',
+        merchantName: 'Maxi',
+        amountRsd: 75000,
+        amountUsd: 682,
+        amountEur: 639,
+      },
+    ];
+
+    const result = buildFixedVariableBreakdown(expenses);
+    const bucketTotals = result.buckets.reduce(
+      (totals, bucket) => ({
+        totalRsd: totals.totalRsd + bucket.totalRsd,
+        totalUsd: totals.totalUsd + bucket.totalUsd,
+        totalEur: totals.totalEur + bucket.totalEur,
+      }),
+      { totalRsd: 0, totalUsd: 0, totalEur: 0 },
+    );
+    const expenseTotals = expenses.reduce(
+      (totals, expense) => ({
+        totalRsd: totals.totalRsd + expense.amountRsd,
+        totalUsd: totals.totalUsd + expense.amountUsd,
+        totalEur: totals.totalEur + expense.amountEur,
+      }),
+      { totalRsd: 0, totalUsd: 0, totalEur: 0 },
+    );
+
+    expect(bucketTotals).toEqual(expenseTotals);
+    expect({
+      totalRsd: result.totalRsd,
+      totalUsd: result.totalUsd,
+      totalEur: result.totalEur,
+    }).toEqual(expenseTotals);
+    expect(result.buckets).toEqual([
+      {
+        type: 'fixed',
+        categories: [
+          {
+            categoryId: 'rent',
+            emoji: '🏠',
+            name: 'Аренда',
+            totalRsd: 7000000,
+            totalUsd: 63636,
+            totalEur: 59701,
+            count: 1,
+          },
+        ],
+        totalRsd: 7000000,
+        totalUsd: 63636,
+        totalEur: 59701,
+        count: 1,
+      },
+      {
+        type: 'variable',
+        categories: [
+          {
+            categoryId: 'groceries',
+            emoji: '🛒',
+            name: 'Продукты',
+            totalRsd: 125000,
+            totalUsd: 1137,
+            totalEur: 1065,
+            count: 2,
+          },
+        ],
+        totalRsd: 125000,
+        totalUsd: 1137,
+        totalEur: 1065,
+        count: 2,
+      },
+    ]);
   });
 });

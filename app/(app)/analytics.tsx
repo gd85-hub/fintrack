@@ -21,8 +21,12 @@ import { ShareBar } from '../../components/ShareBar';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import {
   type AnalyticsExpense,
+  buildFixedVariableBreakdown,
   categoryBreakdownByMonth,
   type CategoryBreakdown,
+  type ExpenseCategoryType,
+  type FixedVariableBucketBreakdown,
+  type FixedVariableCategoryBreakdown,
   type MerchantBreakdown,
   merchantBreakdownByMonth,
   type MerchantTypeBreakdown,
@@ -63,11 +67,44 @@ type RankedMerchantType = {
   type: MerchantTypeBreakdown;
 };
 
+type RankedFixedVariableBucket = {
+  amount: number;
+  bucket: FixedVariableBucketBreakdown;
+  categories: Array<{
+    amount: number;
+    category: FixedVariableCategoryBreakdown;
+  }>;
+  color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
+  emoji: string;
+  label: string;
+  share: number;
+};
+
 type CurrencyTotals = {
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
 };
+
+const fixedVariablePresentation = {
+  fixed: {
+    color: theme.fixedVariablePalette.fixed,
+    emoji: '🔒',
+    label: 'Постоянные',
+  },
+  variable: {
+    color: theme.fixedVariablePalette.variable,
+    emoji: '🔁',
+    label: 'Переменные',
+  },
+} satisfies Record<
+  ExpenseCategoryType,
+  {
+    color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
+    emoji: string;
+    label: string;
+  }
+>;
 
 function amountForCurrency(value: CurrencyTotals, currency: Currency) {
   if (currency === 'USD') {
@@ -201,6 +238,9 @@ export default function AnalyticsScreen() {
   const [expandedTypeKeys, setExpandedTypeKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  const [expandedExpenseTypes, setExpandedExpenseTypes] = useState<
+    Set<ExpenseCategoryType>
+  >(() => new Set());
   const [categoryVisibleCounts, setCategoryVisibleCounts] = useState<
     Record<string, number>
   >({});
@@ -219,6 +259,7 @@ export default function AnalyticsScreen() {
       setMerchantBreakdown(null);
       setAnalyticsExpenses([]);
       setExpandedTypeKeys(new Set());
+      setExpandedExpenseTypes(new Set());
       setCategoryVisibleCounts({});
       setMerchantVisibleCounts({});
       setErrorMessage('');
@@ -318,6 +359,40 @@ export default function AnalyticsScreen() {
         share: (type.amount / merchantTotal) * 100,
       }));
   }, [displayCurrency, merchantBreakdown, merchantTotal]);
+  const fixedVariableBreakdown = useMemo(
+    () => buildFixedVariableBreakdown(analyticsExpenses),
+    [analyticsExpenses],
+  );
+  const fixedVariableTotal = amountForCurrency(
+    fixedVariableBreakdown,
+    displayCurrency,
+  );
+  const rankedFixedVariableBuckets = useMemo<
+    RankedFixedVariableBucket[]
+  >(
+    () =>
+      fixedVariableBreakdown.buckets.map((bucket) => {
+        const presentation = fixedVariablePresentation[bucket.type];
+        const amount = amountForCurrency(bucket, displayCurrency);
+
+        return {
+          amount,
+          bucket,
+          categories: bucket.categories
+            .map((category) => ({
+              amount: amountForCurrency(category, displayCurrency),
+              category,
+            }))
+            .sort((left, right) => right.amount - left.amount),
+          ...presentation,
+          share:
+            fixedVariableTotal > 0
+              ? (amount / fixedVariableTotal) * 100
+              : 0,
+        };
+      }),
+    [displayCurrency, fixedVariableBreakdown, fixedVariableTotal],
+  );
   const { expensesByCategory, expensesByMerchant } = useMemo(() => {
     const categoryBuckets = new Map<string, AnalyticsExpense[]>();
     const merchantBuckets = new Map<string, AnalyticsExpense[]>();
@@ -356,6 +431,18 @@ export default function AnalyticsScreen() {
         next.delete(typeKey);
       } else {
         next.add(typeKey);
+      }
+      return next;
+    });
+  }
+
+  function toggleExpenseType(type: ExpenseCategoryType) {
+    setExpandedExpenseTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
       }
       return next;
     });
@@ -726,6 +813,123 @@ export default function AnalyticsScreen() {
                                   </View>
                                 );
                               },
+                            )}
+                          </DrilldownPanel>
+                        ) : null}
+                      </View>
+                    );
+                  },
+                )}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Постоянные и переменные
+              </Text>
+              <ShareBar
+                accessibilityLabel="Доли постоянных и переменных трат"
+                segments={rankedFixedVariableBuckets.map(
+                  ({ amount, bucket, color }) => ({
+                    id: bucket.type,
+                    amount,
+                    color,
+                  }),
+                )}
+              />
+
+              <View style={styles.categoryList}>
+                {rankedFixedVariableBuckets.map(
+                  ({
+                    amount,
+                    bucket,
+                    categories,
+                    color,
+                    emoji,
+                    label,
+                    share,
+                  }) => {
+                    const expanded = expandedExpenseTypes.has(
+                      bucket.type,
+                    );
+
+                    return (
+                      <View
+                        key={bucket.type}
+                        style={styles.categoryGroup}
+                      >
+                        <Pressable
+                          accessibilityLabel={`${label}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${bucket.count}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded }}
+                          onPress={() =>
+                            toggleExpenseType(bucket.type)
+                          }
+                          style={({ pressed }) => [
+                            styles.categoryRow,
+                            pressed && styles.rowPressed,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.categoryMarker,
+                              { backgroundColor: color },
+                            ]}
+                          />
+                          <Text style={styles.emoji}>{emoji}</Text>
+                          <View style={styles.categoryCopy}>
+                            <Text
+                              numberOfLines={1}
+                              style={styles.categoryName}
+                            >
+                              {label}
+                            </Text>
+                            <Text style={styles.categoryMeta}>
+                              {formatShare(share)} · Операций:{' '}
+                              {bucket.count}
+                            </Text>
+                          </View>
+                          <Text style={styles.categoryAmount}>
+                            {formatMoney(amount)} {displayCurrency}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.expandIcon,
+                              expanded && styles.expandIconExpanded,
+                            ]}
+                          >
+                            ›
+                          </Text>
+                        </Pressable>
+
+                        {expanded && categories.length > 0 ? (
+                          <DrilldownPanel>
+                            {categories.map(
+                              ({ amount: categoryAmount, category }) => (
+                                <View
+                                  key={category.categoryId}
+                                  style={styles.merchantRow}
+                                >
+                                  <Text style={styles.emoji}>
+                                    {category.emoji}
+                                  </Text>
+                                  <View style={styles.merchantCopy}>
+                                    <Text
+                                      numberOfLines={1}
+                                      style={styles.merchantName}
+                                    >
+                                      {category.name}
+                                    </Text>
+                                    <Text style={styles.merchantMeta}>
+                                      Операций: {category.count}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.merchantAmount}>
+                                    {formatMoney(categoryAmount)}{' '}
+                                    {displayCurrency}
+                                  </Text>
+                                </View>
+                              ),
                             )}
                           </DrilldownPanel>
                         ) : null}
