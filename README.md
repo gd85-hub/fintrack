@@ -1,152 +1,125 @@
-# Fintrack — Phase 2
+# Fintrack
 
-Expo + TypeScript personal expense tracker for Android and Web. The app uses Supabase Auth and Postgres, supports manual expenses in RSD, USD, and EUR, and imports Serbian fiscal receipts from SUF verification QR codes on Android.
+A personal expense tracker. Expo (React Native) + TypeScript, one codebase for **Android** and **Web**, backed by **Supabase** (Postgres, Auth, Edge Functions).
+
+Every expense is stored in its original currency and converted into **RSD, USD, and EUR** using the National Bank of Serbia rate for the date the expense occurred. Conversions are frozen at write time, so past totals never drift when rates change.
+
+Replaces a Google Sheets tracker whose main problem was manual data entry.
+
+> Working in this repo with a coding agent? Read [`AGENTS.md`](./AGENTS.md) first - it holds the non-negotiable rules (money in integer cents, local dates, RLS, theme tokens, device-fetch, scope discipline).
+
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 0 | Scaffolding, DB schema, RLS, email auth | Done |
+| 1 | Manual expenses in 3 currencies, NBS rates, month list, edit/delete | Done |
+| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses | Code done; native device test pending |
+| 3 | Photo / email-screenshot receipts (any country) via vision model | Planned |
+| 4 | Analytics | In progress: categories + merchants + drilldown done; trends / fixed-vs-variable / subscriptions pending |
+
+### Known open items
+- **Scanning not yet tested on a real phone.** Public Expo Go lags Expo SDK 57, so a **development build via EAS** is needed to run on device. Scanning is native-only anyway (the tax page can't be fetched from a browser due to CORS).
+- **Design pass pending.** Minor visual inconsistencies to unify in one pass: expanded analytics rows differ slightly in style between blocks; the date field in the expense editor shows a raw ISO date (`2026-07-30`) instead of a formatted one; small arrow/indent inconsistencies.
+- Deferred niceties: category management UI + FK-on-delete handling for categories; "check your email" state polish.
 
 ## Prerequisites
 
-- Node.js and npm
-- Expo Go on an Android device, or an Android emulator
-- A Supabase project with the Phase 0 migration applied
+- Node.js (LTS) and npm
+- A Supabase project
+- For device testing: an Android device (a development build; public Expo Go is incompatible with SDK 57). Web needs nothing extra.
 
-## Environment variables
+## Setup
 
-Copy `.env.example` to `.env` and replace both placeholders:
+### 1. Environment variables
+
+Copy `.env.example` to `.env` and fill both values from Supabase (**Settings -> API Keys**, or the **Connect** button):
 
 ```dotenv
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 ```
 
-Use the public anonymous key only. Never put the Supabase service-role key in the app or an `EXPO_PUBLIC_*` variable. Restart Expo after changing environment variables.
+Use the **public** key (publishable/anon) only. The service-role key never goes in the app or any `EXPO_PUBLIC_*` var - it belongs only in Edge Functions, where Supabase provides it automatically.
 
-## Database
+Expo reads `.env` at startup only. After changing it, restart with `npx expo start -c`.
 
-Phase 2 does not change the database schema. Apply the existing migration at `supabase/migrations/20260729000000_phase_0_foundation.sql` once on a new project:
+### 2. Database
 
-1. Paste it into the Supabase SQL Editor and run it.
-2. Or link the project with the Supabase CLI and run:
+Apply the migration in `supabase/migrations/` **once** on a fresh project (SQL Editor paste, or `supabase db push`). Never re-run an applied migration; new changes go in a new migration file.
 
-   ```bash
-   supabase db push
-   ```
+For development, turn **off** email confirmation (Supabase -> Authentication -> Sign In / Providers -> Email -> *Confirm email*). With it on, sign-up returns no session and the app shows a "check your email" state instead of logging you in.
 
-Do not re-run the SQL manually on a project where the Phase 0 schema already exists.
+### 3. Edge Functions
 
-## Deploy the `sync-fx` Edge Function
+Sources live in `supabase/functions/<name>/index.ts`. They use `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, which Supabase injects automatically - **do not create these as custom secrets** (the dashboard rejects the `SUPABASE_` prefix; they already exist).
 
-The function source is at `supabase/functions/sync-fx/index.ts`. It uses Supabase's automatically provided `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` server-side variables. JWT verification must remain enabled so only authenticated app users can invoke it.
+Keep **Verify JWT** enabled on every function.
 
-### Option A: Supabase Dashboard
+Deploy via the dashboard (Edge Functions -> *Deploy a new function* -> **Via Editor**; set the function name **before** deploying, since renaming later changes the display name but not the URL slug, and the app calls functions by slug). For `parse-receipt`, add both files in the editor's FILES panel: `index.ts` and `parser.ts`. Or via CLI: `supabase functions deploy <name>`.
 
-1. Open **Edge Functions** in the Supabase Dashboard.
-2. Create a function named `sync-fx`.
-3. Open the function editor and replace its source with the complete contents of `supabase/functions/sync-fx/index.ts`.
-4. Keep **Verify JWT** enabled and deploy the function.
+Functions:
 
-### Option B: Supabase CLI
+- **`sync-fx`** - fetches official NBS USD/RSD and EUR/RSD rates for given dates and upserts them into `fx_rates`. Called automatically on app start (today) and whenever an expense date lacks a rate. Idempotent.
+- **`parse-receipt`** - **parses** the HTML of a Serbian SUF verification page and returns the itemized receipt. It does **not** fetch anything: the tax site blocks Supabase servers, so the **device downloads the page HTML** and sends it in the request body (`{ html, sourceUrl }`). The function validates `sourceUrl` against a hostname allowlist, then parses the `<pre>` journal block (the on-page item table is rendered client-side by JS and is empty in raw HTML).
 
-Link the local folder to the project, then deploy:
-
-```bash
-supabase link --project-ref your-project-ref
-supabase functions deploy sync-fx
-```
-
-`supabase/config.toml` explicitly keeps JWT verification enabled. The function upserts on the `fx_rates` primary key, so invoking it repeatedly for the same date is safe.
-
-## Deploy the `parse-receipt` Edge Function
-
-The source is in `supabase/functions/parse-receipt/`. The app downloads the SUF verification page directly on the device with a 20-second timeout, then sends its HTML to this function for parsing. The function validates the original HTTPS SUF URL against the explicit allowlist, rejects empty or oversized HTML, and never makes an outbound network request. Keep JWT verification enabled so only authenticated app users can invoke it.
-
-### Option A: Supabase Dashboard
-
-The function has multiple source files, so upload it as an archive:
-
-1. From the repository root, create the archive in PowerShell:
-
-   ```powershell
-   Compress-Archive -Path supabase/functions/parse-receipt/* -DestinationPath parse-receipt.zip -Force
-   ```
-
-2. Open **Edge Functions** in the Supabase Dashboard.
-3. Click **Deploy a new function** → **Via Editor**.
-4. Drag `parse-receipt.zip` into the editor.
-5. Set the function name to `parse-receipt`.
-6. Keep **Verify JWT** enabled and click **Deploy function**.
-7. Delete the local archive after deployment; it is only a transport artifact.
-
-The archive must contain `index.ts`, `parser.ts`, and `deno.json` at its root.
-
-### Option B: Supabase CLI
-
-Link the project and deploy the whole function directory:
-
-```bash
-supabase link --project-ref your-project-ref
-supabase functions deploy parse-receipt
-```
-
-For local Edge Function testing:
-
-```bash
-supabase functions serve parse-receipt
-```
-
-The client invokes `parse-receipt` with the signed-in user's JWT. A request body has the shape `{ "html": "<!DOCTYPE html>...", "sourceUrl": "https://suf.purs.gov.rs/v/?vl=...", "debug": false }`. Set `debug` to `true` only during parser diagnostics; the function returns only a short raw slice and the app never persists it.
-
-## Install and run
+## Run
 
 ```bash
 npm install
-npx expo start
+npx expo start        # "a" = Android, "w" = Web
 ```
 
-- Press `a` for Android.
-- Or scan the QR code with Expo Go on an Android device on the same network.
-- Press `w` for Web.
+Day-to-day development happens in the browser (fast reload). **Receipt scanning is Android-only** and requires a development build (not public Expo Go); on Web the scan entry point is hidden and shows a "use the mobile app" note.
 
-Direct target scripts are also available:
+## Verify
 
 ```bash
-npm run android
-npm run web
-```
-
-## Verification
-
-```bash
-npm run typecheck
-npm test
+npm run typecheck        # tsc --noEmit
+npm test                 # jest - money, dates, receipt parsing, analytics aggregation
 npx expo install --check
-npx expo export --platform web
-npx expo export --platform android
 ```
 
-## Phase 2 receipt flow
+## Architecture
 
-- On Android, tap the camera floating button and grant camera access. Scan the QR code once; scanning pauses while the receipt is processed.
-- If camera access is denied, open system settings or switch to manual URL entry.
-- Receipt scanning is Android-only because browser CORS prevents Web from fetching the SUF tax page. Web remains available for manual entry, viewing, and analytics.
-- Review the detected merchant, merchant type, line items, categories, and excluded positions before saving.
-- New receipt positions default to the system category with slug `uncategorized`.
-- Merchant matching is case-insensitive and checks both the primary name and aliases.
-- Saving creates one receipt and one expense per included position. All positions use the same resolved FX-rate pair and rate date.
-- The Home screen's `Не распознано` chip filters the month to items that still need categorization.
+```
+app/(auth)/           sign-in, sign-up
+app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
+components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, ReceiptCamera.{native,web}
+contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
+lib/                  money, dates, fx, db, receipts, theme, supabase, authErrors
+  __tests__/          unit tests
+supabase/
+  migrations/         SQL (Phase 0 foundation)
+  functions/          sync-fx, parse-receipt (Deno)
+```
 
-The live SUF page format may evolve. If a real receipt cannot be parsed, reproduce it with `debug: true`, remove personal data from the captured response, add it as a test fixture, and update `supabase/functions/parse-receipt/parser.ts`.
+### Data model
 
-## Existing expense behavior
+- **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`.
+- **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Receipt **images are never stored**.
+- **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
+- **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
+- **`fx_rates`** - daily NBS rates, server-written, client-read-only.
+- **`subscriptions`** - recurring payments (explicit, not guessed).
 
-- Manual expenses can be created, edited, and deleted.
-- Expense dates use device-local calendar parts rather than UTC conversion.
-- Amount input accepts a comma or dot and is converted to integer cents before money math.
-- Every saved expense has RSD, USD, and EUR amounts plus the rate date.
-- Rate resolution uses the newest complete USD/EUR pair on or before the expense date. If no earlier pair exists, it uses the earliest complete pair available.
-- The display currency persists under the AsyncStorage key `display_currency`.
-- Changing only description, merchant, category, or note leaves the existing conversion and `fx_rate_date` untouched.
+Reference tables use `user_id IS NULL` for shared system defaults and a non-null `user_id` for user-created rows.
 
-The Kurs API exposes the last applicable NBS value for weekends and holidays. The function stores that value for the requested effective calendar date; historical resolution still guarantees `fx_rate_date` is not after the expense date.
+### Key decisions
 
-## Scope
+- **Rate snapshot at write time.** Weekends/holidays fall back to the most recent earlier rate.
+- **Integer cents everywhere.** No floating-point money math.
+- **Local calendar dates.** Never derived via UTC.
+- **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
+- **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
+- **Device fetches the tax page; server only parses.** The tax site blocks cloud servers but serves the device; parsing lives server-side (with a hostname allowlist) so fixes don't require a new app build.
+- **Scanning is native-only.** Browsers can't fetch the tax page (CORS); Web is for manual entry, viewing, and analytics.
+- **No image storage.** Receipt photos/pages are parsed and discarded.
+- **Analytics is read-only and reuses stored conversions** - it never recomputes FX; a month's expenses are fetched once and grouped in memory.
 
-Phase 2 supports Serbian fiscal QR receipts only. It still excludes photo/email OCR, subscriptions UI, category management, analytics beyond month/day totals, budgets, incomes, accounts, offline queues, notifications, and dark mode.
+## Security notes
+
+- RLS on every user table, both `using` and `with check`.
+- `.env` is gitignored; only `.env.example` is committed.
+- The repository is public - no secrets belong in it. All data lives in Supabase.
+- Edge Functions that accept client input validate `sourceUrl` against a hostname allowlist and cap payload size.
