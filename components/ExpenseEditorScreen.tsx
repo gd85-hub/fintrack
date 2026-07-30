@@ -24,7 +24,11 @@ import {
   type MerchantType,
   updateExpense,
 } from '../lib/db';
-import { parseLocalISO, todayLocalISO } from '../lib/dates';
+import {
+  formatLongDate,
+  parseLocalISO,
+  todayLocalISO,
+} from '../lib/dates';
 import { RateUnavailableError, ratesForExpense } from '../lib/fx';
 import {
   centsToInput,
@@ -294,7 +298,9 @@ function ExpenseForm({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.selectorText}>{date}</Text>
+            <Text style={styles.selectorText}>
+              {formatLongDate(date)}
+            </Text>
             <Text style={styles.selectorChevron}>›</Text>
           </Pressable>
         </View>

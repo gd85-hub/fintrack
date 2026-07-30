@@ -121,6 +121,16 @@ export function formatDayHeader(dateISO: string): string {
   return `${parts.day} ${MONTHS_GENITIVE[parts.month - 1]}, ${WEEKDAYS[date.getDay()]}`;
 }
 
+export function formatLongDate(dateISO: string): string {
+  const parts = parseLocalISO(dateISO);
+
+  if (!parts) {
+    throw new Error('Date must use a valid YYYY-MM-DD format.');
+  }
+
+  return `${parts.day} ${MONTHS_GENITIVE[parts.month - 1]} ${parts.year}`;
+}
+
 export function formatMonthTitle(yyyyMm: string): string {
   const bounds = monthBounds(yyyyMm);
   const parts = parseLocalISO(bounds.first);

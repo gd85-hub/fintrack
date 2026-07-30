@@ -1,5 +1,11 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  Children,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Pressable,
   ScrollView,
@@ -114,6 +120,27 @@ type ExpenseDetailsProps = {
   visibleCount: number;
 };
 
+function DrilldownPanel({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children);
+
+  return (
+    <View style={styles.drilldownPanel}>
+      {items.map((child, index) => (
+        <View
+          key={index}
+          style={
+            index < items.length - 1
+              ? styles.drilldownItemDivider
+              : undefined
+          }
+        >
+          {child}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function ExpenseDetails({
   currency,
   expenses,
@@ -124,7 +151,7 @@ function ExpenseDetails({
   const remaining = expenses.length - visibleExpenses.length;
 
   return (
-    <View style={styles.expenseDetails}>
+    <DrilldownPanel>
       {visibleExpenses.map((expense) => (
         <ExpenseMiniRow
           amountCents={amountForExpense(expense, currency)}
@@ -152,7 +179,7 @@ function ExpenseDetails({
           </Text>
         </Pressable>
       ) : null}
-    </View>
+    </DrilldownPanel>
   );
 }
 
@@ -464,7 +491,7 @@ export default function AnalyticsScreen() {
         ) : null}
 
         {!loading && !errorMessage && rankedCategories.length > 0 ? (
-          <>
+          <View style={styles.analyticsBlocks}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>По категориям</Text>
               <ShareBar
@@ -526,8 +553,13 @@ export default function AnalyticsScreen() {
                           <Text style={styles.categoryAmount}>
                             {formatMoney(amount)} {displayCurrency}
                           </Text>
-                          <Text style={styles.expandIcon}>
-                            {expanded ? '⌄' : '›'}
+                          <Text
+                            style={[
+                              styles.expandIcon,
+                              expanded && styles.expandIconExpanded,
+                            ]}
+                          >
+                            ›
                           </Text>
                         </Pressable>
 
@@ -600,8 +632,13 @@ export default function AnalyticsScreen() {
                           <Text style={styles.categoryAmount}>
                             {formatMoney(amount)} {displayCurrency}
                           </Text>
-                          <Text style={styles.expandIcon}>
-                            {expanded ? '⌄' : '›'}
+                          <Text
+                            style={[
+                              styles.expandIcon,
+                              expanded && styles.expandIconExpanded,
+                            ]}
+                          >
+                            ›
                           </Text>
                         </Pressable>
 
@@ -612,7 +649,7 @@ export default function AnalyticsScreen() {
                         ) : null}
 
                         {expanded ? (
-                          <View style={styles.merchantList}>
+                          <DrilldownPanel>
                             {merchants.map(
                               ({ amount: merchantAmount, merchant }) => {
                                 const merchantKey =
@@ -661,8 +698,14 @@ export default function AnalyticsScreen() {
                                         {formatMoney(merchantAmount)}{' '}
                                         {displayCurrency}
                                       </Text>
-                                      <Text style={styles.expandIcon}>
-                                        {merchantExpanded ? '⌄' : '›'}
+                                      <Text
+                                        style={[
+                                          styles.expandIcon,
+                                          merchantExpanded &&
+                                            styles.expandIconExpanded,
+                                        ]}
+                                      >
+                                        ›
                                       </Text>
                                     </Pressable>
 
@@ -684,7 +727,7 @@ export default function AnalyticsScreen() {
                                 );
                               },
                             )}
-                          </View>
+                          </DrilldownPanel>
                         ) : null}
                       </View>
                     );
@@ -692,7 +735,7 @@ export default function AnalyticsScreen() {
                 )}
               </View>
             </View>
-          </>
+          </View>
         ) : null}
       </ScrollView>
     </View>
@@ -700,6 +743,9 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  analyticsBlocks: {
+    gap: theme.spacing.lg,
+  },
   backButton: {
     alignItems: 'center',
     height: theme.sizes.iconButton,
@@ -780,19 +826,26 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
   },
-  expenseDetails: {
+  drilldownItemDivider: {
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: theme.sizes.border,
+  },
+  drilldownPanel: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.card,
-    gap: theme.spacing.xxs,
     marginBottom: theme.spacing.sm,
     marginLeft: theme.spacing.lg,
     paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xxs,
   },
   expandIcon: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
     width: theme.spacing.md,
+  },
+  expandIconExpanded: {
+    transform: [{ rotate: '90deg' }],
   },
   header: {
     alignItems: 'center',
@@ -837,14 +890,6 @@ const styles = StyleSheet.create({
   },
   merchantGroup: {
     gap: theme.spacing.xxs,
-  },
-  merchantList: {
-    borderLeftColor: theme.colors.border,
-    borderLeftWidth: theme.sizes.border,
-    gap: theme.spacing.xxs,
-    marginLeft: theme.spacing.lg,
-    paddingBottom: theme.spacing.sm,
-    paddingLeft: theme.spacing.lg,
   },
   merchantMeta: {
     color: theme.colors.textMuted,

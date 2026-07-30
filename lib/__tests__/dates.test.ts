@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import {
   formatDayHeader,
+  formatLongDate,
   formatMonthTitle,
   monthBounds,
   shiftMonth,
@@ -32,6 +33,7 @@ describe('local date utilities', () => {
 
   it('formats Russian day and month titles', () => {
     expect(formatDayHeader('2026-07-29')).toBe('29 июля, среда');
+    expect(formatLongDate('2026-07-30')).toBe('30 июля 2026');
     expect(formatMonthTitle('2026-07')).toBe('Июль 2026');
   });
 
