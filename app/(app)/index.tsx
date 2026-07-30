@@ -1,5 +1,9 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -18,6 +22,7 @@ import { listExpensesByMonth, type Expense } from '../../lib/db';
 import {
   formatDayHeader,
   formatMonthTitle,
+  monthBounds,
   shiftMonth,
   todayLocalISO,
 } from '../../lib/dates';
@@ -56,21 +61,45 @@ function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
   }));
 }
 
+function monthFromParam(value: string | string[] | undefined) {
+  const month = Array.isArray(value) ? value[0] : value;
+  if (!month) {
+    return null;
+  }
+
+  try {
+    monthBounds(month);
+    return month;
+  } catch {
+    return null;
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ month?: string | string[] }>();
   const { signOut } = useAuth();
   const {
     currency: displayCurrency,
     setCurrency: setDisplayCurrency,
   } = useDisplayCurrency();
   const currentMonth = todayLocalISO().slice(0, 7);
-  const [visibleMonth, setVisibleMonth] = useState(currentMonth);
+  const requestedMonth = monthFromParam(params.month);
+  const [visibleMonth, setVisibleMonth] = useState(
+    requestedMonth ?? currentMonth,
+  );
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
+
+  useEffect(() => {
+    if (requestedMonth) {
+      setVisibleMonth(requestedMonth);
+    }
+  }, [requestedMonth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,19 +187,31 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.accountRow}>
           <Text style={styles.appName}>Fintrack</Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={signingOut}
-            onPress={() => void handleSignOut()}
-            style={({ pressed }) => [
-              styles.signOutButton,
-              (pressed || signingOut) && styles.pressed,
-            ]}
-          >
-            <Text style={styles.signOutText}>
-              {signingOut ? 'Выход…' : 'Выйти'}
-            </Text>
-          </Pressable>
+          <View style={styles.accountActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/(app)/analytics')}
+              style={({ pressed }) => [
+                styles.headerAction,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.headerActionText}>Аналитика</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={signingOut}
+              onPress={() => void handleSignOut()}
+              style={({ pressed }) => [
+                styles.signOutButton,
+                (pressed || signingOut) && styles.pressed,
+              ]}
+            >
+              <Text style={styles.signOutText}>
+                {signingOut ? 'Выход…' : 'Выйти'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.monthRow}>
@@ -361,6 +402,11 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  accountActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
   accountRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -475,6 +521,15 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
     fontSize: theme.fontSizes.title,
     fontWeight: '400',
+  },
+  headerAction: {
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+  },
+  headerActionText: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
   },
   monthButton: {
     alignItems: 'center',

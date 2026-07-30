@@ -1,4 +1,14 @@
 export const theme = {
+  categoryPalette: [
+    '#2563eb',
+    '#7c3aed',
+    '#db2777',
+    '#ea580c',
+    '#ca8a04',
+    '#16a34a',
+    '#0891b2',
+    '#475569',
+  ],
   colors: {
     accent: '#2563eb',
     accentMuted: '#dbeafe',
@@ -42,6 +52,7 @@ export const theme = {
     cameraHeight: 440,
     cameraMarker: 240,
     cameraMarkerBorder: 3,
+    categoryMarker: 10,
     dateCell: 42,
     dateColumn: '14.285714%' as const,
     floatingButton: 56,

@@ -52,6 +52,18 @@ type ExpenseQueryRow = {
   merchant: { name: string } | null;
 };
 
+type CategoryBreakdownQueryRow = {
+  category_id: string;
+  amount_rsd: number | string | null;
+  amount_usd: number | string | null;
+  amount_eur: number | string | null;
+  category: {
+    emoji: string;
+    name: string;
+    group: string;
+  };
+};
+
 type ExistingExpenseRow = {
   original_amount: number | string;
   original_currency: Currency;
@@ -101,6 +113,24 @@ export type Expense = {
   fxRateDate: string | null;
   note: string;
   createdAt: string;
+};
+
+export type CategoryBreakdown = {
+  categoryId: string;
+  emoji: string;
+  name: string;
+  group: string;
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+  count: number;
+};
+
+export type MonthlyCategoryBreakdown = {
+  categories: CategoryBreakdown[];
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
 };
 
 export type ExpenseInput = {
@@ -275,6 +305,64 @@ export async function listExpensesByMonth(
   }
 
   return (data as unknown as ExpenseQueryRow[]).map(mapExpense);
+}
+
+export async function categoryBreakdownByMonth(
+  yyyyMm: string,
+): Promise<MonthlyCategoryBreakdown> {
+  const { first, last } = monthBounds(yyyyMm);
+  const { data, error } = await supabase
+    .from('expenses')
+    .select(
+      'category_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group)',
+    )
+    .gte('occurred_on', first)
+    .lte('occurred_on', last);
+
+  if (error) {
+    throw error;
+  }
+
+  const categories = new Map<string, CategoryBreakdown>();
+  let totalRsd = 0;
+  let totalUsd = 0;
+  let totalEur = 0;
+
+  for (const row of data as unknown as CategoryBreakdownQueryRow[]) {
+    const amountRsd = decimalToCents(row.amount_rsd);
+    const amountUsd = decimalToCents(row.amount_usd);
+    const amountEur = decimalToCents(row.amount_eur);
+    totalRsd += amountRsd;
+    totalUsd += amountUsd;
+    totalEur += amountEur;
+
+    const current = categories.get(row.category_id);
+    if (current) {
+      current.totalRsd += amountRsd;
+      current.totalUsd += amountUsd;
+      current.totalEur += amountEur;
+      current.count += 1;
+      continue;
+    }
+
+    categories.set(row.category_id, {
+      categoryId: row.category_id,
+      emoji: row.category.emoji,
+      name: row.category.name,
+      group: row.category.group,
+      totalRsd: amountRsd,
+      totalUsd: amountUsd,
+      totalEur: amountEur,
+      count: 1,
+    });
+  }
+
+  return {
+    categories: [...categories.values()],
+    totalRsd,
+    totalUsd,
+    totalEur,
+  };
 }
 
 export async function getExpense(id: string): Promise<Expense | null> {
