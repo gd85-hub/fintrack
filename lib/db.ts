@@ -80,6 +80,20 @@ type MerchantBreakdownQueryRow = {
   } | null;
 };
 
+type AnalyticsExpenseQueryRow = {
+  id: string;
+  occurred_on: string;
+  created_at: string;
+  description: string;
+  category_id: string;
+  merchant_id: string | null;
+  amount_rsd: number | string | null;
+  amount_usd: number | string | null;
+  amount_eur: number | string | null;
+  category: { name: string };
+  merchant: { name: string } | null;
+};
+
 type ExistingExpenseRow = {
   original_amount: number | string;
   original_currency: Currency;
@@ -174,6 +188,20 @@ export type MonthlyMerchantBreakdown = {
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
+};
+
+export type AnalyticsExpense = {
+  id: string;
+  occurredOn: string;
+  createdAt: string;
+  description: string;
+  categoryId: string;
+  categoryName: string;
+  merchantId: string | null;
+  merchantName: string | null;
+  amountRsd: number;
+  amountUsd: number;
+  amountEur: number;
 };
 
 export type ExpenseInput = {
@@ -497,6 +525,39 @@ export async function merchantBreakdownByMonth(
     totalUsd,
     totalEur,
   };
+}
+
+export async function listExpensesForAnalytics(
+  yyyyMm: string,
+): Promise<AnalyticsExpense[]> {
+  const { first, last } = monthBounds(yyyyMm);
+  const { data, error } = await supabase
+    .from('expenses')
+    .select(
+      'id,occurred_on,created_at,description,category_id,merchant_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(name),merchant:merchants!expenses_merchant_id_fkey(name)',
+    )
+    .gte('occurred_on', first)
+    .lte('occurred_on', last)
+    .order('occurred_on', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data as unknown as AnalyticsExpenseQueryRow[]).map((row) => ({
+    id: row.id,
+    occurredOn: row.occurred_on,
+    createdAt: row.created_at,
+    description: row.description,
+    categoryId: row.category_id,
+    categoryName: row.category.name,
+    merchantId: row.merchant_id,
+    merchantName: row.merchant?.name ?? null,
+    amountRsd: decimalToCents(row.amount_rsd),
+    amountUsd: decimalToCents(row.amount_usd),
+    amountEur: decimalToCents(row.amount_eur),
+  }));
 }
 
 export async function getExpense(id: string): Promise<Expense | null> {

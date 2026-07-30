@@ -9,15 +9,18 @@ import {
 } from 'react-native';
 
 import { CurrencySelector } from '../../components/CurrencySelector';
+import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { ShareBar } from '../../components/ShareBar';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import {
+  type AnalyticsExpense,
   categoryBreakdownByMonth,
   type CategoryBreakdown,
   type MerchantBreakdown,
   merchantBreakdownByMonth,
   type MerchantTypeBreakdown,
+  listExpensesForAnalytics,
   type MonthlyCategoryBreakdown,
   type MonthlyMerchantBreakdown,
 } from '../../lib/db';
@@ -28,6 +31,9 @@ import {
 } from '../../lib/dates';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme } from '../../lib/theme';
+
+const expensePageSize = 10;
+const unknownMerchantKey = 'unknown';
 
 type PaletteColor =
   | (typeof theme.categoryPalette)[number]
@@ -86,6 +92,70 @@ function formatShare(share: number) {
   return `${String(rounded).replace('.', ',')}%`;
 }
 
+function amountForExpense(
+  expense: AnalyticsExpense,
+  currency: Currency,
+) {
+  if (currency === 'USD') {
+    return expense.amountUsd;
+  }
+
+  if (currency === 'EUR') {
+    return expense.amountEur;
+  }
+
+  return expense.amountRsd;
+}
+
+type ExpenseDetailsProps = {
+  currency: Currency;
+  expenses: AnalyticsExpense[];
+  onShowMore: () => void;
+  visibleCount: number;
+};
+
+function ExpenseDetails({
+  currency,
+  expenses,
+  onShowMore,
+  visibleCount,
+}: ExpenseDetailsProps) {
+  const visibleExpenses = expenses.slice(0, visibleCount);
+  const remaining = expenses.length - visibleExpenses.length;
+
+  return (
+    <View style={styles.expenseDetails}>
+      {visibleExpenses.map((expense) => (
+        <ExpenseMiniRow
+          amountCents={amountForExpense(expense, currency)}
+          currency={currency}
+          date={expense.occurredOn}
+          description={
+            expense.description.trim() || expense.categoryName
+          }
+          key={expense.id}
+          merchantName={expense.merchantName}
+        />
+      ))}
+      {remaining > 0 ? (
+        <Pressable
+          accessibilityLabel={`Показать ещё ${Math.min(expensePageSize, remaining)} трат`}
+          accessibilityRole="button"
+          onPress={onShowMore}
+          style={({ pressed }) => [
+            styles.showMoreButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.showMoreText}>
+            Показать ещё {Math.min(expensePageSize, remaining)}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export default function AnalyticsScreen() {
   const router = useRouter();
   const {
@@ -98,9 +168,18 @@ export default function AnalyticsScreen() {
     useState<MonthlyCategoryBreakdown | null>(null);
   const [merchantBreakdown, setMerchantBreakdown] =
     useState<MonthlyMerchantBreakdown | null>(null);
+  const [analyticsExpenses, setAnalyticsExpenses] = useState<
+    AnalyticsExpense[]
+  >([]);
   const [expandedTypeKeys, setExpandedTypeKeys] = useState<Set<string>>(
     () => new Set(),
   );
+  const [categoryVisibleCounts, setCategoryVisibleCounts] = useState<
+    Record<string, number>
+  >({});
+  const [merchantVisibleCounts, setMerchantVisibleCounts] = useState<
+    Record<string, number>
+  >({});
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
@@ -111,19 +190,30 @@ export default function AnalyticsScreen() {
       setLoading(true);
       setBreakdown(null);
       setMerchantBreakdown(null);
+      setAnalyticsExpenses([]);
       setExpandedTypeKeys(new Set());
+      setCategoryVisibleCounts({});
+      setMerchantVisibleCounts({});
       setErrorMessage('');
 
       void Promise.all([
         categoryBreakdownByMonth(visibleMonth),
         merchantBreakdownByMonth(visibleMonth),
+        listExpensesForAnalytics(visibleMonth),
       ])
-        .then(([loadedBreakdown, loadedMerchantBreakdown]) => {
-          if (active) {
-            setBreakdown(loadedBreakdown);
-            setMerchantBreakdown(loadedMerchantBreakdown);
-          }
-        })
+        .then(
+          ([
+            loadedBreakdown,
+            loadedMerchantBreakdown,
+            loadedExpenses,
+          ]) => {
+            if (active) {
+              setBreakdown(loadedBreakdown);
+              setMerchantBreakdown(loadedMerchantBreakdown);
+              setAnalyticsExpenses(loadedExpenses);
+            }
+          },
+        )
         .catch((error: unknown) => {
           console.error('Unable to load category analytics:', error);
           if (active) {
@@ -201,6 +291,27 @@ export default function AnalyticsScreen() {
         share: (type.amount / merchantTotal) * 100,
       }));
   }, [displayCurrency, merchantBreakdown, merchantTotal]);
+  const { expensesByCategory, expensesByMerchant } = useMemo(() => {
+    const categoryBuckets = new Map<string, AnalyticsExpense[]>();
+    const merchantBuckets = new Map<string, AnalyticsExpense[]>();
+
+    for (const expense of analyticsExpenses) {
+      const categoryExpenses =
+        categoryBuckets.get(expense.categoryId) ?? [];
+      categoryExpenses.push(expense);
+      categoryBuckets.set(expense.categoryId, categoryExpenses);
+
+      const merchantKey = expense.merchantId ?? unknownMerchantKey;
+      const merchantExpenses = merchantBuckets.get(merchantKey) ?? [];
+      merchantExpenses.push(expense);
+      merchantBuckets.set(merchantKey, merchantExpenses);
+    }
+
+    return {
+      expensesByCategory: categoryBuckets,
+      expensesByMerchant: merchantBuckets,
+    };
+  }, [analyticsExpenses]);
   const canMoveForward = visibleMonth < currentMonth;
 
   function openMonthOnHome() {
@@ -211,7 +322,7 @@ export default function AnalyticsScreen() {
   }
 
   function toggleType(typeId: string | null) {
-    const typeKey = typeId ?? 'unknown';
+    const typeKey = typeId ?? unknownMerchantKey;
     setExpandedTypeKeys((current) => {
       const next = new Set(current);
       if (next.has(typeKey)) {
@@ -221,6 +332,45 @@ export default function AnalyticsScreen() {
       }
       return next;
     });
+  }
+
+  function toggleCategory(categoryId: string) {
+    setCategoryVisibleCounts((current) => {
+      if (current[categoryId] !== undefined) {
+        const next = { ...current };
+        delete next[categoryId];
+        return next;
+      }
+      return { ...current, [categoryId]: expensePageSize };
+    });
+  }
+
+  function showMoreCategory(categoryId: string) {
+    setCategoryVisibleCounts((current) => ({
+      ...current,
+      [categoryId]: (current[categoryId] ?? expensePageSize) + expensePageSize,
+    }));
+  }
+
+  function toggleMerchant(merchantId: string | null) {
+    const merchantKey = merchantId ?? unknownMerchantKey;
+    setMerchantVisibleCounts((current) => {
+      if (current[merchantKey] !== undefined) {
+        const next = { ...current };
+        delete next[merchantKey];
+        return next;
+      }
+      return { ...current, [merchantKey]: expensePageSize };
+    });
+  }
+
+  function showMoreMerchant(merchantId: string | null) {
+    const merchantKey = merchantId ?? unknownMerchantKey;
+    setMerchantVisibleCounts((current) => ({
+      ...current,
+      [merchantKey]:
+        (current[merchantKey] ?? expensePageSize) + expensePageSize,
+    }));
   }
 
   return (
@@ -330,37 +480,70 @@ export default function AnalyticsScreen() {
 
               <View style={styles.categoryList}>
                 {rankedCategories.map(
-                  ({ amount, category, color, share }) => (
-                    <Pressable
-                      accessibilityLabel={`${category.name}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${category.count}`}
-                      accessibilityRole="button"
-                      key={category.categoryId}
-                      onPress={openMonthOnHome}
-                      style={({ pressed }) => [
-                        styles.categoryRow,
-                        pressed && styles.rowPressed,
-                      ]}
-                    >
+                  ({ amount, category, color, share }) => {
+                    const visibleCount =
+                      categoryVisibleCounts[category.categoryId];
+                    const expanded = visibleCount !== undefined;
+                    const categoryExpenses =
+                      expensesByCategory.get(category.categoryId) ?? [];
+
+                    return (
                       <View
-                        style={[
-                          styles.categoryMarker,
-                          { backgroundColor: color },
-                        ]}
-                      />
-                      <Text style={styles.emoji}>{category.emoji}</Text>
-                      <View style={styles.categoryCopy}>
-                        <Text numberOfLines={1} style={styles.categoryName}>
-                          {category.name}
-                        </Text>
-                        <Text style={styles.categoryMeta}>
-                          {formatShare(share)} · Операций: {category.count}
-                        </Text>
+                        key={category.categoryId}
+                        style={styles.categoryGroup}
+                      >
+                        <Pressable
+                          accessibilityLabel={`${category.name}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${category.count}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ expanded }}
+                          onPress={() =>
+                            toggleCategory(category.categoryId)
+                          }
+                          style={({ pressed }) => [
+                            styles.categoryRow,
+                            pressed && styles.rowPressed,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.categoryMarker,
+                              { backgroundColor: color },
+                            ]}
+                          />
+                          <Text style={styles.emoji}>{category.emoji}</Text>
+                          <View style={styles.categoryCopy}>
+                            <Text
+                              numberOfLines={1}
+                              style={styles.categoryName}
+                            >
+                              {category.name}
+                            </Text>
+                            <Text style={styles.categoryMeta}>
+                              {formatShare(share)} · Операций:{' '}
+                              {category.count}
+                            </Text>
+                          </View>
+                          <Text style={styles.categoryAmount}>
+                            {formatMoney(amount)} {displayCurrency}
+                          </Text>
+                          <Text style={styles.expandIcon}>
+                            {expanded ? '⌄' : '›'}
+                          </Text>
+                        </Pressable>
+
+                        {expanded ? (
+                          <ExpenseDetails
+                            currency={displayCurrency}
+                            expenses={categoryExpenses}
+                            onShowMore={() =>
+                              showMoreCategory(category.categoryId)
+                            }
+                            visibleCount={visibleCount}
+                          />
+                        ) : null}
                       </View>
-                      <Text style={styles.categoryAmount}>
-                        {formatMoney(amount)} {displayCurrency}
-                      </Text>
-                    </Pressable>
-                  ),
+                    );
+                  },
                 )}
               </View>
             </View>
@@ -371,7 +554,7 @@ export default function AnalyticsScreen() {
                 accessibilityLabel="Доли трат по типам мест"
                 segments={rankedMerchantTypes.map(
                   ({ amount, color, type }) => ({
-                    id: type.typeId ?? 'unknown',
+                    id: type.typeId ?? unknownMerchantKey,
                     amount,
                     color,
                   }),
@@ -381,7 +564,8 @@ export default function AnalyticsScreen() {
               <View style={styles.merchantTypeList}>
                 {rankedMerchantTypes.map(
                   ({ amount, color, merchants, share, type }) => {
-                    const typeKey = type.typeId ?? 'unknown';
+                    const typeKey =
+                      type.typeId ?? unknownMerchantKey;
                     const expanded = expandedTypeKeys.has(typeKey);
                     return (
                       <View key={typeKey} style={styles.merchantTypeGroup}>
@@ -429,28 +613,77 @@ export default function AnalyticsScreen() {
 
                         {expanded ? (
                           <View style={styles.merchantList}>
-                            {merchants.map(({ amount: merchantAmount, merchant }) => (
-                              <View
-                                key={merchant.merchantId ?? 'unknown'}
-                                style={styles.merchantRow}
-                              >
-                                <View style={styles.merchantCopy}>
-                                  <Text
-                                    numberOfLines={1}
-                                    style={styles.merchantName}
+                            {merchants.map(
+                              ({ amount: merchantAmount, merchant }) => {
+                                const merchantKey =
+                                  merchant.merchantId ??
+                                  unknownMerchantKey;
+                                const merchantVisibleCount =
+                                  merchantVisibleCounts[merchantKey];
+                                const merchantExpanded =
+                                  merchantVisibleCount !== undefined;
+                                const merchantExpenses =
+                                  expensesByMerchant.get(merchantKey) ?? [];
+
+                                return (
+                                  <View
+                                    key={merchantKey}
+                                    style={styles.merchantGroup}
                                   >
-                                    {merchant.name}
-                                  </Text>
-                                  <Text style={styles.merchantMeta}>
-                                    Операций: {merchant.count}
-                                  </Text>
-                                </View>
-                                <Text style={styles.merchantAmount}>
-                                  {formatMoney(merchantAmount)}{' '}
-                                  {displayCurrency}
-                                </Text>
-                              </View>
-                            ))}
+                                    <Pressable
+                                      accessibilityLabel={`${merchant.name}, ${formatMoney(merchantAmount)} ${displayCurrency}, операций: ${merchant.count}`}
+                                      accessibilityRole="button"
+                                      accessibilityState={{
+                                        expanded: merchantExpanded,
+                                      }}
+                                      onPress={() =>
+                                        toggleMerchant(
+                                          merchant.merchantId,
+                                        )
+                                      }
+                                      style={({ pressed }) => [
+                                        styles.merchantRow,
+                                        pressed && styles.rowPressed,
+                                      ]}
+                                    >
+                                      <View style={styles.merchantCopy}>
+                                        <Text
+                                          numberOfLines={1}
+                                          style={styles.merchantName}
+                                        >
+                                          {merchant.name}
+                        </Text>
+                                        <Text style={styles.merchantMeta}>
+                                          Операций: {merchant.count}
+                                        </Text>
+                                      </View>
+                                      <Text style={styles.merchantAmount}>
+                                        {formatMoney(merchantAmount)}{' '}
+                                        {displayCurrency}
+                                      </Text>
+                                      <Text style={styles.expandIcon}>
+                                        {merchantExpanded ? '⌄' : '›'}
+                                      </Text>
+                                    </Pressable>
+
+                                    {merchantExpanded ? (
+                                      <ExpenseDetails
+                                        currency={displayCurrency}
+                                        expenses={merchantExpenses}
+                                        onShowMore={() =>
+                                          showMoreMerchant(
+                                            merchant.merchantId,
+                                          )
+                                        }
+                                        visibleCount={
+                                          merchantVisibleCount
+                                        }
+                                      />
+                                    ) : null}
+                                  </View>
+                                );
+                              },
+                            )}
                           </View>
                         ) : null}
                       </View>
@@ -487,6 +720,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xxs,
   },
+  categoryGroup: {
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: theme.sizes.border,
+  },
   categoryList: {
     gap: theme.spacing.xs,
   },
@@ -506,8 +743,6 @@ const styles = StyleSheet.create({
   },
   categoryRow: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
-    borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     gap: theme.spacing.sm,
     minHeight: theme.sizes.floatingButton,
@@ -544,6 +779,14 @@ const styles = StyleSheet.create({
     color: theme.colors.danger,
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
+  },
+  expenseDetails: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.card,
+    gap: theme.spacing.xxs,
+    marginBottom: theme.spacing.sm,
+    marginLeft: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
   },
   expandIcon: {
     color: theme.colors.textMuted,
@@ -590,6 +833,9 @@ const styles = StyleSheet.create({
   },
   merchantCopy: {
     flex: 1,
+    gap: theme.spacing.xxs,
+  },
+  merchantGroup: {
     gap: theme.spacing.xxs,
   },
   merchantList: {
@@ -656,6 +902,16 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
+  },
+  showMoreButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+  },
+  showMoreText: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
   },
   title: {
     color: theme.colors.text,

@@ -8,6 +8,7 @@ import {
 
 import {
   categoryBreakdownByMonth,
+  listExpensesForAnalytics,
   merchantBreakdownByMonth,
 } from '../db';
 import { supabase } from '../supabase';
@@ -273,5 +274,67 @@ describe('merchantBreakdownByMonth', () => {
       'occurred_on',
       '2026-07-31',
     );
+  });
+});
+
+describe('listExpensesForAnalytics', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  test('maps one ordered month query to stored currency cents', async () => {
+    const secondOrder = jest.fn<
+      (
+        column: string,
+        options: { ascending: boolean },
+      ) => Promise<{ data: unknown[]; error: null }>
+    >();
+    secondOrder.mockResolvedValue({
+      data: [
+        {
+          id: 'expense-1',
+          occurred_on: '2026-07-29',
+          created_at: '2026-07-29T15:45:00Z',
+          description: '',
+          category_id: 'food',
+          merchant_id: 'maxi',
+          amount_rsd: '100.10',
+          amount_usd: '1.00',
+          amount_eur: '0.90',
+          category: { name: 'Продукты' },
+          merchant: { name: 'Maxi' },
+        },
+      ],
+      error: null,
+    });
+    const firstOrder = jest.fn(() => ({ order: secondOrder }));
+    const lte = jest.fn(() => ({ order: firstOrder }));
+    const gte = jest.fn(() => ({ lte }));
+    const select = jest.fn(() => ({ gte }));
+    fromMock.mockReturnValue({
+      select,
+    } as unknown as ReturnType<typeof supabase.from>);
+
+    await expect(listExpensesForAnalytics('2026-07')).resolves.toEqual([
+      {
+        id: 'expense-1',
+        occurredOn: '2026-07-29',
+        createdAt: '2026-07-29T15:45:00Z',
+        description: '',
+        categoryId: 'food',
+        categoryName: 'Продукты',
+        merchantId: 'maxi',
+        merchantName: 'Maxi',
+        amountRsd: 10010,
+        amountUsd: 100,
+        amountEur: 90,
+      },
+    ]);
+    expect(firstOrder).toHaveBeenCalledWith('occurred_on', {
+      ascending: false,
+    });
+    expect(secondOrder).toHaveBeenCalledWith('created_at', {
+      ascending: false,
+    });
   });
 });
