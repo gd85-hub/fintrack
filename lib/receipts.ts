@@ -49,6 +49,7 @@ const knownErrors = new Set<ReceiptParseError>([
   'total_mismatch',
   'unsupported_url',
 ]);
+const receiptFetchTimeoutMs = 20_000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -148,7 +149,15 @@ export function isSupportedReceiptUrl(value: string) {
   }
 }
 
-export async function parseReceiptUrl(
+function isAbortError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    Reflect.get(error, 'name') === 'AbortError'
+  );
+}
+
+export async function fetchAndParseReceipt(
   url: string,
   debug = false,
 ): Promise<ReceiptParseResult> {
@@ -156,15 +165,46 @@ export async function parseReceiptUrl(
     return { ok: false, error: 'unsupported_url' };
   }
 
-  const { data, error } = await supabase.functions.invoke<unknown>(
-    'parse-receipt',
-    { body: { url: url.trim(), debug } },
+  const sourceUrl = url.trim();
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    receiptFetchTimeoutMs,
   );
-  if (error) {
+  let html: string;
+
+  try {
+    const response = await fetch(sourceUrl, {
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return { ok: false, error: 'fetch_failed' };
+    }
+    html = await response.text();
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      error: isAbortError(error) ? 'timeout' : 'fetch_failed',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke<unknown>(
+      'parse-receipt',
+      { body: { html, sourceUrl, debug } },
+    );
+    if (error) {
+      return { ok: false, error: 'fetch_failed' };
+    }
+    return validateResult(data);
+  } catch {
     return { ok: false, error: 'fetch_failed' };
   }
-  return validateResult(data);
 }
+
+export const parseReceiptUrl = fetchAndParseReceipt;
 
 export function receiptDate(occurredAt: string) {
   const match = occurredAt.match(/^(\d{4}-\d{2}-\d{2})T/u);

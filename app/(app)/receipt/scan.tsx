@@ -15,8 +15,8 @@ import { router } from 'expo-router';
 import { ReceiptCamera } from '../../../components/ReceiptCamera';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import {
+  fetchAndParseReceipt,
   isSupportedReceiptUrl,
-  parseReceiptUrl,
   receiptParseErrorMessage,
 } from '../../../lib/receipts';
 import { theme } from '../../../lib/theme';
@@ -43,7 +43,7 @@ export default function ScanReceiptScreen() {
       }
 
       setProcessing(true);
-      const result = await parseReceiptUrl(value);
+      const result = await fetchAndParseReceipt(value);
       setProcessing(false);
       if (!result.ok) {
         setError(receiptParseErrorMessage(result.error));
@@ -127,7 +127,7 @@ export default function ScanReceiptScreen() {
               ]}
             >
               {processing ? (
-                <ActivityIndicator color={theme.colors.white} />
+                <Text style={styles.primaryButtonText}>Читаем чек…</Text>
               ) : (
                 <Text style={styles.primaryButtonText}>Загрузить чек</Text>
               )}
@@ -189,7 +189,7 @@ export default function ScanReceiptScreen() {
         {processing && !manualMode ? (
           <View style={styles.processingCard}>
             <ActivityIndicator color={theme.colors.accent} />
-            <Text style={styles.processingText}>Загружаем и разбираем чек…</Text>
+            <Text style={styles.processingText}>Читаем чек…</Text>
           </View>
         ) : null}
       </ScrollView>

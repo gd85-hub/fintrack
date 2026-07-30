@@ -1,10 +1,7 @@
-import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-
 import {
   parseReceiptHtml,
   parseStructuredReceipt,
   validateReceiptUrl,
-  validateRedirectUrl,
   type ReceiptFields,
 } from './parser.ts';
 
@@ -33,10 +30,8 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
 };
 
-const browserUserAgent =
-  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36 FintrackReceiptParser/1.0';
-const timeoutMs = 15_000;
-const maximumRedirects = 3;
+const maximumHtmlLength = 2 * 1024 * 1024;
+const debugRawLength = 8 * 1024;
 
 function response(payload: ParseFailure | ParseSuccess) {
   return new Response(JSON.stringify(payload), {
@@ -46,45 +41,11 @@ function response(payload: ParseFailure | ParseSuccess) {
 }
 
 function failure(error: ParseError, debug: boolean, raw?: string) {
-  return response({
+  return {
     ok: false,
     error,
-    ...(debug && raw ? { raw } : {}),
-  });
-}
-
-async function safeFetch(
-  originalUrl: string,
-  signal: AbortSignal,
-): Promise<Response> {
-  let currentUrl = originalUrl;
-
-  for (let redirects = 0; redirects <= maximumRedirects; redirects += 1) {
-    const result = await fetch(currentUrl, {
-      headers: {
-        Accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
-        'User-Agent': browserUserAgent,
-      },
-      redirect: 'manual',
-      signal,
-    });
-
-    if (result.status < 300 || result.status >= 400) {
-      return result;
-    }
-
-    const location = result.headers.get('location');
-    if (!location || redirects === maximumRedirects) {
-      throw new Error('Unsafe or excessive redirect');
-    }
-    const nextUrl = new URL(location, currentUrl).toString();
-    if (!validateRedirectUrl(nextUrl)) {
-      throw new Error('Redirect host is not allowed');
-    }
-    currentUrl = nextUrl;
-  }
-
-  throw new Error('Redirect limit reached');
+    ...(debug && raw ? { raw: raw.slice(0, debugRawLength) } : {}),
+  } satisfies ParseFailure;
 }
 
 function totalMatches(receipt: ReceiptFields) {
@@ -96,68 +57,85 @@ function totalMatches(receipt: ReceiptFields) {
   return Math.abs(itemsTotal - receipt.totalCents) <= tolerance;
 }
 
-Deno.serve(async (request) => {
+export function parseReceiptPayload(
+  body: unknown,
+): ParseFailure | ParseSuccess {
+  let debug = false;
+  let html: string | undefined;
+  try {
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return failure('unsupported_url', debug);
+    }
+
+    debug = Reflect.get(body, 'debug') === true;
+    const sourceUrl = Reflect.get(body, 'sourceUrl');
+    if (
+      typeof sourceUrl !== 'string' ||
+      !validateReceiptUrl(sourceUrl)
+    ) {
+      return failure('unsupported_url', debug);
+    }
+
+    const htmlValue = Reflect.get(body, 'html');
+    if (
+      typeof htmlValue !== 'string' ||
+      !htmlValue.trim() ||
+      htmlValue.length > maximumHtmlLength
+    ) {
+      return failure('parse_failed', debug);
+    }
+    html = htmlValue;
+
+    let parsed: ReceiptFields | null = null;
+    try {
+      parsed = parseStructuredReceipt(JSON.parse(html));
+    } catch {
+      // Verification pages are normally HTML, not standalone JSON.
+    }
+    parsed ??= parseReceiptHtml(html);
+    if (!parsed) {
+      return failure('parse_failed', debug, html);
+    }
+    if (!totalMatches(parsed)) {
+      return failure('total_mismatch', debug, html);
+    }
+
+    return {
+      ok: true,
+      ...parsed,
+      currency: 'RSD',
+      ...(debug ? { raw: html.slice(0, debugRawLength) } : {}),
+    };
+  } catch {
+    return failure('parse_failed', debug, html);
+  }
+}
+
+export async function handleParseReceiptRequest(request: Request) {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  let debug = false;
-  let raw: string | undefined;
-  try {
-    if (request.method !== 'POST') {
-      return failure('parse_failed', debug);
-    }
-
-    const body: unknown = await request.json();
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      return failure('unsupported_url', debug);
-    }
-    const url = Reflect.get(body, 'url');
-    debug = Reflect.get(body, 'debug') === true;
-    if (typeof url !== 'string' || !validateReceiptUrl(url)) {
-      return failure('unsupported_url', debug);
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    let fetched: Response;
-    try {
-      fetched = await safeFetch(url, controller.signal);
-      raw = await fetched.text();
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!fetched.ok) {
-      return failure('fetch_failed', debug, raw);
-    }
-
-    let parsed: ReceiptFields | null = null;
-    const contentType = fetched.headers.get('content-type') ?? '';
-    if (contentType.includes('json')) {
-      try {
-        parsed = parseStructuredReceipt(JSON.parse(raw));
-      } catch {
-        // Some upstream responses advertise JSON while returning HTML.
-      }
-    }
-    parsed ??= parseReceiptHtml(raw);
-    if (!parsed) {
-      return failure('parse_failed', debug, raw);
-    }
-    if (!totalMatches(parsed)) {
-      return failure('total_mismatch', debug, raw);
-    }
-
-    return response({
-      ok: true,
-      ...parsed,
-      currency: 'RSD',
-      ...(debug ? { raw } : {}),
-    });
-  } catch (error: unknown) {
-    const timedOut =
-      error instanceof DOMException && error.name === 'AbortError';
-    return failure(timedOut ? 'timeout' : 'fetch_failed', debug, raw);
+  if (request.method !== 'POST') {
+    return response(failure('parse_failed', false));
   }
-});
+
+  try {
+    const body: unknown = await request.json();
+    return response(parseReceiptPayload(body));
+  } catch {
+    return response(failure('parse_failed', false));
+  }
+}
+
+declare const Deno:
+  | {
+      serve: (
+        handler: (request: Request) => Response | Promise<Response>,
+      ) => void;
+    }
+  | undefined;
+
+if (typeof Deno !== 'undefined') {
+  Deno.serve(handleParseReceiptRequest);
+}

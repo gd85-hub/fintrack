@@ -56,7 +56,7 @@ supabase functions deploy sync-fx
 
 ## Deploy the `parse-receipt` Edge Function
 
-The source is in `supabase/functions/parse-receipt/`. It fetches only HTTPS SUF verification URLs from the explicit allowlist, validates redirects, uses a 15-second timeout, and returns structured failures instead of throwing. Keep JWT verification enabled so only authenticated app users can invoke it.
+The source is in `supabase/functions/parse-receipt/`. The app downloads the SUF verification page directly on the device with a 20-second timeout, then sends its HTML to this function for parsing. The function validates the original HTTPS SUF URL against the explicit allowlist, rejects empty or oversized HTML, and never makes an outbound network request. Keep JWT verification enabled so only authenticated app users can invoke it.
 
 ### Option A: Supabase Dashboard
 
@@ -92,7 +92,7 @@ For local Edge Function testing:
 supabase functions serve parse-receipt
 ```
 
-The client invokes `parse-receipt` with the signed-in user's JWT. A request body has the shape `{ "url": "https://suf.purs.gov.rs/v/?vl=...", "debug": false }`. Set `debug` to `true` only during parser diagnostics; the app never persists the returned raw page.
+The client invokes `parse-receipt` with the signed-in user's JWT. A request body has the shape `{ "html": "<!DOCTYPE html>...", "sourceUrl": "https://suf.purs.gov.rs/v/?vl=...", "debug": false }`. Set `debug` to `true` only during parser diagnostics; the function returns only a short raw slice and the app never persists it.
 
 ## Install and run
 
