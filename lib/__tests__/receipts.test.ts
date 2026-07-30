@@ -75,6 +75,9 @@ describe('device receipt loading', () => {
       parsedReceipt,
     );
     expect(fetchMock).toHaveBeenCalledWith(supportedUrl, {
+      headers: {
+        Accept: 'text/html',
+      },
       signal: expect.any(AbortSignal),
     });
     expect(invokeMock).toHaveBeenCalledWith('parse-receipt', {

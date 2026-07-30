@@ -22,8 +22,42 @@ import {
 import { theme } from '../../../lib/theme';
 
 export default function ScanReceiptScreen() {
+  if (Platform.OS === 'web') {
+    return <WebScanUnavailable />;
+  }
+
+  return <NativeScanReceiptScreen />;
+}
+
+function WebScanUnavailable() {
+  return (
+    <View style={styles.screen}>
+      <View style={styles.webFallbackContent}>
+        <Text style={styles.webFallbackTitle}>
+          Сканирование доступно в приложении
+        </Text>
+        <Text style={styles.webFallbackBody}>
+          Сканирование чеков работает в мобильном приложении на телефоне.
+          Откройте Fintrack на Android, чтобы отсканировать QR-код чека.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.replace('/(app)')}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.primaryButtonText}>Вернуться</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function NativeScanReceiptScreen() {
   const { setDraft } = useReceiptDraft();
-  const [manualMode, setManualMode] = useState(Platform.OS === 'web');
+  const [manualMode, setManualMode] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,18 +166,16 @@ export default function ScanReceiptScreen() {
                 <Text style={styles.primaryButtonText}>Загрузить чек</Text>
               )}
             </Pressable>
-            {Platform.OS !== 'web' ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={showCamera}
-                style={({ pressed }) => [
-                  styles.linkButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.linkText}>Вернуться к камере</Text>
-              </Pressable>
-            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={showCamera}
+              style={({ pressed }) => [
+                styles.linkButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.linkText}>Вернуться к камере</Text>
+            </Pressable>
           </View>
         ) : (
           <>
@@ -318,5 +350,25 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
+  },
+  webFallbackBody: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.body,
+    textAlign: 'center',
+  },
+  webFallbackContent: {
+    alignSelf: 'center',
+    flex: 1,
+    gap: theme.spacing.lg,
+    justifyContent: 'center',
+    maxWidth: theme.sizes.maxContentWidth,
+    padding: theme.spacing.lg,
+    width: '100%',
+  },
+  webFallbackTitle: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.title,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });

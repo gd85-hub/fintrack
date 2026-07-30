@@ -1,6 +1,6 @@
 # Fintrack — Phase 2
 
-Expo + TypeScript personal expense tracker for Android and Web. The app uses Supabase Auth and Postgres, supports manual expenses in RSD, USD, and EUR, and imports Serbian fiscal receipts from SUF verification QR codes.
+Expo + TypeScript personal expense tracker for Android and Web. The app uses Supabase Auth and Postgres, supports manual expenses in RSD, USD, and EUR, and imports Serbian fiscal receipts from SUF verification QR codes on Android.
 
 ## Prerequisites
 
@@ -126,7 +126,7 @@ npx expo export --platform android
 
 - On Android, tap the camera floating button and grant camera access. Scan the QR code once; scanning pauses while the receipt is processed.
 - If camera access is denied, open system settings or switch to manual URL entry.
-- On Web, the same route shows manual SUF URL entry and does not import the native camera implementation.
+- Receipt scanning is Android-only because browser CORS prevents Web from fetching the SUF tax page. Web remains available for manual entry, viewing, and analytics.
 - Review the detected merchant, merchant type, line items, categories, and excluded positions before saving.
 - New receipt positions default to the system category with slug `uncategorized`.
 - Merchant matching is case-insensitive and checks both the primary name and aliases.

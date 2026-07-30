@@ -330,18 +330,20 @@ export default function HomeScreen() {
           : null}
       </ScrollView>
 
-      <Pressable
-        accessibilityLabel="Сканировать чек"
-        accessibilityRole="button"
-        onPress={() => router.push('/(app)/receipt/scan')}
-        style={({ pressed }) => [
-          styles.floatingButton,
-          styles.scanFloatingButton,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Text style={styles.scanFloatingButtonText}>📷</Text>
-      </Pressable>
+      {Platform.OS !== 'web' ? (
+        <Pressable
+          accessibilityLabel="Сканировать чек"
+          accessibilityRole="button"
+          onPress={() => router.push('/(app)/receipt/scan')}
+          style={({ pressed }) => [
+            styles.floatingButton,
+            styles.scanFloatingButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.scanFloatingButtonText}>📷</Text>
+        </Pressable>
+      ) : null}
 
       <Pressable
         accessibilityLabel="Добавить трату"

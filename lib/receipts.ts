@@ -175,6 +175,9 @@ export async function fetchAndParseReceipt(
 
   try {
     const response = await fetch(sourceUrl, {
+      headers: {
+        Accept: 'text/html',
+      },
       signal: controller.signal,
     });
     if (!response.ok) {
