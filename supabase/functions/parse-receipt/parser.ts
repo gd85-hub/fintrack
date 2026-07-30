@@ -24,9 +24,19 @@ const allowedHosts = new Set([
   'tap.sandbox.suf.purs.gov.rs',
 ]);
 
-const amountPattern = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/g;
-const numericTokenPattern =
-  /-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?/g;
+const serbianMoneySource =
+  String.raw`-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}`;
+const serbianQuantitySource = String.raw`\d+(?:,\d+)?`;
+const threeAmountItemPattern = new RegExp(
+  `^(${serbianMoneySource})\\s+(${serbianQuantitySource})\\s+(${serbianMoneySource})$`,
+  'u',
+);
+const twoAmountItemPattern = new RegExp(
+  `^(${serbianMoneySource})\\s+(${serbianMoneySource})$`,
+  'u',
+);
+const fiscalBannerPattern =
+  /(?:ФИСКАЛНИ\s+РАЧУН|FISKALNI\s+RA(?:Č|C)UN)/iu;
 const itemHeadingPattern =
   /^(?:артикли|artikli|списак артикала|spisak artikala|ставке|stavke|items|назив.*(?:цена|количина).*укупно|naziv.*(?:cena|količina).*ukupno)/iu;
 const itemEndPattern =
@@ -187,12 +197,18 @@ function paymentLabel(value: unknown): string | null {
     '5': 'Ваучер',
     '6': 'Мобильная оплата',
     card: 'Карта',
+    gotovina: 'Наличные',
+    kartica: 'Карта',
     cash: 'Наличные',
     check: 'Чек',
     mobilemoney: 'Мобильная оплата',
     other: 'Другое',
+    platnakartica: 'Карта',
     voucher: 'Ваучер',
     wiretransfer: 'Банковский перевод',
+    готовина: 'Наличные',
+    картица: 'Карта',
+    платнакартица: 'Карта',
   };
   if (
     (typeof value === 'string' && value.trim()) ||
@@ -272,7 +288,9 @@ function stripMarkup(value: string) {
       .replace(/<\/(?:td|th)>/giu, ' ')
       .replace(/<\/(?:div|p|pre|li|tr|h[1-6])>/giu, '\n')
       .replace(/<[^>]+>/gu, ''),
-  ).trim();
+  )
+    .replace(/\r\n?/g, '\n')
+    .trim();
 }
 
 function journalString(value: unknown): string | null {
@@ -337,9 +355,16 @@ function jsonCandidates(html: string): unknown[] {
 }
 
 function vatFromName(name: string) {
-  const match = name.match(/\(([^()]{1,8})\)\s*$/u);
+  const normalized = name
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .trim();
+  const match = normalized.match(/\(([ЂЕАĐEA])\)\s*$/iu);
   return {
-    name: match ? name.slice(0, match.index).trim() : name.trim(),
+    name: match
+      ? normalized.slice(0, match.index).trim()
+      : normalized,
     vatLabel: match?.[1]?.trim() ?? null,
   };
 }
@@ -347,14 +372,23 @@ function vatFromName(name: string) {
 function parseNumericItemLine(
   line: string,
 ): Omit<ParsedReceiptItem, 'name' | 'vatLabel'> | null {
-  const amounts = line.match(numericTokenPattern) ?? [];
-  if (amounts.length < 3) {
+  const threeAmounts = line.match(threeAmountItemPattern);
+  const twoAmounts = threeAmounts ? null : line.match(twoAmountItemPattern);
+  if (!threeAmounts && !twoAmounts) {
     return null;
   }
 
-  const unitPriceCents = parseSerbianCents(amounts.at(-3) ?? '');
-  const quantity = parseSerbianQuantity(amounts.at(-2) ?? '');
-  const lineTotalCents = parseSerbianCents(amounts.at(-1) ?? '');
+  const unitPriceCents = parseSerbianCents(
+    threeAmounts?.[1] ?? twoAmounts?.[1] ?? '',
+  );
+  const lineTotalCents = parseSerbianCents(
+    threeAmounts?.[3] ?? twoAmounts?.[2] ?? '',
+  );
+  const quantity = threeAmounts
+    ? parseSerbianQuantity(threeAmounts[2])
+    : unitPriceCents && lineTotalCents
+      ? lineTotalCents / unitPriceCents
+      : 1;
   if (
     unitPriceCents === null ||
     lineTotalCents === null ||
@@ -365,11 +399,6 @@ function parseNumericItemLine(
   }
 
   return { quantity, unitPriceCents, lineTotalCents };
-}
-
-function itemNameBeforeNumbers(line: string) {
-  const firstAmount = line.search(amountPattern);
-  return firstAmount > 0 ? line.slice(0, firstAmount).trim() : '';
 }
 
 function parseItems(lines: readonly string[]) {
@@ -387,7 +416,7 @@ function parseItems(lines: readonly string[]) {
   }
 
   const items: ParsedReceiptItem[] = [];
-  let pendingName = '';
+  let pendingNameLines: string[] = [];
   for (let index = start + 1; index < lines.length; index += 1) {
     const line = lines[index];
     if (itemEndPattern.test(line)) {
@@ -399,19 +428,89 @@ function parseItems(lines: readonly string[]) {
 
     const numeric = parseNumericItemLine(line);
     if (!numeric) {
-      pendingName = line;
+      pendingNameLines.push(line);
       continue;
     }
 
-    const inlineName = itemNameBeforeNumbers(line);
-    const parsedName = vatFromName(inlineName || pendingName);
-    pendingName = '';
+    const parsedName = vatFromName(pendingNameLines.join(' '));
+    pendingNameLines = [];
     if (!parsedName.name) {
       continue;
     }
     items.push({ ...numeric, ...parsedName });
   }
   return items;
+}
+
+function journalHeader(lines: readonly string[]) {
+  const bannerIndex = lines.findIndex((line) =>
+    fiscalBannerPattern.test(line),
+  );
+  if (bannerIndex < 0) {
+    return { merchantName: null, taxId: null };
+  }
+
+  const itemIndex = lines.findIndex(
+    (line, index) =>
+      index > bannerIndex && /^(?:артикли|artikli)$/iu.test(line),
+  );
+  const transactionIndex = lines.findIndex(
+    (line, index) =>
+      index > bannerIndex &&
+      /^-{5,}.+-{5,}$/u.test(line) &&
+      !fiscalBannerPattern.test(line),
+  );
+  const endCandidates = [itemIndex, transactionIndex].filter(
+    (index) => index > bannerIndex,
+  );
+  const end =
+    endCandidates.length > 0 ? Math.min(...endCandidates) : lines.length;
+  const headerLines = lines
+    .slice(bannerIndex + 1, end)
+    .filter(
+      (line) =>
+        !separatorPattern.test(line) &&
+        !/^(?:касир|kasir|есир број|esir broj)\s*:/iu.test(line),
+    );
+  const taxId = /^\d+$/u.test(headerLines[0] ?? '')
+    ? headerLines[0]
+    : null;
+  const merchantName = taxId && headerLines[1] ? headerLines[1] : null;
+  return { merchantName, taxId };
+}
+
+function paymentTypeAfterTotal(lines: readonly string[]) {
+  const totalIndex = lines.findIndex((line) =>
+    /^(?:укупан износ|ukupan iznos)\s*:/iu.test(line),
+  );
+  if (totalIndex < 0) {
+    return null;
+  }
+
+  for (let index = totalIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^=+$/u.test(line)) {
+      break;
+    }
+    if (separatorPattern.test(line)) {
+      continue;
+    }
+    const match = line.match(/^([^:]+):\s*(.+)$/u);
+    if (!match) {
+      continue;
+    }
+    const label = match[1].trim();
+    const value = match[2].trim();
+    if (
+      /^(?:начин плаћања|način plaćanja|nacin placanja|payment type)$/iu.test(
+        label,
+      )
+    ) {
+      return paymentLabel(value);
+    }
+    return paymentLabel(label);
+  }
+  return null;
 }
 
 function offsetForBelgrade(
@@ -602,6 +701,14 @@ export function validateRedirectUrl(value: string): boolean {
 }
 
 export function extractJournalText(html: string): string | null {
+  const prePattern = /<pre\b[^>]*>([\s\S]*?)<\/pre>/giu;
+  for (const match of html.matchAll(prePattern)) {
+    const plainText = stripMarkup(match[1]);
+    if (fiscalBannerPattern.test(plainText)) {
+      return plainText;
+    }
+  }
+
   for (const candidate of jsonCandidates(html)) {
     const journal = findJsonJournal(candidate);
     if (journal) {
@@ -635,6 +742,7 @@ export function extractJournalText(html: string): string | null {
 
 export function parseJournal(journal: string): ReceiptFields | null {
   const lines = normalizedLines(journal);
+  const header = journalHeader(lines);
   const items = parseItems(lines);
   const totalValue = labelValue(lines, [
     'укупан износ',
@@ -652,19 +760,21 @@ export function parseJournal(journal: string): ReceiptFields | null {
     'vreme izdavanja',
   ]);
   const occurredAt = occurredValue ? receiptDateTime(occurredValue) : null;
-  const merchantName = labelValue(lines, [
-    'назив обвезника',
-    'naziv obveznika',
-    'име продајног места',
-    'ime prodajnog mesta',
-    'назив пословног простора',
-    'naziv poslovnog prostora',
-    'business name',
-    'location name',
-    'продавац',
-  ]);
-  const taxIdValue = labelValue(lines, ['пиб', 'pib', 'tin', 'tax id']);
-  const paymentType = labelValue(lines, [
+  const merchantName =
+    header.merchantName ??
+    labelValue(lines, [
+      'назив обвезника',
+      'naziv obveznika',
+      'име продајног места',
+      'ime prodajnog mesta',
+      'назив пословног простора',
+      'naziv poslovnog prostora',
+      'business name',
+      'location name',
+      'продавац',
+    ]);
+  const labeledTaxId = labelValue(lines, ['пиб', 'pib', 'tin', 'tax id']);
+  const fallbackPayment = labelValue(lines, [
     'начин плаћања',
     'način plaćanja',
     'nacin placanja',
@@ -673,6 +783,9 @@ export function parseJournal(journal: string): ReceiptFields | null {
     'plaćanje',
     'placanje',
   ]);
+  const paymentType =
+    paymentTypeAfterTotal(lines) ??
+    (fallbackPayment ? paymentLabel(fallbackPayment) : null);
 
   if (!merchantName || !occurredAt || totalCents === null || items.length === 0) {
     return null;
@@ -680,7 +793,10 @@ export function parseJournal(journal: string): ReceiptFields | null {
 
   return {
     merchantName,
-    taxId: taxIdValue?.match(/\d{8,13}/u)?.[0] ?? taxIdValue,
+    taxId:
+      header.taxId ??
+      labeledTaxId?.match(/\d{8,13}/u)?.[0] ??
+      labeledTaxId,
     occurredAt,
     totalCents,
     paymentType,
