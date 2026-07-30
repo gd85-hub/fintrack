@@ -64,6 +64,22 @@ type CategoryBreakdownQueryRow = {
   };
 };
 
+type MerchantBreakdownQueryRow = {
+  merchant_id: string | null;
+  amount_rsd: number | string | null;
+  amount_usd: number | string | null;
+  amount_eur: number | string | null;
+  merchant: {
+    name: string;
+    type_id: string | null;
+    type: {
+      emoji: string;
+      name: string;
+      sort: number;
+    } | null;
+  } | null;
+};
+
 type ExistingExpenseRow = {
   original_amount: number | string;
   original_currency: Currency;
@@ -128,6 +144,33 @@ export type CategoryBreakdown = {
 
 export type MonthlyCategoryBreakdown = {
   categories: CategoryBreakdown[];
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+};
+
+export type MerchantBreakdown = {
+  merchantId: string | null;
+  name: string;
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+  count: number;
+};
+
+export type MerchantTypeBreakdown = {
+  typeId: string | null;
+  emoji: string;
+  typeName: string;
+  totalRsd: number;
+  totalUsd: number;
+  totalEur: number;
+  count: number;
+  merchants: MerchantBreakdown[];
+};
+
+export type MonthlyMerchantBreakdown = {
+  types: MerchantTypeBreakdown[];
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
@@ -359,6 +402,97 @@ export async function categoryBreakdownByMonth(
 
   return {
     categories: [...categories.values()],
+    totalRsd,
+    totalUsd,
+    totalEur,
+  };
+}
+
+export async function merchantBreakdownByMonth(
+  yyyyMm: string,
+): Promise<MonthlyMerchantBreakdown> {
+  const { first, last } = monthBounds(yyyyMm);
+  const { data, error } = await supabase
+    .from('expenses')
+    .select(
+      'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name,type_id,type:merchant_types!merchants_type_id_fkey(emoji,name,sort))',
+    )
+    .gte('occurred_on', first)
+    .lte('occurred_on', last);
+
+  if (error) {
+    throw error;
+  }
+
+  type MutableTypeBreakdown = Omit<
+    MerchantTypeBreakdown,
+    'merchants'
+  > & {
+    merchants: Map<string, MerchantBreakdown>;
+  };
+
+  const types = new Map<string, MutableTypeBreakdown>();
+  let totalRsd = 0;
+  let totalUsd = 0;
+  let totalEur = 0;
+
+  for (const row of data as unknown as MerchantBreakdownQueryRow[]) {
+    const amountRsd = decimalToCents(row.amount_rsd);
+    const amountUsd = decimalToCents(row.amount_usd);
+    const amountEur = decimalToCents(row.amount_eur);
+    totalRsd += amountRsd;
+    totalUsd += amountUsd;
+    totalEur += amountEur;
+
+    const typeId = row.merchant?.type_id ?? null;
+    const typeKey = typeId ?? 'unknown';
+    const merchantId = row.merchant_id;
+    const merchantKey = merchantId ?? 'unknown';
+    let type = types.get(typeKey);
+
+    if (!type) {
+      type = {
+        typeId,
+        emoji: row.merchant?.type?.emoji ?? '📍',
+        typeName: row.merchant?.type?.name ?? 'Место не определено',
+        totalRsd: 0,
+        totalUsd: 0,
+        totalEur: 0,
+        count: 0,
+        merchants: new Map<string, MerchantBreakdown>(),
+      };
+      types.set(typeKey, type);
+    }
+
+    type.totalRsd += amountRsd;
+    type.totalUsd += amountUsd;
+    type.totalEur += amountEur;
+    type.count += 1;
+
+    const merchant = type.merchants.get(merchantKey);
+    if (merchant) {
+      merchant.totalRsd += amountRsd;
+      merchant.totalUsd += amountUsd;
+      merchant.totalEur += amountEur;
+      merchant.count += 1;
+      continue;
+    }
+
+    type.merchants.set(merchantKey, {
+      merchantId,
+      name: row.merchant?.name ?? 'Без места',
+      totalRsd: amountRsd,
+      totalUsd: amountUsd,
+      totalEur: amountEur,
+      count: 1,
+    });
+  }
+
+  return {
+    types: [...types.values()].map(({ merchants, ...type }) => ({
+      ...type,
+      merchants: [...merchants.values()],
+    })),
     totalRsd,
     totalUsd,
     totalEur,
