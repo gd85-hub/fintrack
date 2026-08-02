@@ -46,6 +46,7 @@ describe('resolveCategoriesForItems', () => {
       {
         normalizedName: 'mleko',
         categoryId: 'groceries',
+        displayName: 'Молоко',
         action: 'categorize' as const,
       },
     ]);
@@ -58,7 +59,11 @@ describe('resolveCategoriesForItems', () => {
         { loadRules, categorize },
       ),
     ).resolves.toEqual([
-      { categoryId: 'groceries', excluded: false },
+      {
+        categoryId: 'groceries',
+        displayName: 'Молоко',
+        excluded: false,
+      },
     ]);
     expect(loadRules).toHaveBeenCalledWith(['mleko']);
     expect(categorize).not.toHaveBeenCalled();
@@ -68,7 +73,11 @@ describe('resolveCategoriesForItems', () => {
     const loadRules = jest.fn(async () => []);
     const categorize = jest.fn(
       async (items: readonly { name: string }[]) => [
-        { name: items[0]?.name ?? '', categoryName: 'Продукты' },
+        {
+          name: items[0]?.name ?? '',
+          displayName: 'Молоко',
+          categoryName: 'Продукты',
+        },
       ],
     );
 
@@ -79,8 +88,16 @@ describe('resolveCategoriesForItems', () => {
         { loadRules, categorize },
       ),
     ).resolves.toEqual([
-      { categoryId: 'groceries', excluded: false },
-      { categoryId: 'groceries', excluded: false },
+      {
+        categoryId: 'groceries',
+        displayName: 'Молоко',
+        excluded: false,
+      },
+      {
+        categoryId: 'groceries',
+        displayName: 'Молоко',
+        excluded: false,
+      },
     ]);
     expect(categorize).toHaveBeenCalledWith(
       [{ name: 'MLEKO 968ML' }],
@@ -93,6 +110,7 @@ describe('resolveCategoriesForItems', () => {
       {
         normalizedName: 'kesa',
         categoryId: null,
+        displayName: 'Пакет',
         action: 'exclude' as const,
       },
     ]);
@@ -105,7 +123,11 @@ describe('resolveCategoriesForItems', () => {
         { loadRules, categorize },
       ),
     ).resolves.toEqual([
-      { categoryId: 'uncategorized', excluded: true },
+      {
+        categoryId: 'uncategorized',
+        displayName: 'Пакет',
+        excluded: true,
+      },
     ]);
     expect(categorize).not.toHaveBeenCalled();
   });
@@ -117,13 +139,14 @@ describe('item category learning', () => {
     fromMock.mockReset();
   });
 
-  test('turns a category edit into a categorization rule', async () => {
+  test('stores an edited display name in the categorization rule', async () => {
     const writer = jest.fn(async () => undefined);
 
     await learnItemCategoryRules(
       [
         {
-          name: 'MLEKO 968ML (KOM)',
+          rawName: 'MLEKO 968ML (KOM)',
+          displayName: 'Молоко домашнее',
           categoryId: 'groceries',
           excluded: false,
         },
@@ -135,6 +158,7 @@ describe('item category learning', () => {
       {
         normalizedName: 'mleko',
         categoryId: 'groceries',
+        displayName: 'Молоко домашнее',
         action: 'categorize',
       },
     ]);
@@ -144,7 +168,14 @@ describe('item category learning', () => {
     const writer = jest.fn(async () => undefined);
 
     await learnItemCategoryRules(
-      [{ name: 'KESA (E)', categoryId: 'groceries', excluded: true }],
+      [
+        {
+          rawName: 'KESA (E)',
+          displayName: 'Пакет',
+          categoryId: 'groceries',
+          excluded: true,
+        },
+      ],
       writer,
     );
 
@@ -152,6 +183,7 @@ describe('item category learning', () => {
       {
         normalizedName: 'kesa',
         categoryId: null,
+        displayName: 'Пакет',
         action: 'exclude',
       },
     ]);
@@ -162,8 +194,18 @@ describe('item category learning', () => {
 
     await learnItemCategoryRules(
       [
-        { name: 'MLEKO 968ML', categoryId: 'other', excluded: false },
-        { name: 'mleko 620g', categoryId: 'groceries', excluded: false },
+        {
+          rawName: 'MLEKO 968ML',
+          displayName: 'Молочный напиток',
+          categoryId: 'other',
+          excluded: false,
+        },
+        {
+          rawName: 'mleko 620g',
+          displayName: 'Молоко',
+          categoryId: 'groceries',
+          excluded: false,
+        },
       ],
       writer,
     );
@@ -172,6 +214,7 @@ describe('item category learning', () => {
       {
         normalizedName: 'mleko',
         categoryId: 'groceries',
+        displayName: 'Молоко',
         action: 'categorize',
       },
     ]);
@@ -201,6 +244,7 @@ describe('item category learning', () => {
       {
         normalizedName: 'mleko',
         categoryId: 'groceries',
+        displayName: 'Молоко',
         action: 'categorize',
       },
     ]);
@@ -213,6 +257,7 @@ describe('item category learning', () => {
           user_id: 'user-1',
           normalized_name: 'mleko',
           category_id: 'groceries',
+          display_name: 'Молоко',
           action: 'categorize',
           hit_count: 3,
         }),

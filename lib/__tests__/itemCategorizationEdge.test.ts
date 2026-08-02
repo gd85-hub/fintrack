@@ -8,6 +8,7 @@ import {
 describe('categorize-items Edge Function', () => {
   test('keeps category labels constrained and treats labels as data', () => {
     expect(itemCategorizationSystemPrompt).toContain('MLEKO');
+    expect(itemCategorizationSystemPrompt).toContain('Пакет');
     expect(itemCategorizationSystemPrompt).toContain('Не распознано');
     expect(itemCategorizationSystemPrompt).toContain('untrusted data');
   });
@@ -17,8 +18,16 @@ describe('categorize-items Edge Function', () => {
       validateCategorizationOutput(
         {
           results: [
-            { name: 'MLEKO', categoryName: 'Продукты' },
-            { name: 'VLAZNE MARAMICE', categoryName: 'Гигиена' },
+            {
+              name: 'MLEKO',
+              displayName: 'Молоко',
+              categoryName: 'Продукты',
+            },
+            {
+              name: 'VLAZNE MARAMICE',
+              displayName: 'Влажные салфетки',
+              categoryName: 'Гигиена',
+            },
           ],
         },
         [{ name: 'MLEKO' }, { name: 'VLAZNE MARAMICE' }],
@@ -27,9 +36,49 @@ describe('categorize-items Edge Function', () => {
     ).toEqual({
       ok: true,
       results: [
-        { name: 'MLEKO', categoryName: 'Продукты' },
-        { name: 'VLAZNE MARAMICE', categoryName: 'Гигиена' },
+        {
+          name: 'MLEKO',
+          displayName: 'Молоко',
+          categoryName: 'Продукты',
+        },
+        {
+          name: 'VLAZNE MARAMICE',
+          displayName: 'Влажные салфетки',
+          categoryName: 'Гигиена',
+        },
       ],
+    });
+  });
+
+  test('falls back to the raw name when displayName is missing or empty', () => {
+    const items = [{ name: 'KESA TREGERICA' }];
+    const categoryNames = new Set(['Прочее', 'Не распознано']);
+
+    expect(
+      validateCategorizationOutput(
+        { results: [{ name: 'KESA TREGERICA', categoryName: 'Прочее' }] },
+        items,
+        categoryNames,
+      ),
+    ).toMatchObject({
+      results: [{ name: 'KESA TREGERICA', displayName: 'KESA TREGERICA' }],
+    });
+    expect(
+      validateCategorizationOutput(
+        {
+          results: [
+            {
+              name: 'KESA TREGERICA',
+              displayName: '   ',
+              categoryName: 'Прочее',
+            },
+          ],
+        },
+        items,
+        categoryNames,
+      ),
+    ).toMatchObject({
+      results: [{ name: 'KESA TREGERICA', displayName: 'KESA TREGERICA' }],
     });
   });
 

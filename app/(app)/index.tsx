@@ -354,6 +354,7 @@ function ReceiptPurchaseRow({
                     expense.description.trim() || expense.categoryName
                   }
                   merchantName={null}
+                  rawName={expense.rawName}
                 />
               </Pressable>
             );

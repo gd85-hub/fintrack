@@ -44,6 +44,7 @@ type ExpenseQueryRow = {
   receipt_id: string | null;
   occurred_on: string;
   description: string;
+  raw_name: string | null;
   category_id: string;
   merchant_id: string | null;
   original_amount: number | string;
@@ -140,6 +141,7 @@ export type Expense = {
   receiptId: string | null;
   occurredOn: string;
   description: string;
+  rawName: string | null;
   categoryId: string;
   categoryEmoji: string;
   categoryName: string;
@@ -259,6 +261,7 @@ export type FiscalReceiptExpenseInput = {
   amountCents: number;
   categoryId: string;
   description: string;
+  rawName: string;
 };
 
 export type FiscalReceiptMerchantInput =
@@ -277,6 +280,7 @@ function mapExpense(row: ExpenseQueryRow): Expense {
     receiptId: row.receipt_id,
     occurredOn: row.occurred_on,
     description: row.description,
+    rawName: row.raw_name,
     categoryId: row.category_id,
     categoryEmoji: row.category?.emoji ?? '',
     categoryName: row.category?.name ?? '',
@@ -399,7 +403,7 @@ export async function createMerchant(
 }
 
 const EXPENSE_SELECT =
-  'id,receipt_id,occurred_on,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
+  'id,receipt_id,occurred_on,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
 
 export async function listExpensesByMonth(
   yyyyMm: string,
@@ -937,6 +941,7 @@ export async function saveFiscalReceipt(
         occurred_on: occurredOn,
         occurred_at: input.receipt.occurredAt,
         description: expense.description.trim(),
+        raw_name: expense.rawName.trim() || null,
         category_id: expense.categoryId,
         merchant_id: merchantId,
         original_amount: centsToDecimal(expense.amountCents),

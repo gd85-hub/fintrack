@@ -8,17 +8,20 @@ export type ItemCategorizationCategory = {
 
 export type ItemCategoryResolution = {
   categoryId: string;
+  displayName: string;
   excluded: boolean;
 };
 
 export type ItemCategoryRule = {
   normalizedName: string;
   categoryId: string | null;
+  displayName: string | null;
   action: 'categorize' | 'exclude';
 };
 
 export type ItemCategorySelection = {
-  name: string;
+  rawName: string;
+  displayName: string;
   categoryId: string | null;
   excluded: boolean;
 };
@@ -27,6 +30,7 @@ export type ItemCategoryRuleWrite = ItemCategoryRule;
 
 type CategorizationResult = {
   name: string;
+  displayName: string;
   categoryName: string;
 };
 
@@ -47,6 +51,7 @@ type RuleWriter = (
 type ItemCategoryRuleQueryRow = {
   normalized_name: string;
   category_id: string | null;
+  display_name: string | null;
   action: 'categorize' | 'exclude';
 };
 
@@ -111,7 +116,7 @@ export async function loadItemCategoryRules(
   const userId = await authenticatedUserId();
   const { data, error } = await supabase
     .from('item_category_rules')
-    .select('normalized_name,category_id,action')
+    .select('normalized_name,category_id,display_name,action')
     .eq('user_id', userId)
     .in('normalized_name', [...normalizedNames]);
   if (error) {
@@ -121,6 +126,7 @@ export async function loadItemCategoryRules(
   return (data as unknown as ItemCategoryRuleQueryRow[]).map((row) => ({
     normalizedName: row.normalized_name,
     categoryId: row.category_id,
+    displayName: row.display_name,
     action: row.action,
   }));
 }
@@ -147,6 +153,7 @@ function validateCategorizationResponse(
       !requested ||
       !isObject(result) ||
       result.name !== requested.name ||
+      ('displayName' in result && typeof result.displayName !== 'string') ||
       typeof result.categoryName !== 'string' ||
       !categoryNames.has(result.categoryName)
     ) {
@@ -154,6 +161,10 @@ function validateCategorizationResponse(
     }
     results.push({
       name: requested.name,
+      displayName:
+        typeof result.displayName === 'string' && result.displayName.trim()
+          ? result.displayName.trim()
+          : requested.name,
       categoryName: result.categoryName,
     });
   }
@@ -244,6 +255,7 @@ export async function resolveCategoriesForItems(
     if (!normalizedName) {
       resolutions[index] = {
         categoryId: uncategorized.id,
+        displayName: item.name.trim(),
         excluded: false,
       };
       return;
@@ -253,6 +265,7 @@ export async function resolveCategoriesForItems(
     if (rule?.action === 'exclude') {
       resolutions[index] = {
         categoryId: uncategorized.id,
+        displayName: rule.displayName?.trim() || item.name.trim(),
         excluded: true,
       };
       return;
@@ -264,6 +277,7 @@ export async function resolveCategoriesForItems(
     ) {
       resolutions[index] = {
         categoryId: rule.categoryId,
+        displayName: rule.displayName?.trim() || item.name.trim(),
         excluded: false,
       };
       return;
@@ -298,9 +312,11 @@ export async function resolveCategoriesForItems(
             normalizeCategoryName(result.categoryName),
           )
         : null;
+      const displayName = result?.displayName.trim() || value.item.name;
       for (const index of value.indexes) {
         resolutions[index] = {
           categoryId: categoryId ?? uncategorized.id,
+          displayName,
           excluded: false,
         };
       }
@@ -308,9 +324,10 @@ export async function resolveCategoriesForItems(
   }
 
   return resolutions.map(
-    (resolution) =>
+    (resolution, index) =>
       resolution ?? {
         categoryId: uncategorized.id,
+        displayName: items[index]?.name.trim() ?? '',
         excluded: false,
       },
   );
@@ -344,6 +361,7 @@ export async function upsertItemCategoryRules(
     user_id: userId,
     normalized_name: rule.normalizedName,
     category_id: rule.action === 'exclude' ? null : rule.categoryId,
+    display_name: rule.displayName?.trim() || null,
     action: rule.action,
     hit_count: (hitsByName.get(rule.normalizedName) ?? 0) + 1,
   }));
@@ -361,13 +379,15 @@ export async function learnItemCategoryRules(
 ): Promise<void> {
   const rulesByName = new Map<string, ItemCategoryRuleWrite>();
   for (const selection of selections) {
-    const normalizedName = normalizeItemName(selection.name);
+    const rawName = selection.rawName.trim();
+    const normalizedName = normalizeItemName(rawName);
     if (!normalizedName || (!selection.excluded && !selection.categoryId)) {
       continue;
     }
     rulesByName.set(normalizedName, {
       normalizedName,
       categoryId: selection.excluded ? null : selection.categoryId,
+      displayName: selection.displayName.trim() || rawName || null,
       action: selection.excluded ? 'exclude' : 'categorize',
     });
   }

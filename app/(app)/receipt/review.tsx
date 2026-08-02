@@ -48,11 +48,12 @@ type ReviewItem = {
   categoryEdited: boolean;
   categoryId: string;
   description: string;
+  descriptionEdited: boolean;
   id: number;
   included: boolean;
   inclusionEdited: boolean;
   quantity: number | null;
-  ruleName: string;
+  rawName: string;
   unitPriceCents: number | null;
   vatLabel: string | null;
 };
@@ -180,11 +181,12 @@ export default function ReviewReceiptScreen() {
             categoryEdited: false,
             categoryId: suggestedCategoryId ?? uncategorized.id,
             description: item.name,
+            descriptionEdited: false,
             id: itemIndex,
             included: true,
             inclusionEdited: false,
             quantity: item.quantity,
-            ruleName: item.rawName?.trim() || item.name,
+            rawName: item.rawName?.trim() || item.name,
             unitPriceCents: item.unitPriceCents,
             vatLabel: item.vatLabel,
           };
@@ -192,7 +194,7 @@ export default function ReviewReceiptScreen() {
         setItems(preparedItems);
         setCategorizing(true);
         void resolveCategoriesForItems(
-          preparedItems.map(({ ruleName }) => ({ name: ruleName })),
+          preparedItems.map(({ rawName }) => ({ name: rawName })),
           loadedCategories,
         )
           .then((resolutions) => {
@@ -210,6 +212,9 @@ export default function ReviewReceiptScreen() {
                   categoryId: item.categoryEdited
                     ? item.categoryId
                     : resolution.categoryId,
+                  description: item.descriptionEdited
+                    ? item.description
+                    : resolution.displayName,
                   included: item.inclusionEdited
                     ? item.included
                     : !resolution.excluded,
@@ -312,7 +317,9 @@ export default function ReviewReceiptScreen() {
   const updateItemDescription = (index: number, description: string) => {
     setItems((current) =>
       current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, description } : item,
+        itemIndex === index
+          ? { ...item, description, descriptionEdited: true }
+          : item,
       ),
     );
   };
@@ -381,13 +388,15 @@ export default function ReviewReceiptScreen() {
         expenses: validIncludedItems.map((item) => ({
           amountCents: item.amountCents,
           categoryId: item.categoryId,
-          description: item.description,
+          description: item.description.trim() || item.rawName,
+          rawName: item.rawName,
         })),
       });
       try {
         await learnItemCategoryRules(
           items.map((item) => ({
-            name: item.ruleName,
+            rawName: item.rawName,
+            displayName: item.description.trim() || item.rawName,
             categoryId: item.included ? item.categoryId : null,
             excluded: !item.included,
           })),
@@ -618,6 +627,12 @@ export default function ReviewReceiptScreen() {
                 ]}
                 value={item.description}
               />
+              {item.rawName.trim() &&
+              item.rawName.trim() !== item.description.trim() ? (
+                <Text numberOfLines={2} style={styles.itemRawName}>
+                  В чеке: {item.rawName}
+                </Text>
+              ) : null}
               <View style={styles.itemDetailsRow}>
                 <Text style={styles.itemDetails}>
                   {item.quantity !== null && item.unitPriceCents !== null
@@ -863,6 +878,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
+  },
+  itemRawName: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
   },
   itemValidationText: {
     color: theme.colors.danger,

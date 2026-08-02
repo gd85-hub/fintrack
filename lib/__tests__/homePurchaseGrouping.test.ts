@@ -38,6 +38,7 @@ function createExpense(
     receiptId,
     occurredOn: '2026-08-01',
     description: id,
+    rawName: null,
     categoryId: 'groceries',
     categoryEmoji: '🛒',
     categoryName: 'Продукты',
@@ -67,6 +68,7 @@ describe('Home purchase grouping', () => {
           receipt_id: 'receipt-a',
           occurred_on: '2026-08-01',
           description: 'Хлеб',
+          raw_name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
           category_id: 'groceries',
           merchant_id: 'merchant',
           original_amount: '100.00',
@@ -98,8 +100,9 @@ describe('Home purchase grouping', () => {
     const result = await listExpensesByMonth('2026-08');
 
     expect(result[0]?.receiptId).toBe('receipt-a');
+    expect(result[0]?.rawName).toBe('HLEB 7 ZRNA SECENI (KOM) (E)');
     expect(select).toHaveBeenCalledWith(
-      expect.stringContaining('receipt_id'),
+      expect.stringContaining('raw_name'),
     );
   });
 

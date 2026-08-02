@@ -11,6 +11,7 @@ type ExpenseMiniRowProps = {
   date: string;
   description: string;
   merchantName: string | null;
+  rawName?: string | null;
 };
 
 export function ExpenseMiniRow({
@@ -20,8 +21,10 @@ export function ExpenseMiniRow({
   date,
   description,
   merchantName,
+  rawName,
 }: ExpenseMiniRowProps) {
   const dayAndMonth = formatDayHeader(date).split(',')[0];
+  const receiptName = rawName?.trim() ?? '';
 
   return (
     <View style={styles.row}>
@@ -30,6 +33,11 @@ export function ExpenseMiniRow({
         <Text numberOfLines={2} style={styles.description}>
           {description}
         </Text>
+        {receiptName && receiptName !== description.trim() ? (
+          <Text numberOfLines={2} style={styles.rawName}>
+            В чеке: {receiptName}
+          </Text>
+        ) : null}
         {merchantName ? (
           <Text numberOfLines={1} style={styles.merchant}>
             {merchantName}
@@ -68,6 +76,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.label,
   },
   merchant: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
+  },
+  rawName: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.small,
   },

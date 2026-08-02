@@ -48,7 +48,7 @@ Expo reads `.env` at startup only. After changing it, restart with `npx expo sta
 
 Apply the migration in `supabase/migrations/` **once** on a fresh project (SQL Editor paste, or `supabase db push`). Never re-run an applied migration; new changes go in a new migration file.
 
-Existing projects must apply `20260802000000_item_categorization.sql` before enabling automatic receipt-item categorization. It creates the per-user dictionary with RLS and does not backfill receipt data.
+Existing projects must apply `20260802000000_item_categorization.sql` and then `20260802010000_item_display_names.sql` before enabling automatic receipt-item categorization. The first creates the per-user dictionary with RLS; the second adds nullable raw/display-name columns without backfilling receipt data.
 
 For development, turn **off** email confirmation (Supabase -> Authentication -> Sign In / Providers -> Email -> *Confirm email*). With it on, sign-up returns no session and the app shows a "check your email" state instead of logging you in.
 
@@ -65,7 +65,7 @@ Functions:
 - **`sync-fx`** - fetches official NBS USD/RSD and EUR/RSD rates for given dates and upserts them into `fx_rates`. Called automatically on app start (today) and whenever an expense date lacks a rate. Idempotent.
 - **`parse-receipt`** - **parses** the HTML of a Serbian SUF verification page and returns the itemized receipt. It does **not** fetch anything: the tax site blocks Supabase servers, so the **device downloads the page HTML** and sends it in the request body (`{ html, sourceUrl }`). The function validates `sourceUrl` against a hostname allowlist, then parses the `<pre>` journal block (the on-page item table is rendered client-side by JS and is empty in raw HTML).
 - **`analyze-receipt-image`** - sends one to five compressed receipt images to an OpenAI vision model and returns schema-validated merchant, date, currency, totals, line items, and suggestions restricted to the app's existing categories and merchant types. Images are processed in memory and are never stored or returned.
-- **`categorize-items`** - sends only unresolved item names and the user's available category labels to a text model. It returns schema-validated category names, stores nothing, and is skipped entirely for personal-dictionary hits.
+- **`categorize-items`** - sends only unresolved item names and the user's available category labels to a text model. It returns schema-validated Russian display names plus category names, stores nothing, and is skipped entirely for personal-dictionary hits.
 
 Image recognition and text-only item categorization reuse the same two function secrets from **Supabase Dashboard -> Edge Functions -> Secrets**:
 
@@ -117,10 +117,10 @@ supabase/
 
 ### Data model
 
-- **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`.
+- **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`; its editable human label is stored in `description` and the original receipt text in nullable `raw_name`.
 - **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Receipt **images are never stored**.
 - **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
-- **`item_category_rules`** - a private per-user dictionary from normalized item names to a category or routine exclusion. Final review choices overwrite older rules and increment their hit count.
+- **`item_category_rules`** - a private per-user dictionary from normalized raw item names to a category or routine exclusion, with the learned human label in `display_name`. Final review choices overwrite older rules and increment their hit count.
 - **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
 - **`fx_rates`** - daily NBS rates, server-written, client-read-only.
 - **`subscriptions`** - recurring payments (explicit, not guessed).
