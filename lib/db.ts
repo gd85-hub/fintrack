@@ -7,7 +7,11 @@ import {
   decimalToCents,
   isCurrency,
 } from './money';
-import { parsedReceiptDate, type ParsedReceipt } from './receipts';
+import {
+  merchantAliasesWithIncoming,
+  parsedReceiptDate,
+  type ParsedReceipt,
+} from './receipts';
 import { supabase } from './supabase';
 
 type CategoryQueryRow = {
@@ -814,6 +818,31 @@ export function receiptExpenseAmounts(
   };
 }
 
+async function learnedAliasesForMerchant(
+  merchantId: string,
+  incomingName: string,
+) {
+  const { data, error } = await supabase
+    .from('merchants')
+    .select('name,aliases')
+    .eq('id', merchantId)
+    .single();
+  if (error) {
+    throw error;
+  }
+  const merchant = data as unknown as {
+    aliases: string[];
+    name: string;
+  };
+  const learnedAliases = merchantAliasesWithIncoming(
+    merchant,
+    incomingName,
+  );
+  return learnedAliases.length === merchant.aliases.length
+    ? null
+    : learnedAliases;
+}
+
 export async function saveFiscalReceipt(
   input: SaveFiscalReceiptInput,
 ): Promise<void> {
@@ -824,22 +853,21 @@ export async function saveFiscalReceipt(
   const occurredOn = parsedReceiptDate(input.receipt);
   const userId = await authenticatedUserId();
   let merchantId: string;
+  let learnedAliases: string[] | null = null;
 
   if ('existingId' in input.merchant) {
     merchantId = input.merchant.existingId;
+    learnedAliases = await learnedAliasesForMerchant(
+      merchantId,
+      input.receipt.merchantName,
+    );
   } else {
     const merchantName = input.merchant.name.trim();
     if (!merchantName || !input.merchant.typeId) {
       throw new Error('Укажите название и тип места.');
     }
     const originalName = input.receipt.merchantName.trim();
-    const aliases =
-      !originalName ||
-      originalName.localeCompare(merchantName, undefined, {
-        sensitivity: 'accent',
-      }) === 0
-        ? []
-        : [originalName];
+    const aliases = originalName ? [originalName] : [];
     const { data, error } = await supabase
       .from('merchants')
       .insert({
@@ -913,6 +941,15 @@ export async function saveFiscalReceipt(
       .insert(expenseRows);
     if (expensesError) {
       throw expensesError;
+    }
+    if (learnedAliases) {
+      const { error: aliasError } = await supabase
+        .from('merchants')
+        .update({ aliases: learnedAliases })
+        .eq('id', merchantId);
+      if (aliasError) {
+        throw aliasError;
+      }
     }
   } catch (error: unknown) {
     if (receiptId) {

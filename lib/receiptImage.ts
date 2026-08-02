@@ -28,6 +28,7 @@ export type ReceiptImageAnalysisError =
 
 export type ReceiptImageAnalysisItem = {
   name: string;
+  rawName?: string | null;
   quantity: number | null;
   unitPriceCents: number | null;
   lineTotalCents: number;
@@ -100,12 +101,21 @@ function validateAnalysisItem(
   }
   const quantity = nullablePositiveNumber(value.quantity);
   const unitPriceCents = nullableCents(value.unitPriceCents);
+  const rawName =
+    value.rawName === undefined
+      ? undefined
+      : value.rawName === null
+        ? null
+        : typeof value.rawName === 'string'
+          ? value.rawName.trim() || null
+          : undefined;
   if (
     typeof value.name !== 'string' ||
     !value.name.trim() ||
     quantity === undefined ||
     unitPriceCents === undefined ||
     !isSafeNonNegativeInteger(value.lineTotalCents) ||
+    (value.rawName !== undefined && rawName === undefined) ||
     (value.categoryName !== null &&
       typeof value.categoryName !== 'string')
   ) {
@@ -113,6 +123,7 @@ function validateAnalysisItem(
   }
   return {
     name: value.name.trim(),
+    ...(rawName !== undefined ? { rawName } : {}),
     quantity,
     unitPriceCents,
     lineTotalCents: value.lineTotalCents,

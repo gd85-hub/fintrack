@@ -10,6 +10,7 @@ export type ReceiptParseError =
 
 export type ParsedReceiptItem = {
   name: string;
+  rawName?: string | null;
   quantity: number | null;
   unitPriceCents: number | null;
   lineTotalCents: number;
@@ -57,6 +58,135 @@ const knownErrors = new Set<ReceiptParseError>([
   'unsupported_url',
 ]);
 const receiptFetchTimeoutMs = 20_000;
+
+type MerchantNameCandidate = {
+  aliases: readonly string[];
+  name: string;
+};
+
+const cyrillicToLatin: Readonly<Record<string, string>> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  ѓ: 'g',
+  д: 'd',
+  ђ: 'dj',
+  е: 'e',
+  ё: 'e',
+  ж: 'zh',
+  з: 'z',
+  и: 'i',
+  й: 'i',
+  ј: 'j',
+  к: 'k',
+  ќ: 'k',
+  л: 'l',
+  љ: 'lj',
+  м: 'm',
+  н: 'n',
+  њ: 'nj',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  ћ: 'c',
+  у: 'u',
+  ф: 'f',
+  х: 'h',
+  ц: 'c',
+  ч: 'ch',
+  џ: 'dz',
+  ш: 'sh',
+  щ: 'shch',
+  ы: 'y',
+  э: 'e',
+  ю: 'yu',
+  я: 'ya',
+  ъ: '',
+  ь: '',
+};
+const merchantSuffixes = new Set([
+  'ad',
+  'doo',
+  'ltd',
+  'llc',
+  'market',
+  'shop',
+  'store',
+]);
+
+function merchantSpelling(value: string) {
+  return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+function withoutMerchantSuffixes(tokens: string[]) {
+  while (tokens.length > 0) {
+    const last = tokens.at(-1);
+    if (last && merchantSuffixes.has(last)) {
+      tokens.pop();
+      continue;
+    }
+    if (tokens.slice(-3).join(' ') === 'd o o') {
+      tokens.splice(-3);
+      continue;
+    }
+    if (tokens.slice(-2).join(' ') === 'a d') {
+      tokens.splice(-2);
+      continue;
+    }
+    break;
+  }
+  return tokens;
+}
+
+export function normalizeMerchantName(value: string) {
+  const transliterated = merchantSpelling(value)
+    .toLowerCase()
+    .replace(/[\p{Script=Cyrillic}]/gu, (character) =>
+      cyrillicToLatin[character] ?? character,
+    );
+  const tokens = transliterated
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .split(/\s+/gu)
+    .filter(Boolean);
+  return withoutMerchantSuffixes(tokens).join(' ');
+}
+
+export function findMatchingMerchant<T extends MerchantNameCandidate>(
+  merchants: readonly T[],
+  incomingName: string,
+) {
+  const incomingKey = normalizeMerchantName(incomingName);
+  if (!incomingKey) {
+    return null;
+  }
+  return (
+    merchants.find((merchant) =>
+      [merchant.name, ...merchant.aliases].some(
+        (spelling) => normalizeMerchantName(spelling) === incomingKey,
+      ),
+    ) ?? null
+  );
+}
+
+export function merchantAliasesWithIncoming(
+  merchant: MerchantNameCandidate,
+  incomingName: string,
+) {
+  const incoming = merchantSpelling(incomingName);
+  if (
+    !incoming ||
+    [merchant.name, ...merchant.aliases].some(
+      (spelling) => merchantSpelling(spelling) === incoming,
+    )
+  ) {
+    return [...merchant.aliases];
+  }
+  return [...merchant.aliases, incoming];
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

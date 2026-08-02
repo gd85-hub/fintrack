@@ -37,7 +37,8 @@ const analysisPayload = {
   totalCents: 1000,
   items: [
     {
-      name: 'Claude subscription',
+      name: 'Подписка Claude',
+      rawName: 'Claude Pro subscription',
       quantity: 1,
       unitPriceCents: 1000,
       lineTotalCents: 1000,
@@ -69,7 +70,8 @@ describe('receipt image analysis', () => {
       paymentType: null,
       items: [
         {
-          name: 'Claude subscription',
+          name: 'Подписка Claude',
+          rawName: 'Claude Pro subscription',
           quantity: 1,
           unitPriceCents: 1000,
           lineTotalCents: 1000,
@@ -91,6 +93,21 @@ describe('receipt image analysis', () => {
     expect(
       validateReceiptImageAnalysis({ ...analysisPayload, items: [] }),
     ).toEqual({ ok: false, error: 'parse_failed' });
+  });
+
+  test('accepts an older image response without optional rawName', () => {
+    const item = analysisPayload.items[0];
+    const { rawName: _rawName, ...itemWithoutRawName } = item;
+
+    expect(
+      validateReceiptImageAnalysis({
+        ...analysisPayload,
+        items: [itemWithoutRawName],
+      }),
+    ).toMatchObject({
+      ok: true,
+      items: [{ name: 'Подписка Claude' }],
+    });
   });
 
   test('resizes the long edge and returns compressed JPEG base64', async () => {

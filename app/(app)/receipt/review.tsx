@@ -25,7 +25,10 @@ import {
   type MerchantType,
 } from '../../../lib/db';
 import { formatMoney, isCurrency } from '../../../lib/money';
-import { parsedReceiptDate } from '../../../lib/receipts';
+import {
+  findMatchingMerchant,
+  parsedReceiptDate,
+} from '../../../lib/receipts';
 import { theme } from '../../../lib/theme';
 
 type MerchantMode = 'existing' | 'new';
@@ -40,30 +43,8 @@ type ReviewItem = {
   vatLabel: string | null;
 };
 
-function normalizeMerchantName(value: string) {
-  return value
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLocaleLowerCase();
-}
-
 function normalizeCategoryName(value: string) {
   return value.normalize('NFKC').trim().toLocaleLowerCase();
-}
-
-function matchingMerchant(
-  merchants: readonly Merchant[],
-  receiptName: string,
-) {
-  const normalizedReceiptName = normalizeMerchantName(receiptName);
-  return (
-    merchants.find((merchant) =>
-      [merchant.name, ...merchant.aliases].some(
-        (name) => normalizeMerchantName(name) === normalizedReceiptName,
-      ),
-    ) ?? null
-  );
 }
 
 export default function ReviewReceiptScreen() {
@@ -106,7 +87,7 @@ export default function ReviewReceiptScreen() {
         if (!uncategorized) {
           throw new Error('Категория «Не распознано» не найдена.');
         }
-        const matched = matchingMerchant(
+        const matched = findMatchingMerchant(
           loadedMerchants,
           draft.merchantName,
         );

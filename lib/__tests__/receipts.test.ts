@@ -9,7 +9,10 @@ import {
 
 import { supabase } from '../supabase';
 import {
+  findMatchingMerchant,
   fetchAndParseReceipt,
+  merchantAliasesWithIncoming,
+  normalizeMerchantName,
   type ParsedReceipt,
 } from '../receipts';
 
@@ -139,5 +142,38 @@ describe('device receipt loading', () => {
       error: 'timeout',
     });
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('merchant name unification', () => {
+  test.each([
+    'Lidl',
+    'LIDL',
+    '  lidl   store ',
+    'Lidl market',
+    'LIDL d.o.o.',
+    'ЛИДЛ',
+  ])(
+    'normalizes %s to the same merchant key',
+    (name) => {
+      expect(normalizeMerchantName(name)).toBe('lidl');
+    },
+  );
+
+  test('matches aliases and learns a new incoming spelling', () => {
+    const merchant = {
+      id: 'merchant-lidl',
+      name: 'Lidl',
+      aliases: ['LIDL'],
+    };
+    const matched = findMatchingMerchant([merchant], 'lidl store');
+
+    expect(matched).toBe(merchant);
+    expect(
+      merchantAliasesWithIncoming(matched ?? merchant, 'lidl store'),
+    ).toEqual(['LIDL', 'lidl store']);
+    expect(merchantAliasesWithIncoming(merchant, 'LIDL')).toEqual([
+      'LIDL',
+    ]);
   });
 });
