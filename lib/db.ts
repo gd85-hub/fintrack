@@ -41,6 +41,7 @@ type MerchantQueryRow = {
 
 type ExpenseQueryRow = {
   id: string;
+  receipt_id: string | null;
   occurred_on: string;
   description: string;
   category_id: string;
@@ -136,6 +137,7 @@ export type Merchant = {
 
 export type Expense = {
   id: string;
+  receiptId: string | null;
   occurredOn: string;
   description: string;
   categoryId: string;
@@ -272,6 +274,7 @@ export type SaveFiscalReceiptInput = {
 function mapExpense(row: ExpenseQueryRow): Expense {
   return {
     id: row.id,
+    receiptId: row.receipt_id,
     occurredOn: row.occurred_on,
     description: row.description,
     categoryId: row.category_id,
@@ -396,7 +399,7 @@ export async function createMerchant(
 }
 
 const EXPENSE_SELECT =
-  'id,occurred_on,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
+  'id,receipt_id,occurred_on,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
 
 export async function listExpensesByMonth(
   yyyyMm: string,
@@ -777,6 +780,14 @@ export async function updateExpense(
 
 export async function deleteExpense(id: string): Promise<void> {
   const { error } = await supabase.from('expenses').delete().eq('id', id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteReceipt(id: string): Promise<void> {
+  const { error } = await supabase.from('receipts').delete().eq('id', id);
 
   if (error) {
     throw error;

@@ -14,11 +14,18 @@ import {
   View,
 } from 'react-native';
 
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { CurrencySelector } from '../../components/CurrencySelector';
+import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
-import { listExpensesByMonth, type Expense } from '../../lib/db';
+import {
+  deleteExpense,
+  deleteReceipt,
+  listExpensesByMonth,
+  type Expense,
+} from '../../lib/db';
 import {
   formatDayHeader,
   formatMonthTitle,
@@ -34,6 +41,19 @@ type ExpenseGroup = {
   expenses: Expense[];
 };
 
+export type PurchaseUnit = {
+  expenses: Expense[];
+  key: string;
+  receiptId: string | null;
+};
+
+type PendingPurchaseDelete = {
+  expenseCount: number;
+  receiptId: string;
+};
+
+const expensePageSize = 10;
+
 function amountForCurrency(expense: Expense, currency: Currency): number {
   if (currency === 'USD') {
     return expense.amountUsdCents;
@@ -44,6 +64,320 @@ function amountForCurrency(expense: Expense, currency: Currency): number {
   }
 
   return expense.amountRsdCents;
+}
+
+export function buildPurchaseUnits(
+  expenses: readonly Expense[],
+): PurchaseUnit[] {
+  const units: PurchaseUnit[] = [];
+  const receiptUnitIndexes = new Map<string, number>();
+
+  for (const expense of expenses) {
+    if (expense.receiptId === null) {
+      units.push({
+        expenses: [expense],
+        key: `expense:${expense.id}`,
+        receiptId: null,
+      });
+      continue;
+    }
+
+    const existingIndex = receiptUnitIndexes.get(expense.receiptId);
+    if (existingIndex !== undefined) {
+      units[existingIndex]?.expenses.push(expense);
+      continue;
+    }
+
+    receiptUnitIndexes.set(expense.receiptId, units.length);
+    units.push({
+      expenses: [expense],
+      key: `receipt:${expense.receiptId}`,
+      receiptId: expense.receiptId,
+    });
+  }
+
+  return units;
+}
+
+export function purchaseUnitTotal(
+  unit: PurchaseUnit,
+  currency: Currency,
+): number {
+  return unit.expenses.reduce(
+    (sum, expense) => sum + amountForCurrency(expense, currency),
+    0,
+  );
+}
+
+export function purchaseUnitsTotal(
+  units: readonly PurchaseUnit[],
+  currency: Currency,
+): number {
+  return units.reduce(
+    (sum, unit) => sum + purchaseUnitTotal(unit, currency),
+    0,
+  );
+}
+
+function expenseDisplayAmount(
+  expense: Expense,
+  displayCurrency: Currency,
+) {
+  if (expense.fxRateDate === null) {
+    return {
+      amountCents: expense.originalAmountCents,
+      currency: expense.originalCurrency,
+    };
+  }
+
+  return {
+    amountCents: amountForCurrency(expense, displayCurrency),
+    currency: displayCurrency,
+  };
+}
+
+function purchaseDisplayAmount(
+  unit: PurchaseUnit,
+  displayCurrency: Currency,
+) {
+  const firstExpense = unit.expenses[0];
+  const usesOneUnconvertedCurrency =
+    firstExpense !== undefined &&
+    unit.expenses.every(
+      (expense) =>
+        expense.fxRateDate === null &&
+        expense.originalCurrency === firstExpense.originalCurrency,
+    );
+
+  if (usesOneUnconvertedCurrency) {
+    return {
+      amountCents: unit.expenses.reduce(
+        (sum, expense) => sum + expense.originalAmountCents,
+        0,
+      ),
+      currency: firstExpense.originalCurrency,
+    };
+  }
+
+  return {
+    amountCents: purchaseUnitTotal(unit, displayCurrency),
+    currency: displayCurrency,
+  };
+}
+
+function purchaseCategoryHint(expenses: readonly Expense[]): string {
+  const categories = new Map<
+    string,
+    { emoji: string; name: string }
+  >();
+
+  for (const expense of expenses) {
+    if (!categories.has(expense.categoryId)) {
+      categories.set(expense.categoryId, {
+        emoji: expense.categoryEmoji,
+        name: expense.categoryName,
+      });
+    }
+  }
+
+  if (categories.size === 1) {
+    const category = categories.values().next().value;
+    return category
+      ? `${category.emoji} ${category.name}`.trim()
+      : '';
+  }
+
+  const emojis = [...categories.values()]
+    .slice(0, 3)
+    .map((category) => category.emoji)
+    .filter(Boolean)
+    .join(' ');
+  return `${emojis}${emojis ? ' ' : ''}Разные категории`;
+}
+
+type ExpenseRowProps = {
+  displayCurrency: Currency;
+  expense: Expense;
+  onPress: () => void;
+};
+
+function ExpenseRow({
+  displayCurrency,
+  expense,
+  onPress,
+}: ExpenseRowProps) {
+  const displayAmount = expenseDisplayAmount(expense, displayCurrency);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.expenseRow,
+        pressed && styles.rowPressed,
+      ]}
+    >
+      <Text style={styles.emoji}>{expense.categoryEmoji}</Text>
+      <View style={styles.expenseCopy}>
+        <Text numberOfLines={1} style={styles.expenseTitle}>
+          {expense.description.trim() || expense.categoryName}
+        </Text>
+        {expense.merchantName ? (
+          <Text numberOfLines={1} style={styles.expenseSubtitle}>
+            {expense.merchantName}
+          </Text>
+        ) : null}
+        {expense.fxRateDate === null ? (
+          <Text style={styles.expenseSubtitle}>
+            Конвертация ожидает
+          </Text>
+        ) : null}
+      </View>
+      <Text style={styles.expenseAmount}>
+        {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
+      </Text>
+    </Pressable>
+  );
+}
+
+type ReceiptPurchaseRowProps = {
+  displayCurrency: Currency;
+  expanded: boolean;
+  onDelete: () => void;
+  onOpenExpense: (expenseId: string) => void;
+  onShowMore: () => void;
+  onToggle: () => void;
+  unit: PurchaseUnit;
+  visibleCount: number;
+};
+
+function ReceiptPurchaseRow({
+  displayCurrency,
+  expanded,
+  onDelete,
+  onOpenExpense,
+  onShowMore,
+  onToggle,
+  unit,
+  visibleCount,
+}: ReceiptPurchaseRowProps) {
+  const displayAmount = purchaseDisplayAmount(unit, displayCurrency);
+  const firstExpense = unit.expenses[0];
+  const merchantName =
+    unit.expenses.find((expense) => expense.merchantName)?.merchantName ??
+    'Без места';
+  const visibleExpenses = unit.expenses.slice(0, visibleCount);
+  const remaining = unit.expenses.length - visibleExpenses.length;
+
+  if (!firstExpense) {
+    return null;
+  }
+
+  return (
+    <View style={styles.purchaseUnit}>
+      <Pressable
+        accessibilityLabel={`${merchantName}, ${unit.expenses.length} позиций, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        style={({ pressed }) => [
+          styles.expenseRow,
+          pressed && styles.rowPressed,
+        ]}
+      >
+        <View style={styles.expenseCopy}>
+          <Text numberOfLines={1} style={styles.purchaseTitle}>
+            {merchantName}
+          </Text>
+          <Text numberOfLines={1} style={styles.expenseSubtitle}>
+            {unit.expenses.length} позиций ·{' '}
+            {purchaseCategoryHint(unit.expenses)}
+          </Text>
+        </View>
+        <Text style={styles.expenseAmount}>
+          {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
+        </Text>
+        <Text
+          style={[
+            styles.expandIcon,
+            expanded && styles.expandIconExpanded,
+          ]}
+        >
+          ›
+        </Text>
+      </Pressable>
+
+      {expanded ? (
+        <View style={styles.purchaseDetails}>
+          <View style={styles.purchaseActions}>
+            <Text style={styles.purchaseDetailsTitle}>
+              Позиции чека
+            </Text>
+            <Pressable
+              accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
+              accessibilityRole="button"
+              onPress={onDelete}
+              style={({ pressed }) => [
+                styles.deletePurchaseButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.deletePurchaseText}>
+                Удалить покупку
+              </Text>
+            </Pressable>
+          </View>
+
+          {visibleExpenses.map((expense) => {
+            const itemAmount = expenseDisplayAmount(
+              expense,
+              displayCurrency,
+            );
+
+            return (
+              <Pressable
+                accessibilityLabel={`Открыть позицию ${expense.description.trim() || expense.categoryName}`}
+                accessibilityRole="button"
+                key={expense.id}
+                onPress={() => onOpenExpense(expense.id)}
+                style={({ pressed }) => [
+                  styles.purchaseItem,
+                  pressed && styles.rowPressed,
+                ]}
+              >
+                <ExpenseMiniRow
+                  amountCents={itemAmount.amountCents}
+                  categoryLabel={`${expense.categoryEmoji} ${expense.categoryName}`.trim()}
+                  currency={itemAmount.currency}
+                  date={expense.occurredOn}
+                  description={
+                    expense.description.trim() || expense.categoryName
+                  }
+                  merchantName={null}
+                />
+              </Pressable>
+            );
+          })}
+
+          {remaining > 0 ? (
+            <Pressable
+              accessibilityLabel={`Показать ещё ${Math.min(expensePageSize, remaining)} позиций`}
+              accessibilityRole="button"
+              onPress={onShowMore}
+              style={({ pressed }) => [
+                styles.showMoreButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.showMoreText}>
+                Показать ещё {Math.min(expensePageSize, remaining)}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
@@ -94,12 +428,28 @@ export default function HomeScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
+  const [expandedReceiptIds, setExpandedReceiptIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [receiptVisibleCounts, setReceiptVisibleCounts] = useState<
+    Record<string, number>
+  >({});
+  const [pendingPurchaseDelete, setPendingPurchaseDelete] =
+    useState<PendingPurchaseDelete | null>(null);
+  const [deletingPurchase, setDeletingPurchase] = useState(false);
+  const [purchaseErrorMessage, setPurchaseErrorMessage] = useState('');
 
   useEffect(() => {
     if (requestedMonth) {
       setVisibleMonth(requestedMonth);
     }
   }, [requestedMonth]);
+
+  useEffect(() => {
+    setExpandedReceiptIds(new Set());
+    setReceiptVisibleCounts({});
+    setPurchaseErrorMessage('');
+  }, [visibleMonth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -172,6 +522,100 @@ export default function HomeScreen() {
     if (error) {
       setErrorMessage('Не удалось выйти. Попробуйте ещё раз.');
       setSigningOut(false);
+    }
+  }
+
+  function toggleReceipt(receiptId: string) {
+    const willExpand = !expandedReceiptIds.has(receiptId);
+
+    setExpandedReceiptIds((current) => {
+      const next = new Set(current);
+      if (willExpand) {
+        next.add(receiptId);
+      } else {
+        next.delete(receiptId);
+      }
+      return next;
+    });
+    setReceiptVisibleCounts((current) => {
+      if (willExpand) {
+        return { ...current, [receiptId]: expensePageSize };
+      }
+
+      const next = { ...current };
+      delete next[receiptId];
+      return next;
+    });
+  }
+
+  function showMoreReceipt(receiptId: string) {
+    setReceiptVisibleCounts((current) => ({
+      ...current,
+      [receiptId]:
+        (current[receiptId] ?? expensePageSize) + expensePageSize,
+    }));
+  }
+
+  function requestPurchaseDelete(receiptId: string) {
+    const expenseCount = expenses.filter(
+      (expense) => expense.receiptId === receiptId,
+    ).length;
+
+    setPendingPurchaseDelete({ expenseCount, receiptId });
+  }
+
+  async function handlePurchaseDelete() {
+    if (!pendingPurchaseDelete) {
+      return;
+    }
+
+    const { receiptId } = pendingPurchaseDelete;
+    const receiptExpenses = expenses.filter(
+      (expense) => expense.receiptId === receiptId,
+    );
+    let deletionFailed = false;
+
+    setDeletingPurchase(true);
+    setPurchaseErrorMessage('');
+
+    try {
+      for (const expense of receiptExpenses) {
+        await deleteExpense(expense.id);
+      }
+      await deleteReceipt(receiptId);
+    } catch (error: unknown) {
+      deletionFailed = true;
+      console.error('Unable to delete the complete purchase:', error);
+    }
+
+    try {
+      const refreshedExpenses = await listExpensesByMonth(visibleMonth);
+      setExpenses(refreshedExpenses);
+      if (deletionFailed) {
+        setPurchaseErrorMessage(
+          'Не удалось удалить покупку полностью. Список обновлён.',
+        );
+      }
+    } catch (error: unknown) {
+      console.error('Unable to refresh expenses after deletion:', error);
+      setErrorMessage(
+        deletionFailed
+          ? 'Не удалось удалить покупку полностью и обновить список. Попробуйте ещё раз.'
+          : 'Покупка удалена, но не удалось обновить список. Попробуйте ещё раз.',
+      );
+    } finally {
+      setDeletingPurchase(false);
+      setPendingPurchaseDelete(null);
+      setExpandedReceiptIds((current) => {
+        const next = new Set(current);
+        next.delete(receiptId);
+        return next;
+      });
+      setReceiptVisibleCounts((current) => {
+        const next = { ...current };
+        delete next[receiptId];
+        return next;
+      });
     }
   }
 
@@ -288,6 +732,12 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
+        {purchaseErrorMessage ? (
+          <View style={styles.errorState}>
+            <Text style={styles.errorText}>{purchaseErrorMessage}</Text>
+          </View>
+        ) : null}
+
         {loading ? <LoadingScreen compact /> : null}
 
         {!loading && !errorMessage && groups.length === 0 ? (
@@ -308,6 +758,7 @@ export default function HomeScreen() {
                   sum + amountForCurrency(expense, displayCurrency),
                 0,
               );
+              const purchaseUnits = buildPurchaseUnits(group.expenses);
 
               return (
                 <View key={group.date} style={styles.dayGroup}>
@@ -320,49 +771,51 @@ export default function HomeScreen() {
                     </Text>
                   </View>
 
-                  {group.expenses.map((expense) => (
-                    <Pressable
-                      accessibilityRole="button"
-                      key={expense.id}
-                      onPress={() =>
-                        router.push(`/(app)/expense/${expense.id}`)
-                      }
-                      style={({ pressed }) => [
-                        styles.expenseRow,
-                        pressed && styles.rowPressed,
-                      ]}
-                    >
-                      <Text style={styles.emoji}>
-                        {expense.categoryEmoji}
-                      </Text>
-                      <View style={styles.expenseCopy}>
-                        <Text numberOfLines={1} style={styles.expenseTitle}>
-                          {expense.description.trim() ||
-                            expense.categoryName}
-                        </Text>
-                        {expense.merchantName ? (
-                          <Text
-                            numberOfLines={1}
-                            style={styles.expenseSubtitle}
-                          >
-                            {expense.merchantName}
-                          </Text>
-                        ) : null}
-                        {expense.fxRateDate === null ? (
-                          <Text style={styles.expenseSubtitle}>
-                            Конвертация ожидает
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Text style={styles.expenseAmount}>
-                        {expense.fxRateDate === null
-                          ? `${formatMoney(expense.originalAmountCents)} ${expense.originalCurrency}`
-                          : `${formatMoney(
-                              amountForCurrency(expense, displayCurrency),
-                            )} ${displayCurrency}`}
-                      </Text>
-                    </Pressable>
-                  ))}
+                  {purchaseUnits.map((unit) => {
+                    const expense = unit.expenses[0];
+
+                    if (!expense) {
+                      return null;
+                    }
+
+                    if (
+                      unit.expenses.length === 1 ||
+                      unit.receiptId === null
+                    ) {
+                      return (
+                        <ExpenseRow
+                          displayCurrency={displayCurrency}
+                          expense={expense}
+                          key={unit.key}
+                          onPress={() =>
+                            router.push(`/(app)/expense/${expense.id}`)
+                          }
+                        />
+                      );
+                    }
+
+                    const receiptId = unit.receiptId;
+                    return (
+                      <ReceiptPurchaseRow
+                        displayCurrency={displayCurrency}
+                        expanded={expandedReceiptIds.has(receiptId)}
+                        key={unit.key}
+                        onDelete={() =>
+                          requestPurchaseDelete(receiptId)
+                        }
+                        onOpenExpense={(expenseId) =>
+                          router.push(`/(app)/expense/${expenseId}`)
+                        }
+                        onShowMore={() => showMoreReceipt(receiptId)}
+                        onToggle={() => toggleReceipt(receiptId)}
+                        unit={unit}
+                        visibleCount={
+                          receiptVisibleCounts[receiptId] ??
+                          expensePageSize
+                        }
+                      />
+                    );
+                  })}
                 </View>
               );
             })
@@ -397,6 +850,22 @@ export default function HomeScreen() {
       >
         <Text style={styles.floatingButtonText}>+</Text>
       </Pressable>
+
+      <ConfirmDialog
+        confirming={deletingPurchase}
+        onCancel={() => {
+          if (!deletingPurchase) {
+            setPendingPurchaseDelete(null);
+          }
+        }}
+        onConfirm={() => void handlePurchaseDelete()}
+        title={
+          pendingPurchaseDelete
+            ? `Удалить всю покупку (${pendingPurchaseDelete.expenseCount} трат)?`
+            : ''
+        }
+        visible={pendingPurchaseDelete !== null}
+      />
     </View>
   );
 }
@@ -443,6 +912,15 @@ const styles = StyleSheet.create({
   dayTotal: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.dayHeader,
+    fontWeight: '600',
+  },
+  deletePurchaseButton: {
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+  },
+  deletePurchaseText: {
+    color: theme.colors.danger,
+    fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   disabled: {
@@ -503,6 +981,15 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
   },
+  expandIcon: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.body,
+    textAlign: 'center',
+    width: theme.spacing.md,
+  },
+  expandIconExpanded: {
+    transform: [{ rotate: '90deg' }],
+  },
   floatingButton: {
     alignItems: 'center',
     backgroundColor: theme.colors.accent,
@@ -562,6 +1049,37 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: theme.opacity.pressed,
   },
+  purchaseActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    justifyContent: 'space-between',
+  },
+  purchaseDetails: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.card,
+    marginBottom: theme.spacing.sm,
+    marginLeft: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xxs,
+  },
+  purchaseDetailsTitle: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
+  },
+  purchaseItem: {
+    borderBottomColor: theme.colors.border,
+    borderBottomWidth: theme.sizes.border,
+  },
+  purchaseTitle: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
+    fontWeight: '600',
+  },
+  purchaseUnit: {
+    width: '100%',
+  },
   retryText: {
     color: theme.colors.accent,
     fontSize: theme.fontSizes.label,
@@ -588,6 +1106,16 @@ const styles = StyleSheet.create({
   signOutText: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.label,
+  },
+  showMoreButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+  },
+  showMoreText: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
   },
   triageChip: {
     alignSelf: 'center',

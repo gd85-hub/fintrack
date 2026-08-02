@@ -1,12 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatDayHeader } from '../lib/dates';
-import { type Currency, formatMoney } from '../lib/money';
+import { formatMoney } from '../lib/money';
 import { theme } from '../lib/theme';
 
 type ExpenseMiniRowProps = {
   amountCents: number;
-  currency: Currency;
+  categoryLabel?: string;
+  currency: string;
   date: string;
   description: string;
   merchantName: string | null;
@@ -14,6 +15,7 @@ type ExpenseMiniRowProps = {
 
 export function ExpenseMiniRow({
   amountCents,
+  categoryLabel,
   currency,
   date,
   description,
@@ -31,6 +33,11 @@ export function ExpenseMiniRow({
         {merchantName ? (
           <Text numberOfLines={1} style={styles.merchant}>
             {merchantName}
+          </Text>
+        ) : null}
+        {categoryLabel ? (
+          <Text numberOfLines={1} style={styles.category}>
+            {categoryLabel}
           </Text>
         ) : null}
       </View>
@@ -61,6 +68,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.label,
   },
   merchant: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
+  },
+  category: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.small,
   },
