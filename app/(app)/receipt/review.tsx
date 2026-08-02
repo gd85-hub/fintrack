@@ -24,7 +24,12 @@ import {
   type Merchant,
   type MerchantType,
 } from '../../../lib/db';
-import { formatMoney, isCurrency } from '../../../lib/money';
+import {
+  centsToInput,
+  formatMoney,
+  isCurrency,
+  parseAmountInput,
+} from '../../../lib/money';
 import {
   findMatchingMerchant,
   parsedReceiptDate,
@@ -34,9 +39,11 @@ import { theme } from '../../../lib/theme';
 type MerchantMode = 'existing' | 'new';
 
 type ReviewItem = {
-  amountCents: number;
+  amountCents: number | null;
+  amountInput: string;
   categoryId: string;
   description: string;
+  id: number;
   included: boolean;
   quantity: number | null;
   unitPriceCents: number | null;
@@ -45,6 +52,45 @@ type ReviewItem = {
 
 function normalizeCategoryName(value: string) {
   return value.normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+type ReviewTotalItem = {
+  amountCents: number | null;
+  included: boolean;
+};
+
+export function includedReviewTotal(
+  items: readonly ReviewTotalItem[],
+): number | null {
+  let total = 0;
+
+  for (const item of items) {
+    if (!item.included) {
+      continue;
+    }
+    if (item.amountCents === null) {
+      return null;
+    }
+
+    total += item.amountCents;
+    if (!Number.isSafeInteger(total)) {
+      return null;
+    }
+  }
+
+  return total;
+}
+
+export function reviewTotalsMismatch(
+  includedTotal: number | null,
+  receiptTotal: number,
+) {
+  return includedTotal !== null && includedTotal !== receiptTotal;
+}
+
+export function parseReviewAmountInput(value: string): number | null {
+  const amountCents = parseAmountInput(value);
+  return amountCents !== null && amountCents > 0 ? amountCents : null;
 }
 
 export default function ReviewReceiptScreen() {
@@ -115,7 +161,7 @@ export default function ReviewReceiptScreen() {
         );
         setBulkCategoryId(null);
         setItems(
-          draft.items.map((item) => {
+          draft.items.map((item, itemIndex) => {
             const suggestedCategoryId = item.categoryName
               ? categoriesByName.get(
                   normalizeCategoryName(item.categoryName),
@@ -123,8 +169,10 @@ export default function ReviewReceiptScreen() {
               : null;
             return {
               amountCents: item.lineTotalCents,
+              amountInput: centsToInput(item.lineTotalCents),
               categoryId: suggestedCategoryId ?? uncategorized.id,
               description: item.name,
+              id: itemIndex,
               included: true,
               quantity: item.quantity,
               unitPriceCents: item.unitPriceCents,
@@ -156,11 +204,17 @@ export default function ReviewReceiptScreen() {
     () => items.filter((item) => item.included),
     [items],
   );
-  const includedTotal = useMemo(
+  const validIncludedItems = useMemo(
     () =>
-      includedItems.reduce((sum, item) => sum + item.amountCents, 0),
+      includedItems.filter(
+        (item): item is ReviewItem & { amountCents: number } =>
+          item.amountCents !== null,
+      ),
     [includedItems],
   );
+  const includedTotal = includedReviewTotal(items);
+  const hasInvalidIncludedAmounts =
+    validIncludedItems.length !== includedItems.length;
 
   if (!draft) {
     return (
@@ -184,6 +238,11 @@ export default function ReviewReceiptScreen() {
     return <LoadingScreen />;
   }
 
+  const totalsMismatch = reviewTotalsMismatch(
+    includedTotal,
+    draft.totalCents,
+  );
+
   const applyCategoryToAll = (categoryId: string) => {
     setBulkCategoryId(categoryId);
     setItems((current) =>
@@ -195,6 +254,25 @@ export default function ReviewReceiptScreen() {
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index ? { ...item, categoryId } : item,
+      ),
+    );
+  };
+
+  const updateItemDescription = (index: number, description: string) => {
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, description } : item,
+      ),
+    );
+  };
+
+  const updateItemAmount = (index: number, amountInput: string) => {
+    const amountCents = parseReviewAmountInput(amountInput);
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? { ...item, amountCents, amountInput }
+          : item,
       ),
     );
   };
@@ -213,6 +291,10 @@ export default function ReviewReceiptScreen() {
     setErrorMessage('');
     if (!includedItems.length) {
       setErrorMessage('Оставьте хотя бы одну позицию чека.');
+      return;
+    }
+    if (hasInvalidIncludedAmounts) {
+      setErrorMessage('Исправьте суммы включённых позиций.');
       return;
     }
 
@@ -241,7 +323,7 @@ export default function ReviewReceiptScreen() {
       await saveFiscalReceipt({
         receipt: draft,
         merchant,
-        expenses: includedItems.map((item) => ({
+        expenses: validIncludedItems.map((item) => ({
           amountCents: item.amountCents,
           categoryId: item.categoryId,
           description: item.description,
@@ -304,11 +386,19 @@ export default function ReviewReceiptScreen() {
           ) : null}
         </View>
 
-        {draft.totalsMismatch || draft.confidence === 'low' ? (
+        {draft.confidence === 'low' ? (
           <View accessibilityRole="alert" style={styles.warningCard}>
             <Text style={styles.warningText}>
-              Распознавание неуверенное или сумма позиций не совпадает с
-              итогом. Проверьте чек перед сохранением.
+              Распознавание неуверенное. Проверьте чек перед сохранением.
+            </Text>
+          </View>
+        ) : null}
+
+        {totalsMismatch ? (
+          <View accessibilityRole="alert" style={styles.warningCard}>
+            <Text style={styles.warningText}>
+              Сумма выбранных позиций не совпадает с итогом чека.
+              Проверьте суммы перед сохранением.
             </Text>
           </View>
         ) : null}
@@ -431,33 +521,75 @@ export default function ReviewReceiptScreen() {
 
           {items.map((item, index) => (
             <View
-              key={`${index}-${item.description}`}
+              key={item.id}
               style={[
                 styles.itemCard,
                 !item.included && styles.itemCardExcluded,
               ]}
             >
-              <View style={styles.itemHeader}>
-                <View style={styles.itemCopy}>
-                  <Text
-                    numberOfLines={2}
-                    style={[
-                      styles.itemName,
-                      !item.included && styles.excludedText,
-                    ]}
-                  >
-                    {item.description}
-                  </Text>
-                  <Text style={styles.itemDetails}>
-                    {item.quantity !== null && item.unitPriceCents !== null
-                      ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${draft.currency}`
-                      : 'Количество или цена за единицу не указаны'}
-                    {item.vatLabel ? ` · НДС ${item.vatLabel}` : ''}
-                  </Text>
-                </View>
-                <Text style={styles.itemAmount}>
-                  {formatMoney(item.amountCents)} {draft.currency}
+              <TextInput
+                accessibilityLabel={`Название позиции ${index + 1}`}
+                autoCapitalize="sentences"
+                editable={!saving}
+                maxLength={240}
+                multiline={false}
+                onChangeText={(description) =>
+                  updateItemDescription(index, description)
+                }
+                placeholder="Название позиции"
+                placeholderTextColor={theme.colors.disabled}
+                style={[
+                  styles.itemNameInput,
+                  !item.included && styles.excludedText,
+                ]}
+                value={item.description}
+              />
+              <View style={styles.itemDetailsRow}>
+                <Text style={styles.itemDetails}>
+                  {item.quantity !== null && item.unitPriceCents !== null
+                    ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${draft.currency}`
+                    : 'Количество или цена за единицу не указаны'}
+                  {item.vatLabel ? ` · НДС ${item.vatLabel}` : ''}
                 </Text>
+                <View style={styles.itemAmountColumn}>
+                  <View style={styles.itemAmountEditor}>
+                    <TextInput
+                      accessibilityLabel={`Сумма позиции ${index + 1}`}
+                      editable={!saving}
+                      inputMode="decimal"
+                      maxLength={20}
+                      onChangeText={(amountInput) =>
+                        updateItemAmount(index, amountInput)
+                      }
+                      placeholder="0,00"
+                      placeholderTextColor={theme.colors.disabled}
+                      selectTextOnFocus
+                      style={[
+                        styles.itemAmountInput,
+                        item.amountCents === null &&
+                          styles.itemAmountInputInvalid,
+                        !item.included && styles.excludedText,
+                      ]}
+                      value={item.amountInput}
+                    />
+                    <Text
+                      style={[
+                        styles.itemCurrency,
+                        !item.included && styles.excludedText,
+                      ]}
+                    >
+                      {draft.currency}
+                    </Text>
+                  </View>
+                  {item.amountCents === null ? (
+                    <Text
+                      accessibilityRole="alert"
+                      style={styles.itemValidationText}
+                    >
+                      Введите сумму больше нуля
+                    </Text>
+                  ) : null}
+                </View>
               </View>
               {item.included ? (
                 <CategoryPicker
@@ -488,7 +620,9 @@ export default function ReviewReceiptScreen() {
         <View style={styles.saveSummary}>
           <Text style={styles.saveSummaryLabel}>Будет сохранено</Text>
           <Text style={styles.saveSummaryTotal}>
-            {formatMoney(includedTotal)} {draft.currency}
+            {includedTotal === null
+              ? `— ${draft.currency}`
+              : `${formatMoney(includedTotal)} ${draft.currency}`}
           </Text>
         </View>
 
@@ -500,11 +634,12 @@ export default function ReviewReceiptScreen() {
 
         <Pressable
           accessibilityRole="button"
-          disabled={saving}
+          disabled={saving || hasInvalidIncludedAmounts}
           onPress={() => void handleSave()}
           style={({ pressed }) => [
             styles.primaryButton,
-            (pressed || saving) && styles.disabled,
+            (pressed || saving || hasInvalidIncludedAmounts) &&
+              styles.disabled,
           ]}
         >
           {saving ? (
@@ -585,11 +720,30 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
-  itemAmount: {
+  itemAmountColumn: {
+    alignItems: 'flex-end',
+    width: '45%',
+  },
+  itemAmountEditor: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xxs,
+    width: '100%',
+  },
+  itemAmountInput: {
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
     color: theme.colors.text,
+    flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
+    minHeight: theme.sizes.iconButton,
+    paddingHorizontal: theme.spacing.xs,
     textAlign: 'right',
+  },
+  itemAmountInputInvalid: {
+    borderColor: theme.colors.danger,
   },
   itemCard: {
     borderColor: theme.colors.border,
@@ -602,23 +756,36 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     opacity: theme.opacity.disabled,
   },
-  itemCopy: {
-    flex: 1,
-    gap: theme.spacing.xxs,
+  itemCurrency: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
   },
   itemDetails: {
     color: theme.colors.textMuted,
+    flex: 1,
     fontSize: theme.fontSizes.caption,
   },
-  itemHeader: {
+  itemDetailsRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     gap: theme.spacing.sm,
   },
-  itemName: {
+  itemNameInput: {
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
+    minHeight: theme.sizes.buttonHeight,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  itemValidationText: {
+    color: theme.colors.danger,
+    fontSize: theme.fontSizes.caption,
+    marginTop: theme.spacing.xxs,
+    textAlign: 'right',
   },
   label: {
     color: theme.colors.text,

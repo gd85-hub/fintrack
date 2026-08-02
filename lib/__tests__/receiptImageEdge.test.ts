@@ -1,6 +1,26 @@
 import { describe, expect, test } from '@jest/globals';
 
-import { validateModelOutput } from '../../supabase/functions/analyze-receipt-image/index';
+import {
+  receiptAnalysisSystemPrompt,
+  validateModelOutput,
+} from '../../supabase/functions/analyze-receipt-image/index';
+
+describe('receipt image system prompt', () => {
+  test('directs the model to prefer the venue brand and read full Serbian item lines', () => {
+    expect(receiptAnalysisSystemPrompt).toContain(
+      'SKROZ DOBRA PEKARA',
+    );
+    expect(receiptAnalysisSystemPrompt).toContain('ФИСКАЛНИ РАЧУН');
+    expect(receiptAnalysisSystemPrompt).toContain('TRGOCENTAR');
+    expect(receiptAnalysisSystemPrompt).toContain('PICA SENDVIC VRAT(Ђ)');
+    expect(receiptAnalysisSystemPrompt).toContain(
+      'name it Сэндвич, not Пицца',
+    );
+    expect(receiptAnalysisSystemPrompt).toContain(
+      'cafe or food-style category',
+    );
+  });
+});
 
 describe('receipt image Edge output validation', () => {
   test('keeps tidy Russian names and raw evidence while constraining categories', () => {
