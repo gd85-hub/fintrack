@@ -48,6 +48,8 @@ Expo reads `.env` at startup only. After changing it, restart with `npx expo sta
 
 Apply the migration in `supabase/migrations/` **once** on a fresh project (SQL Editor paste, or `supabase db push`). Never re-run an applied migration; new changes go in a new migration file.
 
+Existing projects must apply `20260802000000_item_categorization.sql` before enabling automatic receipt-item categorization. It creates the per-user dictionary with RLS and does not backfill receipt data.
+
 For development, turn **off** email confirmation (Supabase -> Authentication -> Sign In / Providers -> Email -> *Confirm email*). With it on, sign-up returns no session and the app shows a "check your email" state instead of logging you in.
 
 ### 3. Edge Functions
@@ -63,21 +65,23 @@ Functions:
 - **`sync-fx`** - fetches official NBS USD/RSD and EUR/RSD rates for given dates and upserts them into `fx_rates`. Called automatically on app start (today) and whenever an expense date lacks a rate. Idempotent.
 - **`parse-receipt`** - **parses** the HTML of a Serbian SUF verification page and returns the itemized receipt. It does **not** fetch anything: the tax site blocks Supabase servers, so the **device downloads the page HTML** and sends it in the request body (`{ html, sourceUrl }`). The function validates `sourceUrl` against a hostname allowlist, then parses the `<pre>` journal block (the on-page item table is rendered client-side by JS and is empty in raw HTML).
 - **`analyze-receipt-image`** - sends one to five compressed receipt images to an OpenAI vision model and returns schema-validated merchant, date, currency, totals, line items, and suggestions restricted to the app's existing categories and merchant types. Images are processed in memory and are never stored or returned.
+- **`categorize-items`** - sends only unresolved item names and the user's available category labels to a text model. It returns schema-validated category names, stores nothing, and is skipped entirely for personal-dictionary hits.
 
-For image recognition, set both function secrets in **Supabase Dashboard -> Edge Functions -> Secrets**:
+Image recognition and text-only item categorization reuse the same two function secrets from **Supabase Dashboard -> Edge Functions -> Secrets**:
 
 ```text
 OPENAI_API_KEY=your-server-only-key
 OPENAI_MODEL=a-vision-model-that-supports-structured-outputs
 ```
 
-The key and model name must never use an `EXPO_PUBLIC_*` variable. In the dashboard editor, deploy a function whose slug is exactly `analyze-receipt-image` and paste `supabase/functions/analyze-receipt-image/index.ts`. Keep **Verify JWT** enabled.
+The key and model name must never use an `EXPO_PUBLIC_*` variable. In the dashboard editor, deploy functions whose slugs are exactly `analyze-receipt-image` and `categorize-items`, using their respective `index.ts` files. Keep **Verify JWT** enabled for both.
 
 CLI equivalent:
 
 ```bash
 supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=...
 supabase functions deploy analyze-receipt-image
+supabase functions deploy categorize-items
 ```
 
 ## Run
@@ -104,11 +108,11 @@ app/(auth)/           sign-in, sign-up
 app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
 components/           Shared UI plus platform receipt camera/image inputs
 contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
-lib/                  money, dates, fx, db, receipts, theme, supabase, authErrors
+lib/                  money, dates, fx, db, receipts, itemCategorization, theme, supabase, authErrors
   __tests__/          unit tests
 supabase/
-  migrations/         SQL (Phase 0 foundation)
-  functions/          sync-fx, parse-receipt, analyze-receipt-image (Deno)
+  migrations/         SQL foundation plus additive schema changes
+  functions/          sync-fx, parse-receipt, analyze-receipt-image, categorize-items (Deno)
 ```
 
 ### Data model
@@ -116,6 +120,7 @@ supabase/
 - **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`.
 - **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Receipt **images are never stored**.
 - **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
+- **`item_category_rules`** - a private per-user dictionary from normalized item names to a category or routine exclusion. Final review choices overwrite older rules and increment their hit count.
 - **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
 - **`fx_rates`** - daily NBS rates, server-written, client-read-only.
 - **`subscriptions`** - recurring payments (explicit, not guessed).
@@ -129,6 +134,7 @@ Reference tables use `user_id IS NULL` for shared system defaults and a non-null
 - **Local calendar dates.** Never derived via UTC.
 - **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
 - **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
+- **Receipt categorization is dictionary-first.** Known item names resolve locally from the user's RLS-protected rules; only unknown names use the text-only model, and final review choices teach the next receipt.
 - **Device fetches the tax page; server only parses.** The tax site blocks cloud servers but serves the device; parsing lives server-side (with a hostname allowlist) so fixes don't require a new app build.
 - **SUF QR scanning is native-only.** Browsers can't fetch the Serbian tax page (CORS). Photo and email-screenshot receipt upload remains available on Web.
 - **No image storage.** Receipt photos/pages are parsed and discarded.
@@ -140,4 +146,4 @@ Reference tables use `user_id IS NULL` for shared system defaults and a non-null
 - RLS on every user table, both `using` and `with check`.
 - `.env` is gitignored; only `.env.example` is committed.
 - The repository is public - no secrets belong in it. All data lives in Supabase.
-- Edge Functions that accept client input validate `sourceUrl` against a hostname allowlist and cap payload size.
+- Edge Functions validate and cap client input. `parse-receipt` additionally validates `sourceUrl` against a hostname allowlist.

@@ -31,6 +31,10 @@ import {
   parseAmountInput,
 } from '../../../lib/money';
 import {
+  learnItemCategoryRules,
+  resolveCategoriesForItems,
+} from '../../../lib/itemCategorization';
+import {
   findMatchingMerchant,
   parsedReceiptDate,
 } from '../../../lib/receipts';
@@ -41,11 +45,14 @@ type MerchantMode = 'existing' | 'new';
 type ReviewItem = {
   amountCents: number | null;
   amountInput: string;
+  categoryEdited: boolean;
   categoryId: string;
   description: string;
   id: number;
   included: boolean;
+  inclusionEdited: boolean;
   quantity: number | null;
+  ruleName: string;
   unitPriceCents: number | null;
   vatLabel: string | null;
 };
@@ -108,6 +115,7 @@ export default function ReviewReceiptScreen() {
   const [merchantTypeId, setMerchantTypeId] = useState<string | null>(null);
   const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [categorizing, setCategorizing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -160,26 +168,63 @@ export default function ReviewReceiptScreen() {
           matched?.typeId ?? defaultType?.id ?? null,
         );
         setBulkCategoryId(null);
-        setItems(
-          draft.items.map((item, itemIndex) => {
-            const suggestedCategoryId = item.categoryName
-              ? categoriesByName.get(
-                  normalizeCategoryName(item.categoryName),
-                )
-              : null;
-            return {
-              amountCents: item.lineTotalCents,
-              amountInput: centsToInput(item.lineTotalCents),
-              categoryId: suggestedCategoryId ?? uncategorized.id,
-              description: item.name,
-              id: itemIndex,
-              included: true,
-              quantity: item.quantity,
-              unitPriceCents: item.unitPriceCents,
-              vatLabel: item.vatLabel,
-            };
-          }),
-        );
+        const preparedItems = draft.items.map((item, itemIndex) => {
+          const suggestedCategoryId = item.categoryName
+            ? categoriesByName.get(
+                normalizeCategoryName(item.categoryName),
+              )
+            : null;
+          return {
+            amountCents: item.lineTotalCents,
+            amountInput: centsToInput(item.lineTotalCents),
+            categoryEdited: false,
+            categoryId: suggestedCategoryId ?? uncategorized.id,
+            description: item.name,
+            id: itemIndex,
+            included: true,
+            inclusionEdited: false,
+            quantity: item.quantity,
+            ruleName: item.rawName?.trim() || item.name,
+            unitPriceCents: item.unitPriceCents,
+            vatLabel: item.vatLabel,
+          };
+        });
+        setItems(preparedItems);
+        setCategorizing(true);
+        void resolveCategoriesForItems(
+          preparedItems.map(({ ruleName }) => ({ name: ruleName })),
+          loadedCategories,
+        )
+          .then((resolutions) => {
+            if (!active) {
+              return;
+            }
+            setItems((current) =>
+              current.map((item, index) => {
+                const resolution = resolutions[index];
+                if (!resolution) {
+                  return item;
+                }
+                return {
+                  ...item,
+                  categoryId: item.categoryEdited
+                    ? item.categoryId
+                    : resolution.categoryId,
+                  included: item.inclusionEdited
+                    ? item.included
+                    : !resolution.excluded,
+                };
+              }),
+            );
+          })
+          .catch(() => {
+            console.error('Unable to resolve receipt item categories.');
+          })
+          .finally(() => {
+            if (active) {
+              setCategorizing(false);
+            }
+          });
       })
       .catch((error: unknown) => {
         console.error('Unable to prepare receipt review:', error);
@@ -246,14 +291,20 @@ export default function ReviewReceiptScreen() {
   const applyCategoryToAll = (categoryId: string) => {
     setBulkCategoryId(categoryId);
     setItems((current) =>
-      current.map((item) => ({ ...item, categoryId })),
+      current.map((item) => ({
+        ...item,
+        categoryEdited: true,
+        categoryId,
+      })),
     );
   };
 
   const updateItemCategory = (index: number, categoryId: string) => {
     setItems((current) =>
       current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, categoryId } : item,
+        itemIndex === index
+          ? { ...item, categoryEdited: true, categoryId }
+          : item,
       ),
     );
   };
@@ -281,7 +332,11 @@ export default function ReviewReceiptScreen() {
     setItems((current) =>
       current.map((item, itemIndex) =>
         itemIndex === index
-          ? { ...item, included: !item.included }
+          ? {
+              ...item,
+              included: !item.included,
+              inclusionEdited: true,
+            }
           : item,
       ),
     );
@@ -329,6 +384,17 @@ export default function ReviewReceiptScreen() {
           description: item.description,
         })),
       });
+      try {
+        await learnItemCategoryRules(
+          items.map((item) => ({
+            name: item.ruleName,
+            categoryId: item.included ? item.categoryId : null,
+            excluded: !item.included,
+          })),
+        );
+      } catch {
+        console.error('Unable to learn receipt item categories.');
+      }
       clearDraft();
       router.replace('/(app)');
     } catch (error: unknown) {
@@ -512,6 +578,14 @@ export default function ReviewReceiptScreen() {
           <Text style={styles.sectionTitle}>
             Позиции · {includedItems.length} из {items.length}
           </Text>
+          {categorizing ? (
+            <View style={styles.categorizingState}>
+              <ActivityIndicator color={theme.colors.accent} size="small" />
+              <Text style={styles.categorizingText}>
+                Категоризируем позиции…
+              </Text>
+            </View>
+          ) : null}
           <CategoryPicker
             categories={categories}
             label="Категория для всех"
@@ -671,6 +745,15 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg,
     justifyContent: 'center',
     padding: theme.spacing.lg,
+  },
+  categorizingState: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  categorizingText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.caption,
   },
   content: {
     alignSelf: 'center',
