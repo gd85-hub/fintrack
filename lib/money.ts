@@ -2,6 +2,10 @@ export const currencies = ['RSD', 'USD', 'EUR'] as const;
 
 export type Currency = (typeof currencies)[number];
 
+export function isCurrency(value: string): value is Currency {
+  return currencies.some((currency) => currency === value);
+}
+
 export type ConvertedAmounts = {
   rsd: number;
   usd: number;

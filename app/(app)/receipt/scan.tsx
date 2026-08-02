@@ -13,7 +13,16 @@ import {
 import { router } from 'expo-router';
 
 import { ReceiptCamera } from '../../../components/ReceiptCamera';
+import { ReceiptImageInput } from '../../../components/ReceiptImageInput';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
+import { listCategories, listMerchantTypes } from '../../../lib/db';
+import {
+  analyzeReceiptImages,
+  compressReceiptImages,
+  receiptFromImageAnalysis,
+  receiptImageErrorMessage,
+  type ReceiptImageSource,
+} from '../../../lib/receiptImage';
 import {
   fetchAndParseReceipt,
   isSupportedReceiptUrl,
@@ -23,34 +32,114 @@ import { theme } from '../../../lib/theme';
 
 export default function ScanReceiptScreen() {
   if (Platform.OS === 'web') {
-    return <WebScanUnavailable />;
+    return <WebImageReceiptScreen />;
   }
 
   return <NativeScanReceiptScreen />;
 }
 
-function WebScanUnavailable() {
+function WebImageReceiptScreen() {
   return (
     <View style={styles.screen}>
-      <View style={styles.webFallbackContent}>
-        <Text style={styles.webFallbackTitle}>
-          Сканирование доступно в приложении
-        </Text>
-        <Text style={styles.webFallbackBody}>
-          Сканирование чеков работает в мобильном приложении на телефоне.
-          Откройте Fintrack на Android, чтобы отсканировать QR-код чека.
-        </Text>
+      <View style={styles.header}>
         <Pressable
+          accessibilityLabel="Назад"
           accessibilityRole="button"
-          onPress={() => router.replace('/(app)')}
+          onPress={() => router.back()}
           style={({ pressed }) => [
-            styles.primaryButton,
+            styles.backButton,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.primaryButtonText}>Вернуться</Text>
+          <Text style={styles.backText}>←</Text>
         </Pressable>
+        <Text style={styles.title}>Чек из фото</Text>
       </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.help}>
+          Загрузите фото бумажного чека или скриншот заказа из письма.
+        </Text>
+        <ImageReceiptFlow />
+      </ScrollView>
+    </View>
+  );
+}
+
+function ImageReceiptFlow() {
+  const { setDraft } = useReceiptDraft();
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleImages = async (sources: ReceiptImageSource[]) => {
+    setError(null);
+    setProcessing(true);
+    try {
+      const [categories, merchantTypes, images] = await Promise.all([
+        listCategories(),
+        listMerchantTypes(),
+        compressReceiptImages(sources),
+      ]);
+      const analysis = await analyzeReceiptImages(
+        images,
+        categories,
+        merchantTypes,
+      );
+      if (!analysis.ok) {
+        setError(receiptImageErrorMessage(analysis.error));
+        return;
+      }
+      const receipt = receiptFromImageAnalysis(analysis);
+      if (!receipt) {
+        setError(
+          'Не удалось определить дату или валюту чека. Добавьте трату вручную.',
+        );
+        return;
+      }
+      setDraft(receipt);
+      router.replace('/(app)/receipt/review');
+    } catch (caught: unknown) {
+      setError(
+        caught instanceof Error && caught.message === 'bad_input'
+          ? receiptImageErrorMessage('bad_input')
+          : 'Не удалось подготовить изображения. Попробуйте ещё раз.',
+      );
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <View style={styles.imageFlow}>
+      <ReceiptImageInput
+        disabled={processing}
+        onError={setError}
+        onSelect={handleImages}
+      />
+      {processing ? (
+        <View style={styles.processingCard}>
+          <ActivityIndicator color={theme.colors.accent} />
+          <Text style={styles.processingText}>Распознаём чек…</Text>
+        </View>
+      ) : null}
+      {error ? (
+        <View accessibilityRole="alert" style={styles.errorCard}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.retryText}>
+            Выберите изображение ещё раз или добавьте трату вручную.
+          </Text>
+        </View>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        disabled={processing}
+        onPress={() => router.push('/(app)/expense/new')}
+        style={({ pressed }) => [
+          styles.linkButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.linkText}>Добавить вручную</Text>
+      </Pressable>
     </View>
   );
 }
@@ -58,6 +147,7 @@ function WebScanUnavailable() {
 function NativeScanReceiptScreen() {
   const { setDraft } = useReceiptDraft();
   const [manualMode, setManualMode] = useState(false);
+  const [imageMode, setImageMode] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +193,14 @@ function NativeScanReceiptScreen() {
   const showCamera = () => {
     resetScan();
     setManualMode(false);
+    setImageMode(false);
+  };
+
+  const showImages = () => {
+    scanArmed.current = false;
+    setError(null);
+    setManualMode(false);
+    setImageMode(true);
   };
 
   return (
@@ -129,7 +227,24 @@ function NativeScanReceiptScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {manualMode ? (
+        {imageMode ? (
+          <>
+            <Text style={styles.help}>
+              Сфотографируйте бумажный чек или выберите скриншоты заказа.
+            </Text>
+            <ImageReceiptFlow />
+            <Pressable
+              accessibilityRole="button"
+              onPress={showCamera}
+              style={({ pressed }) => [
+                styles.linkButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.linkText}>Вернуться к QR-сканеру</Text>
+            </Pressable>
+          </>
+        ) : manualMode ? (
           <View style={styles.manualCard}>
             <Text style={styles.label}>Ссылка из QR-кода</Text>
             <TextInput
@@ -196,6 +311,16 @@ function NativeScanReceiptScreen() {
               ]}
             >
               <Text style={styles.linkText}>Ввести ссылку вручную</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={showImages}
+              style={({ pressed }) => [
+                styles.linkButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.linkText}>Из фото или скриншота</Text>
             </Pressable>
           </>
         )}
@@ -275,6 +400,9 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
   },
+  imageFlow: {
+    gap: theme.spacing.md,
+  },
   input: {
     borderColor: theme.colors.border,
     borderRadius: theme.radii.input,
@@ -350,25 +478,5 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
-  },
-  webFallbackBody: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.body,
-    textAlign: 'center',
-  },
-  webFallbackContent: {
-    alignSelf: 'center',
-    flex: 1,
-    gap: theme.spacing.lg,
-    justifyContent: 'center',
-    maxWidth: theme.sizes.maxContentWidth,
-    padding: theme.spacing.lg,
-    width: '100%',
-  },
-  webFallbackTitle: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.title,
-    fontWeight: '700',
-    textAlign: 'center',
   },
 });

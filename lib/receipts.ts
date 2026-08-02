@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { parseLocalISO } from './dates';
 
 export type ReceiptParseError =
   | 'fetch_failed'
@@ -9,21 +10,27 @@ export type ReceiptParseError =
 
 export type ParsedReceiptItem = {
   name: string;
-  quantity: number;
-  unitPriceCents: number;
+  quantity: number | null;
+  unitPriceCents: number | null;
   lineTotalCents: number;
   vatLabel: string | null;
+  categoryName?: string | null;
 };
 
 export type ParsedReceipt = {
   ok: true;
   merchantName: string;
+  merchantTypeSlug?: string | null;
   taxId: string | null;
-  occurredAt: string;
+  occurredAt: string | null;
+  occurredOn?: string;
   totalCents: number;
-  currency: 'RSD';
+  currency: string;
   paymentType: string | null;
   items: ParsedReceiptItem[];
+  source?: 'fiscal_qr' | 'ocr_photo';
+  confidence?: 'high' | 'medium' | 'low';
+  totalsMismatch?: boolean;
   raw?: string;
 };
 
@@ -215,6 +222,16 @@ export function receiptDate(occurredAt: string) {
     throw new Error('Receipt date is invalid.');
   }
   return match[1];
+}
+
+export function parsedReceiptDate(receipt: ParsedReceipt) {
+  if (receipt.occurredOn && parseLocalISO(receipt.occurredOn)) {
+    return receipt.occurredOn;
+  }
+  if (receipt.occurredAt) {
+    return receiptDate(receipt.occurredAt);
+  }
+  throw new Error('Receipt date is invalid.');
 }
 
 export function receiptParseErrorMessage(error: ReceiptParseError) {

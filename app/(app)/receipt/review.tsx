@@ -24,8 +24,8 @@ import {
   type Merchant,
   type MerchantType,
 } from '../../../lib/db';
-import { formatMoney } from '../../../lib/money';
-import { receiptDate } from '../../../lib/receipts';
+import { formatMoney, isCurrency } from '../../../lib/money';
+import { parsedReceiptDate } from '../../../lib/receipts';
 import { theme } from '../../../lib/theme';
 
 type MerchantMode = 'existing' | 'new';
@@ -35,8 +35,8 @@ type ReviewItem = {
   categoryId: string;
   description: string;
   included: boolean;
-  quantity: number;
-  unitPriceCents: number;
+  quantity: number | null;
+  unitPriceCents: number | null;
   vatLabel: string | null;
 };
 
@@ -46,6 +46,10 @@ function normalizeMerchantName(value: string) {
     .trim()
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase();
+}
+
+function normalizeCategoryName(value: string) {
+  return value.normalize('NFKC').trim().toLocaleLowerCase();
 }
 
 function matchingMerchant(
@@ -107,9 +111,18 @@ export default function ReviewReceiptScreen() {
           draft.merchantName,
         );
         const defaultType =
+          loadedTypes.find(
+            (type) => type.slug === draft.merchantTypeSlug,
+          ) ??
           loadedTypes.find((type) => type.slug === 'shop') ??
           loadedTypes[0] ??
           null;
+        const categoriesByName = new Map(
+          loadedCategories.map((category) => [
+            normalizeCategoryName(category.name),
+            category.id,
+          ]),
+        );
 
         setCategories(loadedCategories);
         setMerchants(loadedMerchants);
@@ -119,17 +132,24 @@ export default function ReviewReceiptScreen() {
         setMerchantTypeId(
           matched?.typeId ?? defaultType?.id ?? null,
         );
-        setBulkCategoryId(uncategorized.id);
+        setBulkCategoryId(null);
         setItems(
-          draft.items.map((item) => ({
-            amountCents: item.lineTotalCents,
-            categoryId: uncategorized.id,
-            description: item.name,
-            included: true,
-            quantity: item.quantity,
-            unitPriceCents: item.unitPriceCents,
-            vatLabel: item.vatLabel,
-          })),
+          draft.items.map((item) => {
+            const suggestedCategoryId = item.categoryName
+              ? categoriesByName.get(
+                  normalizeCategoryName(item.categoryName),
+                )
+              : null;
+            return {
+              amountCents: item.lineTotalCents,
+              categoryId: suggestedCategoryId ?? uncategorized.id,
+              description: item.name,
+              included: true,
+              quantity: item.quantity,
+              unitPriceCents: item.unitPriceCents,
+              vatLabel: item.vatLabel,
+            };
+          }),
         );
       })
       .catch((error: unknown) => {
@@ -286,13 +306,13 @@ export default function ReviewReceiptScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Дата</Text>
             <Text style={styles.summaryValue}>
-              {receiptDate(draft.occurredAt)}
+              {parsedReceiptDate(draft)}
             </Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Итого в чеке</Text>
             <Text style={styles.summaryValue}>
-              {formatMoney(draft.totalCents)} RSD
+              {formatMoney(draft.totalCents)} {draft.currency}
             </Text>
           </View>
           {draft.paymentType ? (
@@ -302,6 +322,24 @@ export default function ReviewReceiptScreen() {
             </View>
           ) : null}
         </View>
+
+        {draft.totalsMismatch || draft.confidence === 'low' ? (
+          <View accessibilityRole="alert" style={styles.warningCard}>
+            <Text style={styles.warningText}>
+              Распознавание неуверенное или сумма позиций не совпадает с
+              итогом. Проверьте чек перед сохранением.
+            </Text>
+          </View>
+        ) : null}
+
+        {!isCurrency(draft.currency) ? (
+          <View accessibilityRole="alert" style={styles.warningCard}>
+            <Text style={styles.warningText}>
+              Для {draft.currency} пока нет конвертации. Сохраним исходные
+              суммы и отметим позиции как требующие внимания.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Место</Text>
@@ -430,12 +468,14 @@ export default function ReviewReceiptScreen() {
                     {item.description}
                   </Text>
                   <Text style={styles.itemDetails}>
-                    {item.quantity} × {formatMoney(item.unitPriceCents)} RSD
+                    {item.quantity !== null && item.unitPriceCents !== null
+                      ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${draft.currency}`
+                      : 'Количество или цена за единицу не указаны'}
                     {item.vatLabel ? ` · НДС ${item.vatLabel}` : ''}
                   </Text>
                 </View>
                 <Text style={styles.itemAmount}>
-                  {formatMoney(item.amountCents)} RSD
+                  {formatMoney(item.amountCents)} {draft.currency}
                 </Text>
               </View>
               {item.included ? (
@@ -467,7 +507,7 @@ export default function ReviewReceiptScreen() {
         <View style={styles.saveSummary}>
           <Text style={styles.saveSummaryLabel}>Будет сохранено</Text>
           <Text style={styles.saveSummaryTotal}>
-            {formatMoney(includedTotal)} RSD
+            {formatMoney(includedTotal)} {draft.currency}
           </Text>
         </View>
 
@@ -705,6 +745,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
+  },
+  warningCard: {
+    backgroundColor: theme.colors.accentMuted,
+    borderRadius: theme.radii.card,
+    padding: theme.spacing.md,
+  },
+  warningText: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
   },
   typeChip: {
     borderColor: theme.colors.border,

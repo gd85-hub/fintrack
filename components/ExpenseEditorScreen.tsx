@@ -36,6 +36,7 @@ import {
   type ConvertedAmounts,
   type Currency,
   formatMoney,
+  isCurrency,
   parseAmountInput,
 } from '../lib/money';
 import { theme } from '../lib/theme';
@@ -71,7 +72,9 @@ function ExpenseForm({
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
   );
   const [currency, setCurrency] = useState<Currency>(
-    initialExpense?.originalCurrency ?? 'RSD',
+    initialExpense && isCurrency(initialExpense.originalCurrency)
+      ? initialExpense.originalCurrency
+      : 'RSD',
   );
   const [categoryId, setCategoryId] = useState<string | null>(
     initialExpense?.categoryId ?? null,
@@ -471,6 +474,27 @@ export function ExpenseEditorScreen({
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>{errorMessage}</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.back()}
+          style={({ pressed }) => [
+            styles.secondaryAction,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.secondaryActionText}>Назад</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (expense && !isCurrency(expense.originalCurrency)) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>
+          Конвертация из {expense.originalCurrency} пока ожидает поддержки.
+          Эту трату нельзя редактировать вручную.
+        </Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => router.back()}

@@ -1,12 +1,13 @@
 import { monthBounds } from './dates';
-import { ratesForExpense } from './fx';
+import { ratesForExpense, type ResolvedRates } from './fx';
 import {
   centsToDecimal,
   convertAll,
   type Currency,
   decimalToCents,
+  isCurrency,
 } from './money';
-import { receiptDate, type ParsedReceipt } from './receipts';
+import { parsedReceiptDate, type ParsedReceipt } from './receipts';
 import { supabase } from './supabase';
 
 type CategoryQueryRow = {
@@ -41,7 +42,7 @@ type ExpenseQueryRow = {
   category_id: string;
   merchant_id: string | null;
   original_amount: number | string;
-  original_currency: Currency;
+  original_currency: string;
   amount_rsd: number | string | null;
   amount_usd: number | string | null;
   amount_eur: number | string | null;
@@ -140,7 +141,7 @@ export type Expense = {
   merchantId: string | null;
   merchantName: string | null;
   originalAmountCents: number;
-  originalCurrency: Currency;
+  originalCurrency: string;
   amountRsdCents: number;
   amountUsdCents: number;
   amountEurCents: number;
@@ -779,25 +780,37 @@ export async function deleteExpense(id: string): Promise<void> {
 }
 
 function receiptPayloadWithoutRaw(receipt: ParsedReceipt) {
-  const {
-    raw: _raw,
-    merchantName,
-    taxId,
-    occurredAt,
-    totalCents,
+  const { raw: _raw, ...payload } = receipt;
+  return payload;
+}
+
+export function receiptExpenseAmounts(
+  amountCents: number,
+  currency: string,
+  rates: ResolvedRates | null,
+) {
+  if (!isCurrency(currency)) {
+    return {
+      amount_rsd: null,
+      amount_usd: null,
+      amount_eur: null,
+      fx_rate_date: null,
+    };
+  }
+  if (!rates) {
+    throw new Error('Rates are required for a supported currency.');
+  }
+  const converted = convertAll(
+    amountCents,
     currency,
-    paymentType,
-    items,
-  } = receipt;
+    rates.usdRsd,
+    rates.eurRsd,
+  );
   return {
-    ok: true,
-    merchantName,
-    taxId,
-    occurredAt,
-    totalCents,
-    currency,
-    paymentType,
-    items,
+    amount_rsd: centsToDecimal(converted.rsd),
+    amount_usd: centsToDecimal(converted.usd),
+    amount_eur: centsToDecimal(converted.eur),
+    fx_rate_date: rates.date,
   };
 }
 
@@ -808,7 +821,7 @@ export async function saveFiscalReceipt(
     throw new Error('Выберите хотя бы одну позицию чека.');
   }
 
-  const occurredOn = receiptDate(input.receipt.occurredAt);
+  const occurredOn = parsedReceiptDate(input.receipt);
   const userId = await authenticatedUserId();
   let merchantId: string;
 
@@ -821,6 +834,7 @@ export async function saveFiscalReceipt(
     }
     const originalName = input.receipt.merchantName.trim();
     const aliases =
+      !originalName ||
       originalName.localeCompare(merchantName, undefined, {
         sensitivity: 'accent',
       }) === 0
@@ -843,7 +857,11 @@ export async function saveFiscalReceipt(
     merchantId = row.id;
   }
 
-  const rates = await ratesForExpense(occurredOn);
+  const source = input.receipt.source ?? 'fiscal_qr';
+  const currency = input.receipt.currency;
+  const rates = isCurrency(currency)
+    ? await ratesForExpense(occurredOn)
+    : null;
   let receiptId: string | null = null;
 
   try {
@@ -851,7 +869,7 @@ export async function saveFiscalReceipt(
       .from('receipts')
       .insert({
         user_id: userId,
-        source: 'fiscal_qr',
+        source,
         merchant_id: merchantId,
         tax_id: input.receipt.taxId,
         occurred_at: input.receipt.occurredAt,
@@ -870,11 +888,10 @@ export async function saveFiscalReceipt(
     receiptId = receiptRow.id;
 
     const expenseRows = input.expenses.map((expense) => {
-      const converted = convertAll(
+      const converted = receiptExpenseAmounts(
         expense.amountCents,
-        'RSD',
-        rates.usdRsd,
-        rates.eurRsd,
+        currency,
+        rates,
       );
       return {
         user_id: userId,
@@ -884,13 +901,10 @@ export async function saveFiscalReceipt(
         category_id: expense.categoryId,
         merchant_id: merchantId,
         original_amount: centsToDecimal(expense.amountCents),
-        original_currency: 'RSD',
-        amount_rsd: centsToDecimal(converted.rsd),
-        amount_usd: centsToDecimal(converted.usd),
-        amount_eur: centsToDecimal(converted.eur),
-        fx_rate_date: rates.date,
+        original_currency: currency,
+        ...converted,
         note: null,
-        source: 'fiscal_qr',
+        source,
         receipt_id: receiptId,
       };
     });

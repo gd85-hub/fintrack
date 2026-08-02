@@ -93,7 +93,7 @@ export default function HomeScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
-  const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
+  const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
 
   useEffect(() => {
     if (requestedMonth) {
@@ -133,19 +133,21 @@ export default function HomeScreen() {
     }, [retryKey, visibleMonth]),
   );
 
-  const uncategorizedExpenses = useMemo(
+  const needsAttentionExpenses = useMemo(
     () =>
       expenses.filter(
-        (expense) => expense.categorySlug === 'uncategorized',
+        (expense) =>
+          expense.categorySlug === 'uncategorized' ||
+          expense.fxRateDate === null,
       ),
     [expenses],
   );
   const visibleExpenses = useMemo(
     () =>
-      uncategorizedOnly && uncategorizedExpenses.length > 0
-        ? uncategorizedExpenses
+      needsAttentionOnly && needsAttentionExpenses.length > 0
+        ? needsAttentionExpenses
         : expenses,
-    [expenses, uncategorizedExpenses, uncategorizedOnly],
+    [expenses, needsAttentionExpenses, needsAttentionOnly],
   );
   const groups = useMemo(
     () => groupExpenses(visibleExpenses),
@@ -159,15 +161,6 @@ export default function HomeScreen() {
         0,
       ),
     [displayCurrency, expenses],
-  );
-  const uncategorizedTotal = useMemo(
-    () =>
-      uncategorizedExpenses.reduce(
-        (sum, expense) =>
-          sum + amountForCurrency(expense, displayCurrency),
-        0,
-      ),
-    [displayCurrency, uncategorizedExpenses],
   );
   const canMoveForward = visibleMonth < currentMonth;
 
@@ -261,25 +254,24 @@ export default function HomeScreen() {
           value={displayCurrency}
         />
 
-        {uncategorizedExpenses.length > 0 ? (
+        {needsAttentionExpenses.length > 0 ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ selected: uncategorizedOnly }}
-            onPress={() => setUncategorizedOnly((current) => !current)}
+            accessibilityState={{ selected: needsAttentionOnly }}
+            onPress={() => setNeedsAttentionOnly((current) => !current)}
             style={({ pressed }) => [
               styles.triageChip,
-              uncategorizedOnly && styles.triageChipSelected,
+              needsAttentionOnly && styles.triageChipSelected,
               pressed && styles.pressed,
             ]}
           >
             <Text
               style={[
                 styles.triageChipText,
-                uncategorizedOnly && styles.triageChipTextSelected,
+                needsAttentionOnly && styles.triageChipTextSelected,
               ]}
             >
-              Не распознано: {uncategorizedExpenses.length} ·{' '}
-              {formatMoney(uncategorizedTotal)} {displayCurrency}
+              Требуют внимания: {needsAttentionExpenses.length}
             </Text>
           </Pressable>
         ) : null}
@@ -356,12 +348,18 @@ export default function HomeScreen() {
                             {expense.merchantName}
                           </Text>
                         ) : null}
+                        {expense.fxRateDate === null ? (
+                          <Text style={styles.expenseSubtitle}>
+                            Конвертация ожидает
+                          </Text>
+                        ) : null}
                       </View>
                       <Text style={styles.expenseAmount}>
-                        {formatMoney(
-                          amountForCurrency(expense, displayCurrency),
-                        )}{' '}
-                        {displayCurrency}
+                        {expense.fxRateDate === null
+                          ? `${formatMoney(expense.originalAmountCents)} ${expense.originalCurrency}`
+                          : `${formatMoney(
+                              amountForCurrency(expense, displayCurrency),
+                            )} ${displayCurrency}`}
                       </Text>
                     </Pressable>
                   ))}
@@ -371,20 +369,22 @@ export default function HomeScreen() {
           : null}
       </ScrollView>
 
-      {Platform.OS !== 'web' ? (
-        <Pressable
-          accessibilityLabel="Сканировать чек"
-          accessibilityRole="button"
-          onPress={() => router.push('/(app)/receipt/scan')}
-          style={({ pressed }) => [
-            styles.floatingButton,
-            styles.scanFloatingButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.scanFloatingButtonText}>📷</Text>
-        </Pressable>
-      ) : null}
+      <Pressable
+        accessibilityLabel={
+          Platform.OS === 'web'
+            ? 'Чек из фото или скриншота'
+            : 'Сканировать чек'
+        }
+        accessibilityRole="button"
+        onPress={() => router.push('/(app)/receipt/scan')}
+        style={({ pressed }) => [
+          styles.floatingButton,
+          styles.scanFloatingButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.scanFloatingButtonText}>📷</Text>
+      </Pressable>
 
       <Pressable
         accessibilityLabel="Добавить трату"

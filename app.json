@@ -10,10 +10,27 @@
     ],
     "plugins": [
       "expo-router",
-      "expo-camera"
+      "expo-camera",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Разрешите Fintrack выбрать изображения чеков из галереи.",
+          "cameraPermission": "Разрешите Fintrack сфотографировать чек.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "303dbef6-96be-4f2d-9c16-3a6ab7bbbb5c"
+      }
+    },
+    "android": {
+      "package": "com.markfinnegan.fintrack"
     }
   }
 }

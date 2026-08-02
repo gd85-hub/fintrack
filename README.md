@@ -15,7 +15,7 @@ Replaces a Google Sheets tracker whose main problem was manual data entry.
 | 0 | Scaffolding, DB schema, RLS, email auth | Done |
 | 1 | Manual expenses in 3 currencies, NBS rates, month list, edit/delete | Done |
 | 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses | Code done; native device test pending |
-| 3 | Photo / email-screenshot receipts (any country) via vision model | Planned |
+| 3 | Photo / email-screenshot receipts (any country) via vision model | Code done; Edge Function deployment and native rebuild pending |
 | 4 | Analytics | In progress: categories + merchants + drilldown done; trends / fixed-vs-variable / subscriptions pending |
 
 ### Known open items
@@ -62,6 +62,23 @@ Functions:
 
 - **`sync-fx`** - fetches official NBS USD/RSD and EUR/RSD rates for given dates and upserts them into `fx_rates`. Called automatically on app start (today) and whenever an expense date lacks a rate. Idempotent.
 - **`parse-receipt`** - **parses** the HTML of a Serbian SUF verification page and returns the itemized receipt. It does **not** fetch anything: the tax site blocks Supabase servers, so the **device downloads the page HTML** and sends it in the request body (`{ html, sourceUrl }`). The function validates `sourceUrl` against a hostname allowlist, then parses the `<pre>` journal block (the on-page item table is rendered client-side by JS and is empty in raw HTML).
+- **`analyze-receipt-image`** - sends one to five compressed receipt images to an OpenAI vision model and returns schema-validated merchant, date, currency, totals, line items, and suggestions restricted to the app's existing categories and merchant types. Images are processed in memory and are never stored or returned.
+
+For image recognition, set both function secrets in **Supabase Dashboard -> Edge Functions -> Secrets**:
+
+```text
+OPENAI_API_KEY=your-server-only-key
+OPENAI_MODEL=a-vision-model-that-supports-structured-outputs
+```
+
+The key and model name must never use an `EXPO_PUBLIC_*` variable. In the dashboard editor, deploy a function whose slug is exactly `analyze-receipt-image` and paste `supabase/functions/analyze-receipt-image/index.ts`. Keep **Verify JWT** enabled.
+
+CLI equivalent:
+
+```bash
+supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=...
+supabase functions deploy analyze-receipt-image
+```
 
 ## Run
 
@@ -70,7 +87,7 @@ npm install
 npx expo start        # "a" = Android, "w" = Web
 ```
 
-Day-to-day development happens in the browser (fast reload). **Receipt scanning is Android-only** and requires a development build (not public Expo Go); on Web the scan entry point is hidden and shows a "use the mobile app" note.
+Day-to-day development happens in the browser (fast reload). Photo/email receipt upload works on Web. QR scanning is Android-only; native photo capture/gallery selection uses `expo-image-picker` and requires a new development build after installing the native modules.
 
 ## Verify
 
@@ -85,13 +102,13 @@ npx expo install --check
 ```
 app/(auth)/           sign-in, sign-up
 app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
-components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, ReceiptCamera.{native,web}
+components/           Shared UI plus platform receipt camera/image inputs
 contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
 lib/                  money, dates, fx, db, receipts, theme, supabase, authErrors
   __tests__/          unit tests
 supabase/
   migrations/         SQL (Phase 0 foundation)
-  functions/          sync-fx, parse-receipt (Deno)
+  functions/          sync-fx, parse-receipt, analyze-receipt-image (Deno)
 ```
 
 ### Data model
@@ -113,8 +130,9 @@ Reference tables use `user_id IS NULL` for shared system defaults and a non-null
 - **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
 - **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
 - **Device fetches the tax page; server only parses.** The tax site blocks cloud servers but serves the device; parsing lives server-side (with a hostname allowlist) so fixes don't require a new app build.
-- **Scanning is native-only.** Browsers can't fetch the tax page (CORS); Web is for manual entry, viewing, and analytics.
+- **SUF QR scanning is native-only.** Browsers can't fetch the Serbian tax page (CORS). Photo and email-screenshot receipt upload remains available on Web.
 - **No image storage.** Receipt photos/pages are parsed and discarded.
+- **Unsupported receipt currencies stay original-only.** RSD/USD/EUR use the frozen NBS conversion path. Other ISO currencies keep nullable conversions and appear in Home's attention filter until arbitrary-currency FX is implemented.
 - **Analytics is read-only and reuses stored conversions** - it never recomputes FX; a month's expenses are fetched once and grouped in memory.
 
 ## Security notes

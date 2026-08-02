@@ -3,8 +3,18 @@ import { describe, expect, it } from '@jest/globals';
 import {
   convertAll,
   formatMoney,
+  isCurrency,
   parseAmountInput,
 } from '../money';
+
+describe('isCurrency', () => {
+  it('recognizes currencies supported by frozen conversion', () => {
+    expect(isCurrency('RSD')).toBe(true);
+    expect(isCurrency('USD')).toBe(true);
+    expect(isCurrency('EUR')).toBe(true);
+    expect(isCurrency('TRY')).toBe(false);
+  });
+});
 
 describe('parseAmountInput', () => {
   it('accepts comma and dot decimal separators identically', () => {
