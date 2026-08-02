@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { ReceiptCamera } from '../../../components/ReceiptCamera';
 import { ReceiptImageInput } from '../../../components/ReceiptImageInput';
@@ -146,19 +146,38 @@ function ImageReceiptFlow() {
 
 function NativeScanReceiptScreen() {
   const { setDraft } = useReceiptDraft();
+  const [isFocused, setIsFocused] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [imageMode, setImageMode] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const scanArmed = useRef(true);
+  const [scanArmed, setScanArmed] = useState(true);
+  const [cameraFocusKey, setCameraFocusKey] = useState(0);
+  const scanClaimed = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      scanClaimed.current = false;
+      setScanArmed(true);
+      setIsFocused(true);
+      setCameraFocusKey((key) => key + 1);
+
+      return () => {
+        scanClaimed.current = true;
+        setScanArmed(false);
+        setIsFocused(false);
+      };
+    }, []),
+  );
 
   const handleReceiptUrl = useCallback(
     async (value: string) => {
-      if (processing || !scanArmed.current) {
+      if (processing || !scanArmed || scanClaimed.current) {
         return;
       }
-      scanArmed.current = false;
+      scanClaimed.current = true;
+      setScanArmed(false);
       setError(null);
 
       if (!isSupportedReceiptUrl(value)) {
@@ -177,11 +196,12 @@ function NativeScanReceiptScreen() {
       setDraft(result);
       router.replace('/(app)/receipt/review');
     },
-    [processing, setDraft],
+    [processing, scanArmed, setDraft],
   );
 
   const resetScan = () => {
-    scanArmed.current = true;
+    scanClaimed.current = false;
+    setScanArmed(true);
     setError(null);
   };
 
@@ -197,7 +217,8 @@ function NativeScanReceiptScreen() {
   };
 
   const showImages = () => {
-    scanArmed.current = false;
+    scanClaimed.current = true;
+    setScanArmed(false);
     setError(null);
     setManualMode(false);
     setImageMode(true);
@@ -297,11 +318,14 @@ function NativeScanReceiptScreen() {
             <Text style={styles.help}>
               Наведите камеру на QR-код фискального чека
             </Text>
-            <ReceiptCamera
-              active={scanArmed.current && !processing}
-              onScan={(value) => void handleReceiptUrl(value)}
-              onUseManual={showManual}
-            />
+            {isFocused ? (
+              <ReceiptCamera
+                active={isFocused && scanArmed && !processing}
+                key={cameraFocusKey}
+                onScan={(value) => void handleReceiptUrl(value)}
+                onUseManual={showManual}
+              />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               onPress={showManual}

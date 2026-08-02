@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CameraView,
@@ -21,6 +21,7 @@ export function ReceiptCamera({
   onUseManual,
 }: ReceiptCameraProps) {
   const [permission, requestPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
     if (permission === null) {
@@ -89,8 +90,14 @@ export function ReceiptCamera({
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         facing="back"
         onBarcodeScanned={active ? handleScan : undefined}
+        onCameraReady={() => setCameraReady(true)}
         style={styles.camera}
       />
+      {!cameraReady ? (
+        <View pointerEvents="none" style={styles.cameraPlaceholder}>
+          <Text style={styles.cameraPlaceholderText}>Запуск камеры…</Text>
+        </View>
+      ) : null}
       <View pointerEvents="none" style={styles.marker} />
     </View>
   );
@@ -98,13 +105,26 @@ export function ReceiptCamera({
 
 const styles = StyleSheet.create({
   camera: {
-    flex: 1,
+    height: theme.sizes.cameraHeight,
+    width: '100%',
+  },
+  cameraPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    height: theme.sizes.cameraHeight,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: '100%',
+  },
+  cameraPlaceholderText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.body,
   },
   cameraShell: {
     backgroundColor: theme.colors.text,
-    borderRadius: theme.radii.card,
     height: theme.sizes.cameraHeight,
-    overflow: 'hidden',
     position: 'relative',
     width: '100%',
   },
