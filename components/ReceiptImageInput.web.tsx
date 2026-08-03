@@ -2,14 +2,17 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type DragEvent,
+  useCallback,
   useRef,
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 import {
   maximumReceiptImages,
   type ReceiptImageSource,
 } from '../lib/receiptImage';
+import { imageFilesFromClipboardItems } from '../lib/receiptClipboard.web';
 import { theme } from '../lib/theme';
 
 type ReceiptImageInputProps = {
@@ -40,6 +43,15 @@ function imageDimensions(uri: string) {
   });
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA')
+  );
+}
+
 async function filesToSources(files: readonly File[]) {
   if (files.length === 0 || files.length > maximumReceiptImages) {
     throw new Error('bad_count');
@@ -63,21 +75,52 @@ export function ReceiptImageInput({
 }: ReceiptImageInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFiles = async (files: FileList | readonly File[]) => {
-    if (disabled) return;
-    try {
-      const sources = await filesToSources(Array.from(files));
-      await onSelect(sources);
-    } catch (error: unknown) {
-      onError(
-        error instanceof Error && error.message === 'bad_count'
-          ? 'Выберите от одного до пяти изображений.'
-          : error instanceof Error && error.message === 'bad_type'
-            ? 'Поддерживаются только изображения JPG и PNG.'
-            : 'Не удалось прочитать выбранное изображение.',
-      );
-    }
-  };
+  const handleFiles = useCallback(
+    async (files: FileList | readonly File[]) => {
+      if (disabled) return;
+      try {
+        const sources = await filesToSources(Array.from(files));
+        await onSelect(sources);
+      } catch (error: unknown) {
+        onError(
+          error instanceof Error && error.message === 'bad_count'
+            ? 'Выберите от одного до пяти изображений.'
+            : error instanceof Error && error.message === 'bad_type'
+              ? 'Поддерживаются только изображения JPG и PNG.'
+              : 'Не удалось прочитать выбранное изображение.',
+        );
+      }
+    },
+    [disabled, onError, onSelect],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const handlePaste = (event: ClipboardEvent) => {
+        if (
+          disabled ||
+          event.defaultPrevented ||
+          isEditableTarget(event.target)
+        ) {
+          return;
+        }
+
+        const clipboardItems = event.clipboardData?.items ?? [];
+        const hasImage = Array.from(clipboardItems).some((item) =>
+          item.type.startsWith('image/'),
+        );
+        if (!hasImage) {
+          return;
+        }
+
+        event.preventDefault();
+        void handleFiles(imageFilesFromClipboardItems(clipboardItems));
+      };
+
+      document.addEventListener('paste', handlePaste);
+      return () => document.removeEventListener('paste', handlePaste);
+    }, [disabled, handleFiles]),
+  );
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.currentTarget.files) {
@@ -115,7 +158,8 @@ export function ReceiptImageInput({
       >
         <Text style={styles.title}>Выберите фото или скриншоты</Text>
         <Text style={styles.hint}>
-          До пяти файлов JPG или PNG. Можно перетащить их сюда.
+          До пяти файлов JPG или PNG. Можно перетащить сюда или вставить из
+          буфера (Ctrl+V).
         </Text>
         <Text style={styles.action}>Выбрать файлы</Text>
       </div>
