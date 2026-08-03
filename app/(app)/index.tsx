@@ -654,14 +654,15 @@ export default function HomeScreen() {
           <Text style={styles.appName}>Fintrack</Text>
           <View style={styles.accountActions}>
             <Pressable
+              accessibilityLabel="Открыть меню"
               accessibilityRole="button"
-              onPress={() => router.push('/(app)/analytics')}
+              onPress={() => router.push('/(app)/menu')}
               style={({ pressed }) => [
                 styles.headerAction,
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.headerActionText}>Аналитика</Text>
+              <Text style={styles.headerActionText}>☰ Меню</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
