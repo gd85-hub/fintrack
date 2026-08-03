@@ -12,6 +12,8 @@ type ConfirmDialogProps = {
   visible: boolean;
   title: string;
   confirming: boolean;
+  confirmLabel?: string;
+  confirmingLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
 };
@@ -20,6 +22,8 @@ export function ConfirmDialog({
   visible,
   title,
   confirming,
+  confirmLabel = 'Удалить',
+  confirmingLabel = 'Удаление…',
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -56,7 +60,7 @@ export function ConfirmDialog({
               ]}
             >
               <Text style={styles.dangerText}>
-                {confirming ? 'Удаление…' : 'Удалить'}
+                {confirming ? confirmingLabel : confirmLabel}
               </Text>
             </Pressable>
           </View>

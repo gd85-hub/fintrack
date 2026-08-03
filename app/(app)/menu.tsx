@@ -23,9 +23,9 @@ const menuItems = [
     route: '/(app)/analytics',
   },
   {
-    disabled: true,
     icon: '📍',
     label: 'Управление местами',
+    route: '/(app)/merchants',
   },
   {
     disabled: true,
