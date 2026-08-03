@@ -116,6 +116,86 @@ describe('receipt display-name persistence', () => {
     expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-1');
   });
 
+  test('stores an exact manual RSD total for a scanned exotic-currency receipt', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+
+    const merchantQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn(async () => ({
+        data: { name: 'TMT MARKET', aliases: [] },
+        error: null,
+      })),
+    };
+    const receiptSingle = jest.fn(async () => ({
+      data: { id: 'receipt-manual' },
+      error: null,
+    }));
+    const receiptSelect = jest.fn(() => ({ single: receiptSingle }));
+    const receiptInsert = jest.fn(() => ({ select: receiptSelect }));
+    const expenseInsert = jest.fn(async () => ({ error: null }));
+
+    fromMock
+      .mockReturnValueOnce(merchantQuery)
+      .mockReturnValueOnce({ insert: receiptInsert })
+      .mockReturnValueOnce({ insert: expenseInsert })
+      .mockReturnValueOnce(recencyClient);
+
+    await saveFiscalReceipt({
+      receipt: {
+        ok: true,
+        source: 'ocr_photo',
+        merchantName: 'TMT MARKET',
+        taxId: null,
+        occurredAt: '2026-08-02T12:00:00+02:00',
+        totalCents: 30_000,
+        currency: 'KZT',
+        paymentType: null,
+        items: [],
+      },
+      merchant: { existingId: 'merchant-1' },
+      manualRsdTotalCents: 10_001,
+      expenses: [
+        {
+          amountCents: 10_000,
+          categoryId: 'groceries',
+          description: 'Первая позиция',
+          rawName: 'ITEM ONE',
+        },
+        {
+          amountCents: 20_000,
+          categoryId: 'groceries',
+          description: 'Вторая позиция',
+          rawName: 'ITEM TWO',
+        },
+      ],
+    });
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(receiptInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ currency: 'KZT' }),
+    );
+    expect(expenseInsert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: '33.34',
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: '66.67',
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+    ]);
+  });
+
   test('creates one brand merchant and keeps each branch label', async () => {
     getSessionMock.mockImplementation(async () => ({
       data: { session: { user: { id: 'user-1' } } },

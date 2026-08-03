@@ -491,6 +491,162 @@ describe('updateFiscalReceipt', () => {
     });
   });
 
+  test('changes TMT to KZT and distributes the manual RSD total exactly', async () => {
+    const manualReceiptSnapshot = {
+      ...receiptSnapshot,
+      currency: 'TMT',
+    };
+    const manualExpenseSnapshots = expenseSnapshots.map((expense) => ({
+      ...expense,
+      original_currency: 'TMT',
+      amount_rsd: null,
+      amount_usd: null,
+      amount_eur: null,
+      fx_rate_date: null,
+    }));
+    const receiptQuery = singleResultClient(
+      manualReceiptSnapshot,
+      'maybeSingle',
+    );
+    const expensesQuery = listResultClient(manualExpenseSnapshots);
+    const merchantQuery = singleResultClient(
+      { name: 'Old Market', aliases: [] },
+      'single',
+    );
+    const firstExpenseUpdate = twoFilterMutationClient('update');
+    const secondExpenseUpdate = twoFilterMutationClient('update');
+    const receiptUpdate = oneFilterUpdateClient();
+
+    fromMock
+      .mockReturnValueOnce(receiptQuery.client)
+      .mockReturnValueOnce(expensesQuery.client)
+      .mockReturnValueOnce(merchantQuery.client)
+      .mockReturnValueOnce(firstExpenseUpdate.client)
+      .mockReturnValueOnce(secondExpenseUpdate.client)
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
+
+    await updateFiscalReceipt('receipt-1', {
+      merchant: { existingId: 'merchant-old' },
+      merchantLabel: 'OLD MARKET 101 CENTER',
+      occurredOn: '2026-08-01',
+      currency: 'KZT',
+      manualRsdTotalCents: 10_001,
+      expenses: manualExpenseSnapshots.map((item) => ({
+        id: item.id,
+        amountCents: Number(item.original_amount) * 100,
+        categoryId: item.category_id,
+        description: item.description,
+        rawName: item.raw_name,
+        included: true,
+      })),
+    });
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: '33.34',
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+    );
+    expect(secondExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: '66.67',
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+    );
+    expect(receiptUpdate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ currency: 'KZT' }),
+    );
+  });
+
+  test('changes a manual currency to EUR and replaces manual values with FX', async () => {
+    ratesMock.mockResolvedValue({
+      date: '2026-08-01',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+    const manualReceiptSnapshot = {
+      ...receiptSnapshot,
+      currency: 'KZT',
+    };
+    const manualExpenseSnapshots = expenseSnapshots.map((expense, index) => ({
+      ...expense,
+      original_currency: 'KZT',
+      amount_rsd: index === 0 ? '33.34' : '66.67',
+      amount_usd: null,
+      amount_eur: null,
+      fx_rate_date: null,
+    }));
+    const receiptQuery = singleResultClient(
+      manualReceiptSnapshot,
+      'maybeSingle',
+    );
+    const expensesQuery = listResultClient(manualExpenseSnapshots);
+    const merchantQuery = singleResultClient(
+      { name: 'Old Market', aliases: [] },
+      'single',
+    );
+    const firstExpenseUpdate = twoFilterMutationClient('update');
+    const secondExpenseUpdate = twoFilterMutationClient('update');
+    const receiptUpdate = oneFilterUpdateClient();
+
+    fromMock
+      .mockReturnValueOnce(receiptQuery.client)
+      .mockReturnValueOnce(expensesQuery.client)
+      .mockReturnValueOnce(merchantQuery.client)
+      .mockReturnValueOnce(firstExpenseUpdate.client)
+      .mockReturnValueOnce(secondExpenseUpdate.client)
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
+
+    await updateFiscalReceipt('receipt-1', {
+      merchant: { existingId: 'merchant-old' },
+      merchantLabel: 'OLD MARKET 101 CENTER',
+      occurredOn: '2026-08-01',
+      currency: 'EUR',
+      manualRsdTotalCents: null,
+      expenses: manualExpenseSnapshots.map((item) => ({
+        id: item.id,
+        amountCents: Number(item.original_amount) * 100,
+        categoryId: item.category_id,
+        description: item.description,
+        rawName: item.raw_name,
+        included: true,
+      })),
+    });
+
+    expect(ratesMock).toHaveBeenCalledTimes(1);
+    expect(ratesMock).toHaveBeenCalledWith('2026-08-01');
+    expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'EUR',
+        amount_rsd: '11700.00',
+        amount_usd: '106.36',
+        amount_eur: '100.00',
+        fx_rate_date: '2026-08-01',
+      }),
+    );
+    expect(secondExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'EUR',
+        amount_rsd: '23400.00',
+        amount_usd: '212.73',
+        amount_eur: '200.00',
+        fx_rate_date: '2026-08-01',
+      }),
+    );
+    expect(receiptUpdate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ currency: 'EUR' }),
+    );
+  });
+
   test('deletes the receipt when every item is excluded', async () => {
     const receiptQuery = singleResultClient(
       receiptSnapshot,

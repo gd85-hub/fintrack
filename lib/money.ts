@@ -1,9 +1,80 @@
 export const currencies = ['RSD', 'USD', 'EUR'] as const;
+export const commonCurrencies = [
+  'RSD',
+  'USD',
+  'EUR',
+  'KZT',
+  'RUB',
+  'TRY',
+] as const;
 
 export type Currency = (typeof currencies)[number];
 
 export function isCurrency(value: string): value is Currency {
   return currencies.some((currency) => currency === value);
+}
+
+export function normalizeCurrencyCode(value: string): string | null {
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/u.test(normalized) ? normalized : null;
+}
+
+export function distributeCents(
+  totalCents: number,
+  weights: readonly number[],
+): number[] {
+  if (!Number.isSafeInteger(totalCents) || totalCents < 0) {
+    throw new Error('Total must be a non-negative integer number of cents.');
+  }
+  if (
+    weights.some(
+      (weight) => !Number.isSafeInteger(weight) || weight < 0,
+    )
+  ) {
+    throw new Error('Weights must be non-negative integer numbers.');
+  }
+  if (weights.length === 0) {
+    if (totalCents === 0) {
+      return [];
+    }
+    throw new Error('At least one positive weight is required.');
+  }
+
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  if (!Number.isSafeInteger(totalWeight) || totalWeight <= 0) {
+    if (totalCents === 0 && totalWeight === 0) {
+      return weights.map(() => 0);
+    }
+    throw new Error('At least one positive weight is required.');
+  }
+
+  const denominator = BigInt(totalWeight);
+  const shares = weights.map((weight) =>
+    Number((BigInt(totalCents) * BigInt(weight)) / denominator),
+  );
+  const remainders = weights.map((weight, index) => ({
+    index,
+    remainder:
+      (BigInt(totalCents) * BigInt(weight)) % denominator,
+  }));
+  remainders.sort((left, right) => {
+    if (left.remainder === right.remainder) {
+      return left.index - right.index;
+    }
+    return left.remainder > right.remainder ? -1 : 1;
+  });
+
+  const unassigned =
+    totalCents - shares.reduce((sum, share) => sum + share, 0);
+  for (let index = 0; index < unassigned; index += 1) {
+    const remainder = remainders[index];
+    if (!remainder) {
+      throw new Error('Unable to distribute the total exactly.');
+    }
+    shares[remainder.index] += 1;
+  }
+
+  return shares;
 }
 
 export type ConvertedAmounts = {

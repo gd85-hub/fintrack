@@ -2,8 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   convertAll,
+  distributeCents,
   formatMoney,
   isCurrency,
+  normalizeCurrencyCode,
   parseAmountInput,
 } from '../money';
 
@@ -33,6 +35,30 @@ describe('parseAmountInput', () => {
     expect(parseAmountInput('12,555')).toBeNull();
     expect(parseAmountInput('1 000')).toBeNull();
     expect(parseAmountInput('-5')).toBeNull();
+  });
+});
+
+describe('normalizeCurrencyCode', () => {
+  it('normalizes valid free-form ISO-style codes', () => {
+    expect(normalizeCurrencyCode(' tmt ')).toBe('TMT');
+    expect(normalizeCurrencyCode('US')).toBeNull();
+    expect(normalizeCurrencyCode('12A')).toBeNull();
+  });
+});
+
+describe('distributeCents', () => {
+  it('assigns every cent using deterministic remainder correction', () => {
+    const shares = distributeCents(100, [1, 1, 1]);
+
+    expect(shares).toEqual([34, 33, 33]);
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(100);
+  });
+
+  it('distributes proportionally and keeps the exact requested total', () => {
+    const shares = distributeCents(10_001, [10_000, 20_000]);
+
+    expect(shares).toEqual([3_334, 6_667]);
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(10_001);
   });
 });
 

@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { DatePicker } from '../../../components/DatePicker';
 import { LoadingScreen } from '../../../components/LoadingScreen';
 import { MerchantPicker } from '../../../components/MerchantPicker';
+import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySelector';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import {
   getFiscalReceiptForEdit,
@@ -136,6 +137,10 @@ export default function ReviewReceiptScreen() {
   );
   const [merchantTypeId, setMerchantTypeId] = useState<string | null>(null);
   const [occurredOn, setOccurredOn] = useState('');
+  const [receiptCurrency, setReceiptCurrency] = useState(
+    draft?.currency ?? 'RSD',
+  );
+  const [manualRsdInput, setManualRsdInput] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,6 +211,13 @@ export default function ReviewReceiptScreen() {
             loadedEditDraft.merchantTypeId ?? defaultType?.id ?? null,
           );
           setOccurredOn(loadedEditDraft.occurredOn);
+          setReceiptCurrency(loadedEditDraft.currency);
+          setManualRsdInput(
+            loadedEditDraft.manualRsdTotalCents === null ||
+              loadedEditDraft.manualRsdTotalCents === undefined
+              ? ''
+              : centsToInput(loadedEditDraft.manualRsdTotalCents),
+          );
           setItems(
             loadedEditDraft.items.map((item) => ({
               amountCents: item.amountCents,
@@ -254,6 +266,8 @@ export default function ReviewReceiptScreen() {
           matched?.typeId ?? scanDefaultType?.id ?? null,
         );
         setOccurredOn(parsedReceiptDate(draft));
+        setReceiptCurrency(draft.currency);
+        setManualRsdInput('');
         const preparedItems = draft.items.map((item, itemIndex) => {
           const suggestedCategoryId = item.categoryName
             ? categoriesByName.get(
@@ -354,6 +368,13 @@ export default function ReviewReceiptScreen() {
   const includedTotal = includedReviewTotal(items);
   const hasInvalidIncludedAmounts =
     validIncludedItems.length !== includedItems.length;
+  const manualRsdTotalCents = manualRsdInput.trim()
+    ? parseAmountInput(manualRsdInput)
+    : null;
+  const hasInvalidManualRsdTotal =
+    !isCurrency(receiptCurrency) &&
+    manualRsdInput.trim() !== '' &&
+    (manualRsdTotalCents === null || manualRsdTotalCents <= 0);
 
   if (loading) {
     return <LoadingScreen />;
@@ -381,7 +402,6 @@ export default function ReviewReceiptScreen() {
     );
   }
 
-  const receiptCurrency = editDraft?.currency ?? draft?.currency ?? '';
   const receiptTotalCents =
     editDraft?.totalCents ?? draft?.totalCents ?? 0;
   const receiptPaymentType =
@@ -461,6 +481,13 @@ export default function ReviewReceiptScreen() {
     );
   };
 
+  const changeReceiptCurrency = (currency: string) => {
+    setReceiptCurrency(currency);
+    if (isCurrency(currency)) {
+      setManualRsdInput('');
+    }
+  };
+
   const saveReview = async (allowEmptyEdit: boolean) => {
     setErrorMessage('');
     if (!includedItems.length && !allowEmptyEdit) {
@@ -469,6 +496,10 @@ export default function ReviewReceiptScreen() {
     }
     if (hasInvalidIncludedAmounts) {
       setErrorMessage('Исправьте суммы включённых позиций.');
+      return;
+    }
+    if (hasInvalidManualRsdTotal) {
+      setErrorMessage('Введите корректный итог в RSD или оставьте поле пустым.');
       return;
     }
     if (!parseLocalISO(occurredOn)) {
@@ -507,6 +538,8 @@ export default function ReviewReceiptScreen() {
           merchant,
           merchantLabel: receiptMerchantLabel,
           occurredOn,
+          currency: receiptCurrency,
+          manualRsdTotalCents,
           expenses: items.map((item) => {
             if (!item.expenseId) {
               throw new Error('Позиция покупки не найдена.');
@@ -527,8 +560,9 @@ export default function ReviewReceiptScreen() {
           throw new Error('Чек не найден.');
         }
         await saveFiscalReceipt({
-          receipt: draft,
+          receipt: { ...draft, currency: receiptCurrency },
           merchant,
+          manualRsdTotalCents,
           expenses: validIncludedItems.map((item) => ({
             amountCents: item.amountCents,
             categoryId: item.categoryId,
@@ -633,9 +667,16 @@ export default function ReviewReceiptScreen() {
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Итого в чеке</Text>
-            <Text style={styles.summaryValue}>
-              {formatMoney(receiptTotalCents)} {receiptCurrency}
-            </Text>
+            <View style={styles.summaryAmount}>
+              <Text style={styles.summaryValue}>
+                {formatMoney(receiptTotalCents)}
+              </Text>
+              <ReceiptCurrencySelector
+                disabled={saving}
+                onChange={changeReceiptCurrency}
+                value={receiptCurrency}
+              />
+            </View>
           </View>
           {receiptPaymentType ? (
             <View style={styles.summaryRow}>
@@ -665,11 +706,41 @@ export default function ReviewReceiptScreen() {
         ) : null}
 
         {!isCurrency(receiptCurrency) ? (
-          <View accessibilityRole="alert" style={styles.warningCard}>
-            <Text style={styles.warningText}>
-              Для {receiptCurrency} пока нет конвертации. Сохраним исходные
-              суммы и отметим позиции как требующие внимания.
-            </Text>
+          <View style={styles.manualCurrencySection}>
+            <View style={styles.manualField}>
+              <Text style={styles.label}>Итого в RSD (вручную)</Text>
+              <View style={styles.manualInputRow}>
+                <TextInput
+                  accessibilityLabel="Итого в RSD вручную"
+                  editable={!saving}
+                  inputMode="decimal"
+                  maxLength={20}
+                  onChangeText={setManualRsdInput}
+                  placeholder="0,00"
+                  placeholderTextColor={theme.colors.textMuted}
+                  style={[
+                    styles.manualInput,
+                    hasInvalidManualRsdTotal && styles.itemAmountInputInvalid,
+                  ]}
+                  value={manualRsdInput}
+                />
+                <Text style={styles.manualCurrency}>RSD</Text>
+              </View>
+              <Text style={styles.helperText}>
+                Сумма распределится между включёнными позициями пропорционально.
+              </Text>
+              {hasInvalidManualRsdTotal ? (
+                <Text accessibilityRole="alert" style={styles.itemValidationText}>
+                  Введите сумму больше нуля
+                </Text>
+              ) : null}
+            </View>
+            <View accessibilityRole="alert" style={styles.warningCard}>
+              <Text style={styles.warningText}>
+                Для {receiptCurrency} пока нет конвертации. Если итог в RSD
+                оставить пустым, позиции сохранятся как требующие внимания.
+              </Text>
+            </View>
           </View>
         ) : null}
 
@@ -914,11 +985,18 @@ export default function ReviewReceiptScreen() {
 
         <Pressable
           accessibilityRole="button"
-          disabled={saving || hasInvalidIncludedAmounts}
+          disabled={
+            saving ||
+            hasInvalidIncludedAmounts ||
+            hasInvalidManualRsdTotal
+          }
           onPress={() => void handleSave()}
           style={({ pressed }) => [
             styles.primaryButton,
-            (pressed || saving || hasInvalidIncludedAmounts) &&
+            (pressed ||
+              saving ||
+              hasInvalidIncludedAmounts ||
+              hasInvalidManualRsdTotal) &&
               styles.disabled,
           ]}
         >
@@ -1042,6 +1120,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },
+  helperText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.caption,
+  },
   input: {
     borderColor: theme.colors.border,
     borderRadius: theme.radii.input,
@@ -1131,6 +1213,32 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.small,
   },
+  manualCurrency: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
+    fontWeight: '600',
+  },
+  manualCurrencySection: {
+    gap: theme.spacing.md,
+  },
+  manualField: {
+    gap: theme.spacing.xs,
+  },
+  manualInput: {
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: theme.fontSizes.body,
+    minHeight: theme.sizes.buttonHeight,
+    paddingHorizontal: theme.spacing.md,
+  },
+  manualInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
   modeChip: {
     borderColor: theme.colors.border,
     borderRadius: theme.radii.chip,
@@ -1211,6 +1319,11 @@ const styles = StyleSheet.create({
     borderRadius: theme.radii.card,
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
+  },
+  summaryAmount: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
   },
   summaryLabel: {
     color: theme.colors.textMuted,

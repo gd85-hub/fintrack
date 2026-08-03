@@ -3,9 +3,11 @@ import { ratesForExpense, type ResolvedRates } from './fx';
 import {
   centsToDecimal,
   convertAll,
+  distributeCents,
   type Currency,
   decimalToCents,
   isCurrency,
+  normalizeCurrencyCode,
 } from './money';
 import {
   merchantAliasesWithIncoming,
@@ -407,6 +409,7 @@ export type SaveFiscalReceiptInput = {
   receipt: ParsedReceipt;
   merchant: FiscalReceiptMerchantInput;
   expenses: FiscalReceiptExpenseInput[];
+  manualRsdTotalCents?: number | null;
 };
 
 export type FiscalReceiptEditItem = {
@@ -438,6 +441,7 @@ export type FiscalReceiptEditDraft = {
   totalCents: number;
   currency: string;
   paymentType: string | null;
+  manualRsdTotalCents?: number | null;
   items: FiscalReceiptEditItem[];
 };
 
@@ -455,6 +459,8 @@ export type UpdateFiscalReceiptInput = {
   merchantLabel: string;
   occurredOn: string;
   expenses: UpdateFiscalReceiptExpenseInput[];
+  currency?: string;
+  manualRsdTotalCents?: number | null;
 };
 
 export type UpdateFiscalReceiptResult = {
@@ -1255,6 +1261,7 @@ const EXPENSE_SELECT =
 export function buildFiscalReceiptEditDraft(
   receipt: FiscalReceiptEditReceipt,
   expenses: readonly Expense[],
+  manualRsdTotalCents: number | null = null,
 ): FiscalReceiptEditDraft {
   const firstExpense = expenses[0];
   if (!firstExpense) {
@@ -1273,6 +1280,7 @@ export function buildFiscalReceiptEditDraft(
     throw new Error('Позиции покупки содержат несогласованные данные.');
   }
 
+  const currency = receipt.currency || firstExpense.originalCurrency;
   return {
     receiptId: receipt.id,
     merchantId: receipt.merchantId,
@@ -1281,8 +1289,9 @@ export function buildFiscalReceiptEditDraft(
     merchantTypeId: receipt.merchantTypeId,
     occurredOn: firstExpense.occurredOn,
     totalCents: receipt.totalCents,
-    currency: receipt.currency || firstExpense.originalCurrency,
+    currency,
     paymentType: receipt.paymentType,
+    ...(!isCurrency(currency) ? { manualRsdTotalCents } : {}),
     items: expenses.map((expense) => ({
       id: expense.id,
       amountCents: expense.originalAmountCents,
@@ -1340,9 +1349,8 @@ export async function getFiscalReceiptForEdit(
     throw expensesError;
   }
 
-  const expenses = (expenseData as unknown as ExpenseQueryRow[]).map(
-    mapExpense,
-  );
+  const expenseRows = expenseData as unknown as ExpenseQueryRow[];
+  const expenses = expenseRows.map(mapExpense);
   if (expenses.length === 0) {
     return null;
   }
@@ -1353,6 +1361,16 @@ export async function getFiscalReceiptForEdit(
     rawReceiptMerchantLabel(receipt.raw_json) ||
     receipt.merchant?.name ||
     '';
+  const currency =
+    receipt.currency ?? expenseRows[0]?.original_currency ?? '';
+  const manualRsdTotalCents =
+    !isCurrency(currency) &&
+    expenseRows.every((expense) => expense.amount_rsd !== null)
+      ? expenseRows.reduce(
+          (total, expense) => total + decimalToCents(expense.amount_rsd),
+          0,
+        )
+      : null;
   return buildFiscalReceiptEditDraft(
     {
       id: receipt.id,
@@ -1367,10 +1385,11 @@ export async function getFiscalReceiptForEdit(
               0,
             )
           : decimalToCents(receipt.total),
-      currency: receipt.currency ?? '',
+      currency,
       paymentType: receipt.payment_type,
     },
     expenses,
+    manualRsdTotalCents,
   );
 }
 
@@ -1779,10 +1798,14 @@ export function receiptExpenseAmounts(
   amountCents: number,
   currency: string,
   rates: ResolvedRates | null,
+  manualRsdCents: number | null = null,
 ) {
   if (!isCurrency(currency)) {
     return {
-      amount_rsd: null,
+      amount_rsd:
+        manualRsdCents === null
+          ? null
+          : centsToDecimal(manualRsdCents),
       amount_usd: null,
       amount_eur: null,
       fx_rate_date: null,
@@ -1839,6 +1862,25 @@ export async function saveFiscalReceipt(
 
   const occurredOn = parsedReceiptDate(input.receipt);
   const userId = await authenticatedUserId();
+  const source = input.receipt.source ?? 'fiscal_qr';
+  const currency = normalizeCurrencyCode(input.receipt.currency);
+  if (!currency) {
+    throw new Error('Укажите трёхбуквенный код валюты.');
+  }
+  const merchantLabel =
+    input.receipt.merchantLabel?.trim() ||
+    input.receipt.merchantName.trim();
+  const rates = isCurrency(currency)
+    ? await ratesForExpense(occurredOn)
+    : null;
+  const manualRsdShares =
+    !isCurrency(currency) && input.manualRsdTotalCents !== null &&
+    input.manualRsdTotalCents !== undefined
+      ? distributeCents(
+          input.manualRsdTotalCents,
+          input.expenses.map((expense) => expense.amountCents),
+        )
+      : input.expenses.map(() => null);
   let merchantId: string;
   let learnedAliases: string[] | null = null;
 
@@ -1875,14 +1917,6 @@ export async function saveFiscalReceipt(
     merchantId = row.id;
   }
 
-  const source = input.receipt.source ?? 'fiscal_qr';
-  const currency = input.receipt.currency;
-  const merchantLabel =
-    input.receipt.merchantLabel?.trim() ||
-    input.receipt.merchantName.trim();
-  const rates = isCurrency(currency)
-    ? await ratesForExpense(occurredOn)
-    : null;
   let receiptId: string | null = null;
 
   try {
@@ -1896,9 +1930,12 @@ export async function saveFiscalReceipt(
         tax_id: input.receipt.taxId,
         occurred_at: input.receipt.occurredAt,
         total: centsToDecimal(input.receipt.totalCents),
-        currency: input.receipt.currency,
+        currency,
         payment_type: input.receipt.paymentType,
-        raw_json: receiptPayloadWithoutRaw(input.receipt),
+        raw_json: receiptPayloadWithoutRaw({
+          ...input.receipt,
+          currency,
+        }),
         parsed_ok: true,
       })
       .select('id')
@@ -1909,11 +1946,12 @@ export async function saveFiscalReceipt(
     const receiptRow = data as unknown as { id: string };
     receiptId = receiptRow.id;
 
-    const expenseRows = input.expenses.map((expense) => {
+    const expenseRows = input.expenses.map((expense, index) => {
       const converted = receiptExpenseAmounts(
         expense.amountCents,
         currency,
         rates,
+        manualRsdShares[index] ?? null,
       );
       return {
         user_id: userId,
@@ -2281,13 +2319,48 @@ export async function updateFiscalReceipt(
       decimalToCents(existing.original_amount) !== expense.amountCents
     );
   });
-  const currency =
-    snapshot.receipt.currency ?? snapshot.expenses[0]?.original_currency;
-  if (!currency) {
+  const currentCurrency = normalizeCurrencyCode(
+    snapshot.receipt.currency ??
+      snapshot.expenses[0]?.original_currency ??
+      '',
+  );
+  if (!currentCurrency) {
     throw new Error('Валюта покупки не найдена.');
   }
+  const currency =
+    input.currency === undefined
+      ? currentCurrency
+      : normalizeCurrencyCode(input.currency);
+  if (!currency) {
+    throw new Error('Укажите трёхбуквенный код валюты.');
+  }
+  const currencyChanged = currency !== currentCurrency;
+  const existingManualRsdTotal =
+    !isCurrency(currentCurrency) &&
+    snapshot.expenses.every((expense) => expense.amount_rsd !== null)
+      ? snapshot.expenses.reduce(
+          (total, expense) =>
+            total + decimalToCents(expense.amount_rsd),
+          0,
+        )
+      : null;
+  const manualRsdTotalCents = isCurrency(currency)
+    ? null
+    : input.manualRsdTotalCents !== undefined
+      ? input.manualRsdTotalCents
+      : currencyChanged
+        ? null
+        : existingManualRsdTotal;
+  const manualRsdShares =
+    !isCurrency(currency) && manualRsdTotalCents !== null
+      ? distributeCents(
+          manualRsdTotalCents,
+          keptExpenses.map((expense) => expense.amountCents ?? 0),
+        )
+      : keptExpenses.map(() => null);
   const rates =
-    (dateChanged || amountChanged) && isCurrency(currency)
+    (dateChanged || amountChanged || currencyChanged) &&
+    isCurrency(currency)
       ? await ratesForExpense(input.occurredOn)
       : null;
   const incomingMerchantName = rawReceiptMerchantName(
@@ -2303,7 +2376,7 @@ export async function updateFiscalReceipt(
       userId,
     );
 
-    for (const expense of keptExpenses) {
+    for (const [index, expense] of keptExpenses.entries()) {
       const existing = snapshotById.get(expense.id);
       if (!existing || expense.amountCents === null) {
         throw new Error(
@@ -2312,10 +2385,16 @@ export async function updateFiscalReceipt(
       }
       const itemAmountChanged =
         decimalToCents(existing.original_amount) !== expense.amountCents;
-      const converted =
-        dateChanged || itemAmountChanged
+      const converted = isCurrency(currency)
+        ? dateChanged || itemAmountChanged || currencyChanged
           ? receiptExpenseAmounts(expense.amountCents, currency, rates)
-          : {};
+          : {}
+        : receiptExpenseAmounts(
+            expense.amountCents,
+            currency,
+            null,
+            manualRsdShares[index] ?? null,
+          );
       const { error } = await supabase
         .from('expenses')
         .update({
@@ -2333,6 +2412,7 @@ export async function updateFiscalReceipt(
           category_id: expense.categoryId,
           merchant_id: resolvedMerchant.id,
           original_amount: centsToDecimal(expense.amountCents),
+          ...(currencyChanged ? { original_currency: currency } : {}),
           ...converted,
         })
         .eq('id', expense.id)
@@ -2371,6 +2451,7 @@ export async function updateFiscalReceipt(
             }
           : {}),
         total: centsToDecimal(totalCents),
+        ...(currencyChanged ? { currency } : {}),
       })
       .eq('id', receiptId);
     if (receiptError) {

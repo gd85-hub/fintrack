@@ -204,4 +204,13 @@ describe('receipt image currency persistence', () => {
       fx_rate_date: null,
     });
   });
+
+  test('stores only a manual RSD share for unsupported currencies', () => {
+    expect(receiptExpenseAmounts(1000, 'KZT', null, 625)).toEqual({
+      amount_rsd: '6.25',
+      amount_usd: null,
+      amount_eur: null,
+      fx_rate_date: null,
+    });
+  });
 });
