@@ -5,6 +5,10 @@ import {
   purchaseUnitsTotal,
 } from '../../app/(app)/index';
 import { type Expense, listExpensesByMonth } from '../db';
+import {
+  collapseIdenticalPurchaseItems,
+  decideHomeRowPresentation,
+} from '../homeRowPresentation';
 import type { Currency } from '../money';
 import { supabase } from '../supabase';
 
@@ -181,4 +185,135 @@ describe('Home purchase grouping', () => {
       ).toBe(oldDaySubtotal);
     },
   );
+
+  test('collapses identical display names and unit prices without changing the total', () => {
+    const firstShirt = {
+      ...createExpense('shirt-1', 'receipt-a', {
+        rsd: 69_900,
+        usd: 600,
+        eur: 550,
+      }),
+      description: 'Футболка',
+      rawName: 'SMOG Majice - kratki rukav',
+    };
+    const secondShirt = {
+      ...firstShirt,
+      id: 'shirt-2',
+      createdAt: '2026-08-01T12:00:02Z',
+    };
+    const socks = {
+      ...createExpense('socks', 'receipt-a', {
+        rsd: 49_900,
+        usd: 430,
+        eur: 390,
+      }),
+      description: 'Носки',
+    };
+    const expenses = [firstShirt, secondShirt, socks];
+
+    const collapsed = collapseIdenticalPurchaseItems(expenses);
+
+    expect(collapsed).toHaveLength(2);
+    expect(collapsed[0]).toMatchObject({
+      count: 2,
+      displayName: 'Футболка',
+      originalAmountCents: 139_800,
+      unitPriceCents: 69_900,
+    });
+    expect(
+      collapsed[0]?.expenses.map((expense) => expense.id),
+    ).toEqual(['shirt-1', 'shirt-2']);
+    expect(collapsed[0]?.firstExpense.rawName).toBe(
+      'SMOG Majice - kratki rukav',
+    );
+    expect(collapsed[1]).toMatchObject({
+      count: 1,
+      displayName: 'Носки',
+      originalAmountCents: 49_900,
+    });
+    expect(
+      collapsed.reduce(
+        (total, item) => total + item.originalAmountCents,
+        0,
+      ),
+    ).toBe(
+      expenses.reduce(
+        (total, expense) => total + expense.originalAmountCents,
+        0,
+      ),
+    );
+  });
+
+  test('uses explicit per-unit prices when quantities differ', () => {
+    const collapsed = collapseIdenticalPurchaseItems([
+      {
+        description: 'Футболка',
+        originalAmountCents: 139_800,
+        originalCurrency: 'RSD',
+        quantity: 2,
+        unitPriceCents: 69_900,
+      },
+      {
+        description: 'Футболка',
+        originalAmountCents: 69_900,
+        originalCurrency: 'RSD',
+        quantity: 1,
+        unitPriceCents: 69_900,
+      },
+    ]);
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toMatchObject({
+      count: 2,
+      originalAmountCents: 209_700,
+      unitPriceCents: 69_900,
+    });
+  });
+
+  test('keeps the same display name separate at a different unit price', () => {
+    const collapsed = collapseIdenticalPurchaseItems([
+      {
+        description: 'Футболка',
+        originalAmountCents: 69_900,
+        originalCurrency: 'RSD',
+      },
+      {
+        description: 'Футболка',
+        originalAmountCents: 79_900,
+        originalCurrency: 'RSD',
+      },
+    ]);
+
+    expect(collapsed).toHaveLength(2);
+  });
+
+  test('chooses row behavior only from item count', () => {
+    expect(decideHomeRowPresentation(2)).toEqual({
+      expandable: true,
+      kind: 'purchase',
+    });
+    expect(decideHomeRowPresentation(1)).toEqual({
+      expandable: false,
+      kind: 'expense',
+    });
+
+    const [receiptUnit, manualUnit] = buildPurchaseUnits([
+      createExpense('receipt-item', 'receipt-a', {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      createExpense('manual-item', null, {
+        rsd: 500,
+        usd: 5,
+        eur: 4,
+      }),
+    ]);
+    expect(
+      decideHomeRowPresentation(receiptUnit?.expenses.length ?? 0),
+    ).toEqual({ expandable: false, kind: 'expense' });
+    expect(
+      decideHomeRowPresentation(manualUnit?.expenses.length ?? 0),
+    ).toEqual({ expandable: false, kind: 'expense' });
+  });
 });

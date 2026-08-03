@@ -33,6 +33,10 @@ import {
   shiftMonth,
   todayLocalISO,
 } from '../../lib/dates';
+import {
+  collapseIdenticalPurchaseItems,
+  decideHomeRowPresentation,
+} from '../../lib/homeRowPresentation';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme } from '../../lib/theme';
 
@@ -137,13 +141,13 @@ function expenseDisplayAmount(
 }
 
 function purchaseDisplayAmount(
-  unit: PurchaseUnit,
+  expenses: readonly Expense[],
   displayCurrency: Currency,
 ) {
-  const firstExpense = unit.expenses[0];
+  const firstExpense = expenses[0];
   const usesOneUnconvertedCurrency =
     firstExpense !== undefined &&
-    unit.expenses.every(
+    expenses.every(
       (expense) =>
         expense.fxRateDate === null &&
         expense.originalCurrency === firstExpense.originalCurrency,
@@ -151,7 +155,7 @@ function purchaseDisplayAmount(
 
   if (usesOneUnconvertedCurrency) {
     return {
-      amountCents: unit.expenses.reduce(
+      amountCents: expenses.reduce(
         (sum, expense) => sum + expense.originalAmountCents,
         0,
       ),
@@ -160,7 +164,11 @@ function purchaseDisplayAmount(
   }
 
   return {
-    amountCents: purchaseUnitTotal(unit, displayCurrency),
+    amountCents: expenses.reduce(
+      (sum, expense) =>
+        sum + amountForCurrency(expense, displayCurrency),
+      0,
+    ),
     currency: displayCurrency,
   };
 }
@@ -217,10 +225,12 @@ function ExpenseRow({
         pressed && styles.rowPressed,
       ]}
     >
-      <Text style={styles.emoji}>{expense.categoryEmoji}</Text>
       <View style={styles.expenseCopy}>
         <Text numberOfLines={1} style={styles.expenseTitle}>
           {expense.description.trim() || expense.categoryName}
+        </Text>
+        <Text numberOfLines={1} style={styles.categoryMarker}>
+          {`${expense.categoryEmoji} ${expense.categoryName}`.trim()}
         </Text>
         {expense.merchantName ? (
           <Text numberOfLines={1} style={styles.expenseSubtitle}>
@@ -263,7 +273,10 @@ function ReceiptPurchaseRow({
   unit,
   visibleCount,
 }: ReceiptPurchaseRowProps) {
-  const displayAmount = purchaseDisplayAmount(unit, displayCurrency);
+  const displayAmount = purchaseDisplayAmount(
+    unit.expenses,
+    displayCurrency,
+  );
   const firstExpense = unit.expenses[0];
   const merchantName =
     unit.expenses.find((expense) => expense.merchantName)?.merchantName ??
@@ -273,8 +286,9 @@ function ReceiptPurchaseRow({
     ?.merchantLabel?.trim();
   const showMerchantLabel =
     merchantLabel !== undefined && merchantLabel !== merchantName;
-  const visibleExpenses = unit.expenses.slice(0, visibleCount);
-  const remaining = unit.expenses.length - visibleExpenses.length;
+  const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
+  const visibleItems = collapsedItems.slice(0, visibleCount);
+  const remaining = collapsedItems.length - visibleItems.length;
 
   if (!firstExpense) {
     return null;
@@ -355,15 +369,19 @@ function ReceiptPurchaseRow({
             </View>
           </View>
 
-          {visibleExpenses.map((expense) => {
-            const itemAmount = expenseDisplayAmount(
-              expense,
+          {visibleItems.map((item) => {
+            const expense = item.firstExpense;
+            const itemAmount = purchaseDisplayAmount(
+              item.expenses,
               displayCurrency,
             );
+            const displayName = `${item.displayName}${
+              item.count > 1 ? ` ×${item.count}` : ''
+            }`;
 
             return (
               <Pressable
-                accessibilityLabel={`Открыть позицию ${expense.description.trim() || expense.categoryName}`}
+                accessibilityLabel={`Открыть позицию ${displayName}`}
                 accessibilityRole="button"
                 key={expense.id}
                 onPress={() => onOpenExpense(expense.id)}
@@ -377,11 +395,13 @@ function ReceiptPurchaseRow({
                   categoryLabel={`${expense.categoryEmoji} ${expense.categoryName}`.trim()}
                   currency={itemAmount.currency}
                   date={expense.occurredOn}
-                  description={
-                    expense.description.trim() || expense.categoryName
-                  }
+                  description={displayName}
                   merchantName={null}
-                  rawName={expense.rawName}
+                  rawName={
+                    expense.rawName?.trim() === item.displayName
+                      ? null
+                      : expense.rawName
+                  }
                 />
               </Pressable>
             );
@@ -807,7 +827,11 @@ export default function HomeScreen() {
                       return null;
                     }
 
-                    if (unit.receiptId === null) {
+                    const rowPresentation = decideHomeRowPresentation(
+                      unit.expenses.length,
+                    );
+
+                    if (rowPresentation.kind === 'expense') {
                       return (
                         <ExpenseRow
                           displayCurrency={displayCurrency}
@@ -821,6 +845,9 @@ export default function HomeScreen() {
                     }
 
                     const receiptId = unit.receiptId;
+                    if (receiptId === null) {
+                      return null;
+                    }
                     return (
                       <ReceiptPurchaseRow
                         displayCurrency={displayCurrency}
@@ -966,9 +993,6 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: theme.opacity.disabled,
   },
-  emoji: {
-    fontSize: theme.fontSizes.body,
-  },
   emptyHint: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.label,
@@ -999,6 +1023,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
     textAlign: 'right',
+  },
+  categoryMarker: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
   },
   expenseCopy: {
     flex: 1,
