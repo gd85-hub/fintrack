@@ -20,12 +20,17 @@ const ratesMock = ratesForExpense as jest.MockedFunction<
 >;
 const getSessionMock = supabase.auth.getSession as unknown as jest.Mock;
 const fromMock = supabase.from as unknown as jest.Mock;
+const recencyEqMock = jest.fn(async () => ({ error: null }));
+const recencyUpdateMock = jest.fn(() => ({ eq: recencyEqMock }));
+const recencyClient = { update: recencyUpdateMock };
 
 describe('receipt display-name persistence', () => {
   beforeEach(() => {
     ratesMock.mockReset();
     getSessionMock.mockReset();
     fromMock.mockReset();
+    recencyEqMock.mockClear();
+    recencyUpdateMock.mockClear();
   });
 
   test('stores the human description and raw receipt name together', async () => {
@@ -58,7 +63,8 @@ describe('receipt display-name persistence', () => {
     fromMock
       .mockReturnValueOnce(merchantQuery)
       .mockReturnValueOnce({ insert: receiptInsert })
-      .mockReturnValueOnce({ insert: expenseInsert });
+      .mockReturnValueOnce({ insert: expenseInsert })
+      .mockReturnValueOnce(recencyClient);
 
     await saveFiscalReceipt({
       receipt: {
@@ -104,6 +110,10 @@ describe('receipt display-name persistence', () => {
         merchant_label: 'UNIVEREXPORT 1369800-MP190',
       }),
     );
+    expect(recencyUpdateMock).toHaveBeenCalledWith({
+      updated_at: expect.any(String),
+    });
+    expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-1');
   });
 
   test('creates one brand merchant and keeps each branch label', async () => {
@@ -204,7 +214,8 @@ describe('receipt display-name persistence', () => {
     fromMock
       .mockReturnValueOnce(existingMerchantQuery)
       .mockReturnValueOnce({ insert: secondReceiptInsert })
-      .mockReturnValueOnce({ insert: secondExpenseInsert });
+      .mockReturnValueOnce({ insert: secondExpenseInsert })
+      .mockReturnValueOnce(recencyClient);
 
     await saveFiscalReceipt({
       receipt: {
@@ -245,5 +256,7 @@ describe('receipt display-name persistence', () => {
         merchant_label: 'MIX MARKT 41027 NS LIMAN',
       }),
     );
+    expect(recencyUpdateMock).toHaveBeenCalledTimes(1);
+    expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-brand');
   });
 });

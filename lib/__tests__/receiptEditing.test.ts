@@ -24,6 +24,9 @@ const fromMock = supabase.from as unknown as jest.Mock;
 const ratesMock = ratesForExpense as jest.MockedFunction<
   typeof ratesForExpense
 >;
+const recencyEqMock = jest.fn(async () => ({ error: null }));
+const recencyUpdateMock = jest.fn(() => ({ eq: recencyEqMock }));
+const recencyClient = { update: recencyUpdateMock };
 
 const receiptSnapshot = {
   id: 'receipt-1',
@@ -238,6 +241,8 @@ describe('updateFiscalReceipt', () => {
     getSessionMock.mockReset();
     fromMock.mockReset();
     ratesMock.mockReset();
+    recencyEqMock.mockClear();
+    recencyUpdateMock.mockClear();
     getSessionMock.mockImplementation(async () => ({
       data: { session: { user: { id: 'user-1' } } },
       error: null,
@@ -353,7 +358,8 @@ describe('updateFiscalReceipt', () => {
       .mockReturnValueOnce(merchantQuery.client)
       .mockReturnValueOnce(keptExpenseUpdate.client)
       .mockReturnValueOnce(excludedExpenseDelete.client)
-      .mockReturnValueOnce(receiptUpdate.client);
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
 
     await expect(
       updateFiscalReceipt('receipt-1', {
@@ -406,6 +412,10 @@ describe('updateFiscalReceipt', () => {
       merchant_label: 'OLD MARKET 101 CENTER',
       total: '100.00',
     });
+    expect(recencyUpdateMock).toHaveBeenCalledWith({
+      updated_at: expect.any(String),
+    });
+    expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-old');
   });
 
   test('recomputes only an amount-edited row with one shared FX lookup', async () => {
@@ -433,7 +443,8 @@ describe('updateFiscalReceipt', () => {
       .mockReturnValueOnce(merchantQuery.client)
       .mockReturnValueOnce(changedExpenseUpdate.client)
       .mockReturnValueOnce(unchangedExpenseUpdate.client)
-      .mockReturnValueOnce(receiptUpdate.client);
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
 
     await updateFiscalReceipt('receipt-1', {
       merchant: { existingId: 'merchant-old' },

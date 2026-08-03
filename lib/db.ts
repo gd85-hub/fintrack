@@ -38,6 +38,7 @@ type MerchantQueryRow = {
   type_id: string | null;
   aliases: string[];
   created_at: string;
+  updated_at: string;
 };
 
 type ExpenseQueryRow = {
@@ -189,6 +190,7 @@ export type Merchant = {
   typeId: string | null;
   aliases: string[];
   createdAt: string;
+  updatedAt: string;
 };
 
 export type Expense = {
@@ -463,7 +465,7 @@ export async function listMerchantTypes(): Promise<MerchantType[]> {
 export async function listMerchants(): Promise<Merchant[]> {
   const { data, error } = await supabase
     .from('merchants')
-    .select('id,name,type_id,aliases,created_at')
+    .select('id,name,type_id,aliases,created_at,updated_at')
     .eq('active', true)
     .order('name', { ascending: true });
 
@@ -477,6 +479,7 @@ export async function listMerchants(): Promise<Merchant[]> {
     typeId: row.type_id,
     aliases: row.aliases,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }));
 }
 
@@ -494,7 +497,7 @@ export async function createMerchant(
       type_id: typeId,
       aliases,
     })
-    .select('id,name,type_id,aliases,created_at')
+    .select('id,name,type_id,aliases,created_at,updated_at')
     .single();
 
   if (error) {
@@ -508,6 +511,7 @@ export async function createMerchant(
     typeId: row.type_id,
     aliases: row.aliases,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -929,6 +933,24 @@ async function conversionPayload(input: ExpenseInput) {
   };
 }
 
+async function bumpMerchantUsage(merchantId: string | null): Promise<void> {
+  if (!merchantId) {
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('merchants')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', merchantId);
+    if (error) {
+      throw error;
+    }
+  } catch (error: unknown) {
+    console.error('Unable to update merchant recency:', error);
+  }
+}
+
 export async function insertExpense(input: ExpenseInput): Promise<void> {
   const [userId, converted] = await Promise.all([
     authenticatedUserId(),
@@ -951,6 +973,8 @@ export async function insertExpense(input: ExpenseInput): Promise<void> {
   if (error) {
     throw error;
   }
+
+  await bumpMerchantUsage(input.merchantId);
 }
 
 export async function updateExpense(
@@ -992,6 +1016,8 @@ export async function updateExpense(
   if (error) {
     throw error;
   }
+
+  await bumpMerchantUsage(input.merchantId);
 }
 
 export async function deleteExpense(id: string): Promise<void> {
@@ -1210,6 +1236,10 @@ export async function saveFiscalReceipt(
       }
     }
     throw error;
+  }
+
+  if ('existingId' in input.merchant && !learnedAliases) {
+    await bumpMerchantUsage(merchantId);
   }
 }
 
@@ -1622,6 +1652,10 @@ export async function updateFiscalReceipt(
       if (aliasError) {
         throw aliasError;
       }
+    }
+
+    if (!resolvedMerchant.created && !resolvedMerchant.learnedAliases) {
+      await bumpMerchantUsage(resolvedMerchant.id);
     }
 
     return { deleted: false };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -14,6 +14,7 @@ import {
   type Merchant,
   type MerchantType,
 } from '../lib/db';
+import { filterAndSortMerchants } from '../lib/merchantSearch';
 import { theme } from '../lib/theme';
 
 type MerchantPickerProps = {
@@ -39,12 +40,18 @@ export function MerchantPicker({
   const [typeId, setTypeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [query, setQuery] = useState('');
   const selected = merchants.find((merchant) => merchant.id === value);
+  const displayedMerchants = useMemo(
+    () => filterAndSortMerchants(merchants, query),
+    [merchants, query],
+  );
 
   function close() {
     setVisible(false);
     setAdding(false);
     setErrorMessage('');
+    setQuery('');
   }
 
   function selectMerchant(merchantId: string | null) {
@@ -112,6 +119,21 @@ export function MerchantPicker({
                 <Text style={styles.close}>Закрыть</Text>
               </Pressable>
             </View>
+
+            {!adding ? (
+              <TextInput
+                accessibilityLabel="Поиск места"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                onChangeText={setQuery}
+                placeholder="Поиск места…"
+                placeholderTextColor={theme.colors.textMuted}
+                returnKeyType="search"
+                style={styles.searchInput}
+                value={query}
+              />
+            ) : null}
 
             <ScrollView
               contentContainerStyle={styles.list}
@@ -205,7 +227,7 @@ export function MerchantPicker({
                     <Text style={styles.rowText}>Не указано</Text>
                   </Pressable>
 
-                  {merchants.map((merchant) => (
+                  {displayedMerchants.map((merchant) => (
                     <Pressable
                       accessibilityRole="radio"
                       accessibilityState={{
@@ -222,6 +244,10 @@ export function MerchantPicker({
                       <Text style={styles.rowText}>{merchant.name}</Text>
                     </Pressable>
                   ))}
+
+                  {query.trim() && displayedMerchants.length === 0 ? (
+                    <Text style={styles.emptyHint}>Ничего не найдено</Text>
+                  ) : null}
 
                   {allowCreate ? (
                     <Pressable
@@ -278,6 +304,13 @@ const styles = StyleSheet.create({
   error: {
     color: theme.colors.danger,
     fontSize: theme.fontSizes.caption,
+  },
+  emptyHint: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.caption,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.md,
+    textAlign: 'center',
   },
   field: {
     gap: theme.spacing.xs,
@@ -359,6 +392,16 @@ const styles = StyleSheet.create({
   rowText: {
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
+  },
+  searchInput: {
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
+    marginBottom: theme.spacing.sm,
+    minHeight: theme.sizes.buttonHeight,
+    paddingHorizontal: theme.spacing.sm,
   },
   secondaryButton: {
     alignItems: 'center',
