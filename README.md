@@ -14,7 +14,7 @@ Replaces a Google Sheets tracker whose main problem was manual data entry.
 |---|---|---|
 | 0 | Scaffolding, DB schema, RLS, email auth | Done |
 | 1 | Manual expenses in 3 currencies, NBS rates, month list, edit/delete | Done |
-| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses | Code done; native device test pending |
+| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses + whole-purchase editing | Code done; native device test pending |
 | 3 | Photo / email-screenshot receipts (any country) via vision model | Code done; Edge Function deployment and native rebuild pending |
 | 4 | Analytics | In progress: categories + merchants + drilldown done; trends / fixed-vs-variable / subscriptions pending |
 
@@ -118,7 +118,7 @@ supabase/
 ### Data model
 
 - **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`; its editable human label is stored in `description` and the original receipt text in nullable `raw_name`.
-- **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Receipt **images are never stored**.
+- **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Home groups every non-null `receipt_id` as one editable purchase, including receipts with only one remaining item. Receipt **images are never stored**.
 - **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
 - **`item_category_rules`** - a private per-user dictionary from normalized raw item names to a category or routine exclusion, with the learned human label in `display_name`. Final review choices overwrite older rules and increment their hit count.
 - **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
@@ -132,6 +132,7 @@ Reference tables use `user_id IS NULL` for shared system defaults and a non-null
 - **Rate snapshot at write time.** Weekends/holidays fall back to the most recent earlier rate.
 - **Integer cents everywhere.** No floating-point money math.
 - **Local calendar dates.** Never derived via UTC.
+- **Whole-purchase date edits follow the existing schema.** Every receipt expense gets the new canonical `occurred_on`; because `receipts` has `occurred_at` rather than `occurred_on`, its timestamp keeps the original time/offset and replaces only the local date portion. Raw parsed JSON remains the immutable source payload.
 - **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
 - **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
 - **Receipt categorization is dictionary-first.** Known item names resolve locally from the user's RLS-protected rules; only unknown names use the text-only model, and final review choices teach the next receipt.

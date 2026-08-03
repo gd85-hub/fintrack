@@ -8,22 +8,28 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { CategoryPicker } from '../../../components/CategoryPicker';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { DatePicker } from '../../../components/DatePicker';
 import { LoadingScreen } from '../../../components/LoadingScreen';
 import { MerchantPicker } from '../../../components/MerchantPicker';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import {
+  getFiscalReceiptForEdit,
   listCategories,
   listMerchants,
   listMerchantTypes,
   saveFiscalReceipt,
+  updateFiscalReceipt,
   type Category,
+  type FiscalReceiptEditDraft,
   type FiscalReceiptMerchantInput,
   type Merchant,
   type MerchantType,
 } from '../../../lib/db';
+import { formatLongDate, parseLocalISO } from '../../../lib/dates';
 import {
   centsToInput,
   formatMoney,
@@ -49,7 +55,8 @@ type ReviewItem = {
   categoryId: string;
   description: string;
   descriptionEdited: boolean;
-  id: number;
+  expenseId: string | null;
+  id: number | string;
   included: boolean;
   inclusionEdited: boolean;
   quantity: number | null;
@@ -101,8 +108,22 @@ export function parseReviewAmountInput(value: string): number | null {
   return amountCents !== null && amountCents > 0 ? amountCents : null;
 }
 
+function routeParam(
+  value: string | string[] | undefined,
+): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  return first?.trim() || null;
+}
+
 export default function ReviewReceiptScreen() {
   const { draft, clearDraft } = useReceiptDraft();
+  const params = useLocalSearchParams<{
+    receiptId?: string | string[];
+  }>();
+  const editReceiptId = routeParam(params.receiptId);
+  const isEditMode = editReceiptId !== null;
+  const [editDraft, setEditDraft] =
+    useState<FiscalReceiptEditDraft | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [merchantTypes, setMerchantTypes] = useState<MerchantType[]>([]);
@@ -114,25 +135,43 @@ export default function ReviewReceiptScreen() {
     draft?.merchantName ?? '',
   );
   const [merchantTypeId, setMerchantTypeId] = useState<string | null>(null);
+  const [occurredOn, setOccurredOn] = useState('');
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [categorizing, setCategorizing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    if (!draft) {
+    if (!isEditMode && !draft) {
       setLoading(false);
       return;
     }
 
     let active = true;
+    setLoading(true);
+    setCategorizing(false);
+    setEditDraft(null);
+    setErrorMessage('');
+    setItems([]);
+    setBulkCategoryId(null);
+
     void Promise.all([
       listCategories(),
       listMerchants(),
       listMerchantTypes(),
-    ])
-      .then(([loadedCategories, loadedMerchants, loadedTypes]) => {
+      editReceiptId
+        ? getFiscalReceiptForEdit(editReceiptId)
+        : Promise.resolve(null),
+    ]).then(
+      ([
+        loadedCategories,
+        loadedMerchants,
+        loadedTypes,
+        loadedEditDraft,
+      ]) => {
         if (!active) {
           return;
         }
@@ -142,17 +181,65 @@ export default function ReviewReceiptScreen() {
         if (!uncategorized) {
           throw new Error('Категория «Не распознано» не найдена.');
         }
+        const defaultType =
+          loadedTypes.find((type) => type.slug === 'shop') ??
+          loadedTypes[0] ??
+          null;
+
+        setCategories(loadedCategories);
+        setMerchants(loadedMerchants);
+        setMerchantTypes(loadedTypes);
+        setBulkCategoryId(null);
+
+        if (isEditMode) {
+          if (!loadedEditDraft) {
+            throw new Error('Покупка не найдена.');
+          }
+
+          setEditDraft(loadedEditDraft);
+          setMerchantMode(
+            loadedEditDraft.merchantId ? 'existing' : 'new',
+          );
+          setMerchantId(loadedEditDraft.merchantId);
+          setMerchantName(loadedEditDraft.merchantName);
+          setMerchantTypeId(
+            loadedEditDraft.merchantTypeId ?? defaultType?.id ?? null,
+          );
+          setOccurredOn(loadedEditDraft.occurredOn);
+          setItems(
+            loadedEditDraft.items.map((item) => ({
+              amountCents: item.amountCents,
+              amountInput: centsToInput(item.amountCents),
+              categoryEdited: false,
+              categoryId: item.categoryId,
+              description: item.description,
+              descriptionEdited: false,
+              expenseId: item.id,
+              id: item.id,
+              included: true,
+              inclusionEdited: false,
+              quantity: null,
+              rawName: item.rawName,
+              unitPriceCents: null,
+              vatLabel: null,
+            })),
+          );
+          return;
+        }
+
+        if (!draft) {
+          throw new Error('Чек не найден.');
+        }
+
+        setEditDraft(null);
         const matched = findMatchingMerchant(
           loadedMerchants,
           draft.merchantName,
         );
-        const defaultType =
+        const scanDefaultType =
           loadedTypes.find(
             (type) => type.slug === draft.merchantTypeSlug,
-          ) ??
-          loadedTypes.find((type) => type.slug === 'shop') ??
-          loadedTypes[0] ??
-          null;
+          ) ?? defaultType;
         const categoriesByName = new Map(
           loadedCategories.map((category) => [
             normalizeCategoryName(category.name),
@@ -160,15 +247,13 @@ export default function ReviewReceiptScreen() {
           ]),
         );
 
-        setCategories(loadedCategories);
-        setMerchants(loadedMerchants);
-        setMerchantTypes(loadedTypes);
         setMerchantMode(matched ? 'existing' : 'new');
         setMerchantId(matched?.id ?? null);
+        setMerchantName(draft.merchantName);
         setMerchantTypeId(
-          matched?.typeId ?? defaultType?.id ?? null,
+          matched?.typeId ?? scanDefaultType?.id ?? null,
         );
-        setBulkCategoryId(null);
+        setOccurredOn(parsedReceiptDate(draft));
         const preparedItems = draft.items.map((item, itemIndex) => {
           const suggestedCategoryId = item.categoryName
             ? categoriesByName.get(
@@ -182,6 +267,7 @@ export default function ReviewReceiptScreen() {
             categoryId: suggestedCategoryId ?? uncategorized.id,
             description: item.name,
             descriptionEdited: false,
+            expenseId: null,
             id: itemIndex,
             included: true,
             inclusionEdited: false,
@@ -230,12 +316,15 @@ export default function ReviewReceiptScreen() {
               setCategorizing(false);
             }
           });
-      })
+      },
+    )
       .catch((error: unknown) => {
         console.error('Unable to prepare receipt review:', error);
         if (active) {
           setErrorMessage(
-            'Не удалось подготовить чек. Попробуйте ещё раз.',
+            error instanceof Error && error.message
+              ? error.message
+              : 'Не удалось подготовить чек. Попробуйте ещё раз.',
           );
         }
       })
@@ -248,7 +337,7 @@ export default function ReviewReceiptScreen() {
     return () => {
       active = false;
     };
-  }, [draft]);
+  }, [draft, editReceiptId, isEditMode]);
 
   const includedItems = useMemo(
     () => items.filter((item) => item.included),
@@ -266,10 +355,18 @@ export default function ReviewReceiptScreen() {
   const hasInvalidIncludedAmounts =
     validIncludedItems.length !== includedItems.length;
 
-  if (!draft) {
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  const reviewAvailable = isEditMode ? editDraft !== null : draft !== null;
+  if (!reviewAvailable) {
     return (
       <View style={styles.centerState}>
-        <Text style={styles.stateTitle}>Чек не найден</Text>
+        <Text style={styles.stateTitle}>
+          {errorMessage ||
+            (isEditMode ? 'Покупка не найдена' : 'Чек не найден')}
+        </Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => router.replace('/(app)')}
@@ -284,13 +381,15 @@ export default function ReviewReceiptScreen() {
     );
   }
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
+  const receiptCurrency = editDraft?.currency ?? draft?.currency ?? '';
+  const receiptTotalCents =
+    editDraft?.totalCents ?? draft?.totalCents ?? 0;
+  const receiptPaymentType =
+    editDraft?.paymentType ?? draft?.paymentType ?? null;
 
   const totalsMismatch = reviewTotalsMismatch(
     includedTotal,
-    draft.totalCents,
+    receiptTotalCents,
   );
 
   const applyCategoryToAll = (categoryId: string) => {
@@ -349,14 +448,18 @@ export default function ReviewReceiptScreen() {
     );
   };
 
-  const handleSave = async () => {
+  const saveReview = async (allowEmptyEdit: boolean) => {
     setErrorMessage('');
-    if (!includedItems.length) {
+    if (!includedItems.length && !allowEmptyEdit) {
       setErrorMessage('Оставьте хотя бы одну позицию чека.');
       return;
     }
     if (hasInvalidIncludedAmounts) {
       setErrorMessage('Исправьте суммы включённых позиций.');
+      return;
+    }
+    if (!parseLocalISO(occurredOn)) {
+      setErrorMessage('Выберите корректную дату покупки.');
       return;
     }
 
@@ -371,7 +474,7 @@ export default function ReviewReceiptScreen() {
     ) {
       merchant = { name: merchantName, typeId: merchantTypeId };
     }
-    if (!merchant) {
+    if (!merchant && includedItems.length > 0) {
       setErrorMessage(
         merchantMode === 'existing'
           ? 'Выберите существующее место.'
@@ -382,16 +485,44 @@ export default function ReviewReceiptScreen() {
 
     setSaving(true);
     try {
-      await saveFiscalReceipt({
-        receipt: draft,
-        merchant,
-        expenses: validIncludedItems.map((item) => ({
-          amountCents: item.amountCents,
-          categoryId: item.categoryId,
-          description: item.description.trim() || item.rawName,
-          rawName: item.rawName,
-        })),
-      });
+      let deleted = false;
+      if (isEditMode) {
+        if (!editReceiptId) {
+          throw new Error('Покупка не найдена.');
+        }
+        const result = await updateFiscalReceipt(editReceiptId, {
+          merchant,
+          occurredOn,
+          expenses: items.map((item) => {
+            if (!item.expenseId) {
+              throw new Error('Позиция покупки не найдена.');
+            }
+            return {
+              id: item.expenseId,
+              amountCents: item.amountCents,
+              categoryId: item.categoryId,
+              description: item.description.trim() || item.rawName,
+              rawName: item.rawName,
+              included: item.included,
+            };
+          }),
+        });
+        deleted = result.deleted;
+      } else {
+        if (!draft || !merchant) {
+          throw new Error('Чек не найден.');
+        }
+        await saveFiscalReceipt({
+          receipt: draft,
+          merchant,
+          expenses: validIncludedItems.map((item) => ({
+            amountCents: item.amountCents,
+            categoryId: item.categoryId,
+            description: item.description.trim() || item.rawName,
+            rawName: item.rawName,
+          })),
+        });
+      }
       try {
         await learnItemCategoryRules(
           items.map((item) => ({
@@ -404,18 +535,40 @@ export default function ReviewReceiptScreen() {
       } catch {
         console.error('Unable to learn receipt item categories.');
       }
-      clearDraft();
-      router.replace('/(app)');
+      if (!isEditMode) {
+        clearDraft();
+      }
+      if (isEditMode) {
+        const homeMonth = deleted
+          ? editDraft?.occurredOn.slice(0, 7)
+          : occurredOn.slice(0, 7);
+        router.replace(
+          homeMonth ? `/(app)?month=${homeMonth}` : '/(app)',
+        );
+      } else {
+        router.replace('/(app)');
+      }
     } catch (error: unknown) {
-      console.error('Unable to save fiscal receipt:', error);
+      console.error('Unable to save receipt review:', error);
       setErrorMessage(
         error instanceof Error && error.message
           ? error.message
-          : 'Не удалось сохранить чек. Попробуйте ещё раз.',
+          : isEditMode
+            ? 'Не удалось сохранить изменения. Попробуйте ещё раз.'
+            : 'Не удалось сохранить чек. Попробуйте ещё раз.',
       );
     } finally {
       setSaving(false);
+      setConfirmDeleteAll(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (isEditMode && includedItems.length === 0) {
+      setConfirmDeleteAll(true);
+      return;
+    }
+    await saveReview(false);
   };
 
   return (
@@ -433,7 +586,9 @@ export default function ReviewReceiptScreen() {
         >
           <Text style={styles.backText}>←</Text>
         </Pressable>
-        <Text style={styles.title}>Проверить чек</Text>
+        <Text style={styles.title}>
+          {isEditMode ? 'Редактировать покупку' : 'Проверить чек'}
+        </Text>
       </View>
 
       <ScrollView
@@ -443,25 +598,42 @@ export default function ReviewReceiptScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Дата</Text>
-            <Text style={styles.summaryValue}>
-              {parsedReceiptDate(draft)}
-            </Text>
+            {isEditMode ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => setDatePickerVisible(true)}
+                style={({ pressed }) => [
+                  styles.dateSelector,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.dateSelectorText}>
+                  {formatLongDate(occurredOn)}
+                </Text>
+                <Text style={styles.dateSelectorChevron}>›</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.summaryValue}>{occurredOn}</Text>
+            )}
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Итого в чеке</Text>
             <Text style={styles.summaryValue}>
-              {formatMoney(draft.totalCents)} {draft.currency}
+              {formatMoney(receiptTotalCents)} {receiptCurrency}
             </Text>
           </View>
-          {draft.paymentType ? (
+          {receiptPaymentType ? (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Оплата</Text>
-              <Text style={styles.summaryValue}>{draft.paymentType}</Text>
+              <Text style={styles.summaryValue}>
+                {receiptPaymentType}
+              </Text>
             </View>
           ) : null}
         </View>
 
-        {draft.confidence === 'low' ? (
+        {!isEditMode && draft?.confidence === 'low' ? (
           <View accessibilityRole="alert" style={styles.warningCard}>
             <Text style={styles.warningText}>
               Распознавание неуверенное. Проверьте чек перед сохранением.
@@ -478,10 +650,10 @@ export default function ReviewReceiptScreen() {
           </View>
         ) : null}
 
-        {!isCurrency(draft.currency) ? (
+        {!isCurrency(receiptCurrency) ? (
           <View accessibilityRole="alert" style={styles.warningCard}>
             <Text style={styles.warningText}>
-              Для {draft.currency} пока нет конвертации. Сохраним исходные
+              Для {receiptCurrency} пока нет конвертации. Сохраним исходные
               суммы и отметим позиции как требующие внимания.
             </Text>
           </View>
@@ -636,7 +808,7 @@ export default function ReviewReceiptScreen() {
               <View style={styles.itemDetailsRow}>
                 <Text style={styles.itemDetails}>
                   {item.quantity !== null && item.unitPriceCents !== null
-                    ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${draft.currency}`
+                    ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${receiptCurrency}`
                     : 'Количество или цена за единицу не указаны'}
                   {item.vatLabel ? ` · НДС ${item.vatLabel}` : ''}
                 </Text>
@@ -667,7 +839,7 @@ export default function ReviewReceiptScreen() {
                         !item.included && styles.excludedText,
                       ]}
                     >
-                      {draft.currency}
+                      {receiptCurrency}
                     </Text>
                   </View>
                   {item.amountCents === null ? (
@@ -710,8 +882,8 @@ export default function ReviewReceiptScreen() {
           <Text style={styles.saveSummaryLabel}>Будет сохранено</Text>
           <Text style={styles.saveSummaryTotal}>
             {includedTotal === null
-              ? `— ${draft.currency}`
-              : `${formatMoney(includedTotal)} ${draft.currency}`}
+              ? `— ${receiptCurrency}`
+              : `${formatMoney(includedTotal)} ${receiptCurrency}`}
           </Text>
         </View>
 
@@ -734,10 +906,33 @@ export default function ReviewReceiptScreen() {
           {saving ? (
             <ActivityIndicator color={theme.colors.white} />
           ) : (
-            <Text style={styles.primaryButtonText}>Сохранить чек</Text>
+            <Text style={styles.primaryButtonText}>
+              {isEditMode ? 'Сохранить изменения' : 'Сохранить чек'}
+            </Text>
           )}
         </Pressable>
       </ScrollView>
+
+      {isEditMode && parseLocalISO(occurredOn) ? (
+        <DatePicker
+          onChange={setOccurredOn}
+          onClose={() => setDatePickerVisible(false)}
+          value={occurredOn}
+          visible={datePickerVisible}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        confirming={saving}
+        onCancel={() => {
+          if (!saving) {
+            setConfirmDeleteAll(false);
+          }
+        }}
+        onConfirm={() => void saveReview(true)}
+        title="Удалить покупку со всеми позициями?"
+        visible={isEditMode && confirmDeleteAll}
+      />
     </View>
   );
 }
@@ -777,6 +972,25 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
     paddingBottom: theme.spacing.xxl,
     width: '100%',
+  },
+  dateSelector: {
+    alignItems: 'center',
+    borderColor: theme.colors.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+    minHeight: theme.sizes.iconButton,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  dateSelectorChevron: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.title,
+  },
+  dateSelectorText: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
+    fontWeight: '600',
   },
   disabled: {
     opacity: theme.opacity.disabled,

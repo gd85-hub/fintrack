@@ -244,6 +244,7 @@ type ReceiptPurchaseRowProps = {
   displayCurrency: Currency;
   expanded: boolean;
   onDelete: () => void;
+  onEdit: () => void;
   onOpenExpense: (expenseId: string) => void;
   onShowMore: () => void;
   onToggle: () => void;
@@ -255,6 +256,7 @@ function ReceiptPurchaseRow({
   displayCurrency,
   expanded,
   onDelete,
+  onEdit,
   onOpenExpense,
   onShowMore,
   onToggle,
@@ -313,19 +315,34 @@ function ReceiptPurchaseRow({
             <Text style={styles.purchaseDetailsTitle}>
               Позиции чека
             </Text>
-            <Pressable
-              accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
-              accessibilityRole="button"
-              onPress={onDelete}
-              style={({ pressed }) => [
-                styles.deletePurchaseButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.deletePurchaseText}>
-                Удалить покупку
-              </Text>
-            </Pressable>
+            <View style={styles.purchaseActionButtons}>
+              <Pressable
+                accessibilityLabel="Редактировать всю покупку"
+                accessibilityRole="button"
+                onPress={onEdit}
+                style={({ pressed }) => [
+                  styles.editPurchaseButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.editPurchaseText}>
+                  Редактировать покупку
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
+                accessibilityRole="button"
+                onPress={onDelete}
+                style={({ pressed }) => [
+                  styles.deletePurchaseButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.deletePurchaseText}>
+                  Удалить покупку
+                </Text>
+              </Pressable>
+            </View>
           </View>
 
           {visibleExpenses.map((expense) => {
@@ -779,10 +796,7 @@ export default function HomeScreen() {
                       return null;
                     }
 
-                    if (
-                      unit.expenses.length === 1 ||
-                      unit.receiptId === null
-                    ) {
+                    if (unit.receiptId === null) {
                       return (
                         <ExpenseRow
                           displayCurrency={displayCurrency}
@@ -803,6 +817,11 @@ export default function HomeScreen() {
                         key={unit.key}
                         onDelete={() =>
                           requestPurchaseDelete(receiptId)
+                        }
+                        onEdit={() =>
+                          router.push(
+                            `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
+                          )
                         }
                         onOpenExpense={(expenseId) =>
                           router.push(`/(app)/expense/${expenseId}`)
@@ -921,6 +940,15 @@ const styles = StyleSheet.create({
   },
   deletePurchaseText: {
     color: theme.colors.danger,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
+  },
+  editPurchaseButton: {
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+  },
+  editPurchaseText: {
+    color: theme.colors.accent,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -1055,6 +1083,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing.sm,
     justifyContent: 'space-between',
+  },
+  purchaseActionButtons: {
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+    justifyContent: 'flex-end',
   },
   purchaseDetails: {
     backgroundColor: theme.colors.surface,

@@ -1,4 +1,4 @@
-import { monthBounds } from './dates';
+import { monthBounds, parseLocalISO } from './dates';
 import { ratesForExpense, type ResolvedRates } from './fx';
 import {
   centsToDecimal,
@@ -9,6 +9,7 @@ import {
 } from './money';
 import {
   merchantAliasesWithIncoming,
+  normalizeMerchantName,
   parsedReceiptDate,
   type ParsedReceipt,
 } from './receipts';
@@ -109,6 +110,56 @@ type ExistingExpenseRow = {
   original_amount: number | string;
   original_currency: Currency;
   occurred_on: string;
+};
+
+type ReceiptForEditQueryRow = {
+  id: string;
+  merchant_id: string | null;
+  total: number | string | null;
+  currency: string | null;
+  payment_type: string | null;
+  merchant: {
+    name: string;
+    type_id: string | null;
+  } | null;
+};
+
+type ReceiptMutationSnapshotRow = {
+  id: string;
+  user_id: string;
+  source: string;
+  merchant_id: string | null;
+  tax_id: string | null;
+  occurred_at: string | null;
+  total: number | string | null;
+  currency: string | null;
+  payment_type: string | null;
+  raw_json: unknown;
+  parsed_ok: boolean;
+  created_at: string;
+};
+
+type ExpenseMutationSnapshotRow = {
+  id: string;
+  user_id: string;
+  occurred_on: string;
+  occurred_at: string | null;
+  description: string;
+  raw_name: string | null;
+  category_id: string;
+  merchant_id: string | null;
+  original_amount: number | string;
+  original_currency: string;
+  amount_rsd: number | string | null;
+  amount_usd: number | string | null;
+  amount_eur: number | string | null;
+  fx_rate_date: string | null;
+  note: string | null;
+  source: string;
+  receipt_id: string | null;
+  is_recurring: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Category = {
@@ -274,6 +325,55 @@ export type SaveFiscalReceiptInput = {
   expenses: FiscalReceiptExpenseInput[];
 };
 
+export type FiscalReceiptEditItem = {
+  id: string;
+  amountCents: number;
+  categoryId: string;
+  description: string;
+  rawName: string;
+};
+
+export type FiscalReceiptEditReceipt = {
+  id: string;
+  merchantId: string | null;
+  merchantName: string;
+  merchantTypeId: string | null;
+  totalCents: number;
+  currency: string;
+  paymentType: string | null;
+};
+
+export type FiscalReceiptEditDraft = {
+  receiptId: string;
+  merchantId: string | null;
+  merchantName: string;
+  merchantTypeId: string | null;
+  occurredOn: string;
+  totalCents: number;
+  currency: string;
+  paymentType: string | null;
+  items: FiscalReceiptEditItem[];
+};
+
+export type UpdateFiscalReceiptExpenseInput = {
+  id: string;
+  amountCents: number | null;
+  categoryId: string;
+  description: string;
+  rawName: string;
+  included: boolean;
+};
+
+export type UpdateFiscalReceiptInput = {
+  merchant: FiscalReceiptMerchantInput | null;
+  occurredOn: string;
+  expenses: UpdateFiscalReceiptExpenseInput[];
+};
+
+export type UpdateFiscalReceiptResult = {
+  deleted: boolean;
+};
+
 function mapExpense(row: ExpenseQueryRow): Expense {
   return {
     id: row.id,
@@ -405,6 +505,46 @@ export async function createMerchant(
 const EXPENSE_SELECT =
   'id,receipt_id,occurred_on,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
 
+export function buildFiscalReceiptEditDraft(
+  receipt: FiscalReceiptEditReceipt,
+  expenses: readonly Expense[],
+): FiscalReceiptEditDraft {
+  const firstExpense = expenses[0];
+  if (!firstExpense) {
+    throw new Error('В покупке нет позиций для редактирования.');
+  }
+  if (!parseLocalISO(firstExpense.occurredOn)) {
+    throw new Error('Дата покупки некорректна.');
+  }
+  if (
+    expenses.some(
+      (expense) =>
+        expense.receiptId !== receipt.id ||
+        expense.occurredOn !== firstExpense.occurredOn,
+    )
+  ) {
+    throw new Error('Позиции покупки содержат несогласованные данные.');
+  }
+
+  return {
+    receiptId: receipt.id,
+    merchantId: receipt.merchantId,
+    merchantName: receipt.merchantName,
+    merchantTypeId: receipt.merchantTypeId,
+    occurredOn: firstExpense.occurredOn,
+    totalCents: receipt.totalCents,
+    currency: receipt.currency || firstExpense.originalCurrency,
+    paymentType: receipt.paymentType,
+    items: expenses.map((expense) => ({
+      id: expense.id,
+      amountCents: expense.originalAmountCents,
+      categoryId: expense.categoryId,
+      description: expense.description,
+      rawName: expense.rawName?.trim() || expense.description,
+    })),
+  };
+}
+
 export async function listExpensesByMonth(
   yyyyMm: string,
 ): Promise<Expense[]> {
@@ -422,6 +562,62 @@ export async function listExpensesByMonth(
   }
 
   return (data as unknown as ExpenseQueryRow[]).map(mapExpense);
+}
+
+export async function getFiscalReceiptForEdit(
+  receiptId: string,
+): Promise<FiscalReceiptEditDraft | null> {
+  const { data: receiptData, error: receiptError } = await supabase
+    .from('receipts')
+    .select(
+      'id,merchant_id,total,currency,payment_type,merchant:merchants!receipts_merchant_id_fkey(name,type_id)',
+    )
+    .eq('id', receiptId)
+    .maybeSingle();
+
+  if (receiptError) {
+    throw receiptError;
+  }
+  if (!receiptData) {
+    return null;
+  }
+
+  const { data: expenseData, error: expensesError } = await supabase
+    .from('expenses')
+    .select(EXPENSE_SELECT)
+    .eq('receipt_id', receiptId)
+    .order('created_at', { ascending: true });
+
+  if (expensesError) {
+    throw expensesError;
+  }
+
+  const expenses = (expenseData as unknown as ExpenseQueryRow[]).map(
+    mapExpense,
+  );
+  if (expenses.length === 0) {
+    return null;
+  }
+
+  const receipt = receiptData as unknown as ReceiptForEditQueryRow;
+  return buildFiscalReceiptEditDraft(
+    {
+      id: receipt.id,
+      merchantId: receipt.merchant_id,
+      merchantName: receipt.merchant?.name ?? '',
+      merchantTypeId: receipt.merchant?.type_id ?? null,
+      totalCents:
+        receipt.total === null
+          ? expenses.reduce(
+              (total, expense) => total + expense.originalAmountCents,
+              0,
+            )
+          : decimalToCents(receipt.total),
+      currency: receipt.currency ?? '',
+      paymentType: receipt.payment_type,
+    },
+    expenses,
+  );
 }
 
 export async function categoryBreakdownByMonth(
@@ -987,6 +1183,440 @@ export async function saveFiscalReceipt(
         console.error(
           'Unable to clean up receipt:',
           cleanupReceiptError.message,
+        );
+      }
+    }
+    throw error;
+  }
+}
+
+const RECEIPT_MUTATION_SELECT =
+  'id,user_id,source,merchant_id,tax_id,occurred_at,total,currency,payment_type,raw_json,parsed_ok,created_at';
+const EXPENSE_MUTATION_SELECT =
+  'id,user_id,occurred_on,occurred_at,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,source,receipt_id,is_recurring,created_at,updated_at';
+
+type FiscalReceiptMutationSnapshot = {
+  receipt: ReceiptMutationSnapshotRow;
+  expenses: ExpenseMutationSnapshotRow[];
+};
+
+type ResolvedReceiptEditMerchant = {
+  created: boolean;
+  id: string;
+  learnedAliases: string[] | null;
+  originalAliases: string[] | null;
+};
+
+async function loadFiscalReceiptMutationSnapshot(
+  receiptId: string,
+  userId: string,
+): Promise<FiscalReceiptMutationSnapshot> {
+  const { data: receiptData, error: receiptError } = await supabase
+    .from('receipts')
+    .select(RECEIPT_MUTATION_SELECT)
+    .eq('id', receiptId)
+    .maybeSingle();
+  if (receiptError) {
+    throw receiptError;
+  }
+  if (!receiptData) {
+    throw new Error('Покупка не найдена.');
+  }
+
+  const receipt = receiptData as unknown as ReceiptMutationSnapshotRow;
+  if (receipt.user_id !== userId) {
+    throw new Error('Покупка не найдена.');
+  }
+
+  const { data: expenseData, error: expensesError } = await supabase
+    .from('expenses')
+    .select(EXPENSE_MUTATION_SELECT)
+    .eq('receipt_id', receiptId)
+    .order('created_at', { ascending: true });
+  if (expensesError) {
+    throw expensesError;
+  }
+
+  const expenses = expenseData as unknown as ExpenseMutationSnapshotRow[];
+  if (
+    expenses.length === 0 ||
+    expenses.some(
+      (expense) =>
+        expense.user_id !== userId || expense.receipt_id !== receiptId,
+    )
+  ) {
+    throw new Error('Позиции покупки не найдены.');
+  }
+
+  return { receipt, expenses };
+}
+
+function rawReceiptMerchantName(rawJson: unknown): string {
+  if (typeof rawJson !== 'object' || rawJson === null) {
+    return '';
+  }
+
+  const merchantName = (rawJson as Record<string, unknown>).merchantName;
+  return typeof merchantName === 'string' ? merchantName.trim() : '';
+}
+
+function learnedAliasesWithNormalizedIncoming(
+  merchant: { aliases: readonly string[]; name: string },
+  incomingName: string,
+): string[] | null {
+  const incomingKey = normalizeMerchantName(incomingName);
+  if (
+    !incomingKey ||
+    [merchant.name, ...merchant.aliases].some(
+      (name) => normalizeMerchantName(name) === incomingKey,
+    )
+  ) {
+    return null;
+  }
+
+  const aliases = merchantAliasesWithIncoming(merchant, incomingName);
+  return aliases.length === merchant.aliases.length ? null : aliases;
+}
+
+async function resolveReceiptEditMerchant(
+  merchant: FiscalReceiptMerchantInput,
+  incomingName: string,
+  userId: string,
+): Promise<ResolvedReceiptEditMerchant> {
+  if ('existingId' in merchant) {
+    const { data, error } = await supabase
+      .from('merchants')
+      .select('name,aliases')
+      .eq('id', merchant.existingId)
+      .single();
+    if (error) {
+      throw error;
+    }
+
+    const existing = data as unknown as {
+      aliases: string[];
+      name: string;
+    };
+    return {
+      created: false,
+      id: merchant.existingId,
+      learnedAliases: learnedAliasesWithNormalizedIncoming(
+        existing,
+        incomingName,
+      ),
+      originalAliases: [...existing.aliases],
+    };
+  }
+
+  const merchantName = merchant.name.trim();
+  if (!merchantName || !merchant.typeId) {
+    throw new Error('Укажите название и тип места.');
+  }
+  const learnedAliases =
+    learnedAliasesWithNormalizedIncoming(
+      { aliases: [], name: merchantName },
+      incomingName,
+    ) ?? [];
+  const { data, error } = await supabase
+    .from('merchants')
+    .insert({
+      user_id: userId,
+      name: merchantName,
+      type_id: merchant.typeId,
+      aliases: learnedAliases,
+    })
+    .select('id')
+    .single();
+  if (error) {
+    throw error;
+  }
+
+  return {
+    created: true,
+    id: (data as unknown as { id: string }).id,
+    learnedAliases: null,
+    originalAliases: null,
+  };
+}
+
+function receiptTimestampForDate(
+  occurredAt: string | null,
+  occurredOn: string,
+): string | null {
+  if (!occurredAt) {
+    return null;
+  }
+  return occurredAt.replace(/^\d{4}-\d{2}-\d{2}(?=T)/u, occurredOn);
+}
+
+function validateReceiptEditExpenses(
+  snapshot: FiscalReceiptMutationSnapshot,
+  input: UpdateFiscalReceiptInput,
+): UpdateFiscalReceiptExpenseInput[] {
+  if (!parseLocalISO(input.occurredOn)) {
+    throw new Error('Дата покупки некорректна.');
+  }
+  if (input.expenses.length !== snapshot.expenses.length) {
+    throw new Error('Состав покупки изменился. Обновите экран и повторите.');
+  }
+
+  const existingIds = new Set(
+    snapshot.expenses.map((expense) => expense.id),
+  );
+  const seenIds = new Set<string>();
+  for (const expense of input.expenses) {
+    if (!existingIds.has(expense.id) || seenIds.has(expense.id)) {
+      throw new Error('Состав покупки изменился. Обновите экран и повторите.');
+    }
+    seenIds.add(expense.id);
+    if (
+      expense.included &&
+      (expense.amountCents === null ||
+        !Number.isSafeInteger(expense.amountCents) ||
+        expense.amountCents <= 0)
+    ) {
+      throw new Error('Исправьте суммы включённых позиций.');
+    }
+  }
+
+  return input.expenses.filter((expense) => expense.included);
+}
+
+function receiptEditTotal(
+  expenses: readonly UpdateFiscalReceiptExpenseInput[],
+): number {
+  let total = 0;
+  for (const expense of expenses) {
+    if (expense.amountCents === null) {
+      throw new Error('Исправьте суммы включённых позиций.');
+    }
+    total += expense.amountCents;
+    if (!Number.isSafeInteger(total)) {
+      throw new Error('Итоговая сумма покупки слишком велика.');
+    }
+  }
+  return total;
+}
+
+async function restoreFiscalReceiptSnapshot(
+  snapshot: FiscalReceiptMutationSnapshot,
+): Promise<void> {
+  const { error: receiptError } = await supabase
+    .from('receipts')
+    .upsert(snapshot.receipt);
+  if (receiptError) {
+    console.error(
+      'Unable to restore receipt after an edit failure:',
+      receiptError.message,
+    );
+  }
+
+  const { error: expensesError } = await supabase
+    .from('expenses')
+    .upsert(snapshot.expenses);
+  if (expensesError) {
+    console.error(
+      'Unable to restore receipt expenses after an edit failure:',
+      expensesError.message,
+    );
+  }
+}
+
+async function deleteFiscalReceiptForEdit(
+  receiptId: string,
+  snapshot: FiscalReceiptMutationSnapshot,
+): Promise<UpdateFiscalReceiptResult> {
+  try {
+    const { error: expensesError } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('receipt_id', receiptId);
+    if (expensesError) {
+      throw expensesError;
+    }
+
+    const { error: receiptError } = await supabase
+      .from('receipts')
+      .delete()
+      .eq('id', receiptId);
+    if (receiptError) {
+      throw receiptError;
+    }
+    return { deleted: true };
+  } catch (error: unknown) {
+    await restoreFiscalReceiptSnapshot(snapshot);
+    throw error;
+  }
+}
+
+export async function updateFiscalReceipt(
+  receiptId: string,
+  input: UpdateFiscalReceiptInput,
+): Promise<UpdateFiscalReceiptResult> {
+  const userId = await authenticatedUserId();
+  const snapshot = await loadFiscalReceiptMutationSnapshot(
+    receiptId,
+    userId,
+  );
+  const keptExpenses = validateReceiptEditExpenses(snapshot, input);
+  if (keptExpenses.length === 0) {
+    return deleteFiscalReceiptForEdit(receiptId, snapshot);
+  }
+  if (!input.merchant) {
+    throw new Error('Выберите место покупки.');
+  }
+
+  const snapshotById = new Map(
+    snapshot.expenses.map((expense) => [expense.id, expense]),
+  );
+  const dateChanged = snapshot.expenses.some(
+    (expense) => expense.occurred_on !== input.occurredOn,
+  );
+  const amountChanged = keptExpenses.some((expense) => {
+    const existing = snapshotById.get(expense.id);
+    return (
+      existing !== undefined &&
+      expense.amountCents !== null &&
+      decimalToCents(existing.original_amount) !== expense.amountCents
+    );
+  });
+  const currency =
+    snapshot.receipt.currency ?? snapshot.expenses[0]?.original_currency;
+  if (!currency) {
+    throw new Error('Валюта покупки не найдена.');
+  }
+  const rates =
+    (dateChanged || amountChanged) && isCurrency(currency)
+      ? await ratesForExpense(input.occurredOn)
+      : null;
+  const incomingMerchantName = rawReceiptMerchantName(
+    snapshot.receipt.raw_json,
+  );
+  let resolvedMerchant: ResolvedReceiptEditMerchant | null = null;
+  let aliasUpdateAttempted = false;
+
+  try {
+    resolvedMerchant = await resolveReceiptEditMerchant(
+      input.merchant,
+      incomingMerchantName,
+      userId,
+    );
+
+    for (const expense of keptExpenses) {
+      const existing = snapshotById.get(expense.id);
+      if (!existing || expense.amountCents === null) {
+        throw new Error(
+          'Состав покупки изменился. Обновите экран и повторите.',
+        );
+      }
+      const itemAmountChanged =
+        decimalToCents(existing.original_amount) !== expense.amountCents;
+      const converted =
+        dateChanged || itemAmountChanged
+          ? receiptExpenseAmounts(expense.amountCents, currency, rates)
+          : {};
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          occurred_on: input.occurredOn,
+          ...(dateChanged
+            ? {
+                occurred_at: receiptTimestampForDate(
+                  existing.occurred_at,
+                  input.occurredOn,
+                ),
+              }
+            : {}),
+          description: expense.description.trim() || expense.rawName.trim(),
+          raw_name: expense.rawName.trim() || null,
+          category_id: expense.categoryId,
+          merchant_id: resolvedMerchant.id,
+          original_amount: centsToDecimal(expense.amountCents),
+          ...converted,
+        })
+        .eq('id', expense.id)
+        .eq('receipt_id', receiptId);
+      if (error) {
+        throw error;
+      }
+    }
+
+    for (const expense of input.expenses) {
+      if (expense.included) {
+        continue;
+      }
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expense.id)
+        .eq('receipt_id', receiptId);
+      if (error) {
+        throw error;
+      }
+    }
+
+    const totalCents = receiptEditTotal(keptExpenses);
+    const { error: receiptError } = await supabase
+      .from('receipts')
+      .update({
+        merchant_id: resolvedMerchant.id,
+        ...(dateChanged
+          ? {
+              occurred_at: receiptTimestampForDate(
+                snapshot.receipt.occurred_at,
+                input.occurredOn,
+              ),
+            }
+          : {}),
+        total: centsToDecimal(totalCents),
+      })
+      .eq('id', receiptId);
+    if (receiptError) {
+      throw receiptError;
+    }
+
+    if (resolvedMerchant.learnedAliases) {
+      aliasUpdateAttempted = true;
+      const { error: aliasError } = await supabase
+        .from('merchants')
+        .update({ aliases: resolvedMerchant.learnedAliases })
+        .eq('id', resolvedMerchant.id);
+      if (aliasError) {
+        throw aliasError;
+      }
+    }
+
+    return { deleted: false };
+  } catch (error: unknown) {
+    await restoreFiscalReceiptSnapshot(snapshot);
+
+    if (
+      resolvedMerchant &&
+      !resolvedMerchant.created &&
+      aliasUpdateAttempted &&
+      resolvedMerchant.originalAliases
+    ) {
+      const { error: aliasRestoreError } = await supabase
+        .from('merchants')
+        .update({ aliases: resolvedMerchant.originalAliases })
+        .eq('id', resolvedMerchant.id);
+      if (aliasRestoreError) {
+        console.error(
+          'Unable to restore merchant aliases after an edit failure:',
+          aliasRestoreError.message,
+        );
+      }
+    }
+
+    if (resolvedMerchant?.created) {
+      const { error: merchantCleanupError } = await supabase
+        .from('merchants')
+        .delete()
+        .eq('id', resolvedMerchant.id);
+      if (merchantCleanupError) {
+        console.error(
+          'Unable to clean up a merchant after an edit failure:',
+          merchantCleanupError.message,
         );
       }
     }
