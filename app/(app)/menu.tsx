@@ -28,9 +28,9 @@ const menuItems = [
     route: '/(app)/merchants',
   },
   {
-    disabled: true,
     icon: '🏷️',
     label: 'Управление категориями',
+    route: '/(app)/categories',
   },
   {
     disabled: true,
