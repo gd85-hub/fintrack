@@ -61,6 +61,7 @@ describe('receipt image analysis', () => {
       ok: true,
       source: 'ocr_photo',
       merchantName: 'Anthropic',
+      merchantLabel: 'Anthropic',
       merchantTypeSlug: 'online',
       taxId: null,
       occurredAt: null,
@@ -80,6 +81,18 @@ describe('receipt image analysis', () => {
         },
       ],
       confidence: 'high',
+    });
+  });
+
+  test('keeps a photo merchant label while deriving its brand', () => {
+    const analysis = validateReceiptImageAnalysis({
+      ...analysisPayload,
+      merchantName: 'MIX MARKT 38103 NS CENTAR',
+    });
+
+    expect(analysis.ok && receiptFromImageAnalysis(analysis)).toMatchObject({
+      merchantName: 'MIX MARKT',
+      merchantLabel: 'MIX MARKT 38103 NS CENTAR',
     });
   });
 

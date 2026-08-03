@@ -268,6 +268,11 @@ function ReceiptPurchaseRow({
   const merchantName =
     unit.expenses.find((expense) => expense.merchantName)?.merchantName ??
     'Без места';
+  const merchantLabel = unit.expenses
+    .find((expense) => expense.merchantLabel?.trim())
+    ?.merchantLabel?.trim();
+  const showMerchantLabel =
+    merchantLabel !== undefined && merchantLabel !== merchantName;
   const visibleExpenses = unit.expenses.slice(0, visibleCount);
   const remaining = unit.expenses.length - visibleExpenses.length;
 
@@ -278,7 +283,7 @@ function ReceiptPurchaseRow({
   return (
     <View style={styles.purchaseUnit}>
       <Pressable
-        accessibilityLabel={`${merchantName}, ${unit.expenses.length} позиций, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
+        accessibilityLabel={`${merchantName}${showMerchantLabel ? `, ${merchantLabel}` : ''}, ${unit.expenses.length} позиций, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         onPress={onToggle}
@@ -291,6 +296,11 @@ function ReceiptPurchaseRow({
           <Text numberOfLines={1} style={styles.purchaseTitle}>
             {merchantName}
           </Text>
+          {showMerchantLabel ? (
+            <Text numberOfLines={1} style={styles.purchaseMerchantLabel}>
+              {merchantLabel}
+            </Text>
+          ) : null}
           <Text numberOfLines={1} style={styles.expenseSubtitle}>
             {unit.expenses.length} позиций ·{' '}
             {purchaseCategoryHint(unit.expenses)}
@@ -1107,6 +1117,10 @@ const styles = StyleSheet.create({
   purchaseItem: {
     borderBottomColor: theme.colors.border,
     borderBottomWidth: theme.sizes.border,
+  },
+  purchaseMerchantLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
   },
   purchaseTitle: {
     color: theme.colors.text,

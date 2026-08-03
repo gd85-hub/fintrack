@@ -9,6 +9,7 @@ import {
 
 import { supabase } from '../supabase';
 import {
+  extractMerchantBrand,
   findMatchingMerchant,
   fetchAndParseReceipt,
   merchantAliasesWithIncoming,
@@ -32,6 +33,7 @@ const html = '<!DOCTYPE html><pre>receipt journal</pre>';
 const parsedReceipt: ParsedReceipt = {
   ok: true,
   merchantName: 'UNIVEREXPORT',
+  merchantLabel: 'UNIVEREXPORT',
   taxId: '101692669',
   occurredAt: '2026-07-29T15:41:15+02:00',
   totalCents: 124295,
@@ -92,6 +94,25 @@ describe('device receipt loading', () => {
     });
   });
 
+  test('keeps a QR merchant label while deriving its brand', async () => {
+    const fetchMock = jest.fn<typeof fetch>();
+    globalThis.fetch = fetchMock;
+    fetchMock.mockResolvedValue(responseWith(html));
+    invokeMock.mockResolvedValue({
+      data: {
+        ...parsedReceipt,
+        merchantName: 'MIX MARKT 38103 NS CENTAR',
+      },
+      error: null,
+    });
+
+    await expect(fetchAndParseReceipt(supportedUrl)).resolves.toMatchObject({
+      ok: true,
+      merchantName: 'MIX MARKT',
+      merchantLabel: 'MIX MARKT 38103 NS CENTAR',
+    });
+  });
+
   test('rejects an unsupported URL before fetching', async () => {
     const fetchMock = jest.fn<typeof fetch>();
     globalThis.fetch = fetchMock;
@@ -146,6 +167,33 @@ describe('device receipt loading', () => {
 });
 
 describe('merchant name unification', () => {
+  test.each([
+    ['MIX MARKT 38103 NS CENTAR', 'MIX MARKT'],
+    ['UNIVEREXPORT 1369800-MP190', 'UNIVEREXPORT'],
+    ['IDEA 111880-IDEA 505', 'IDEA'],
+    ['SKROZ DOBRA PEKARA 73 SU', 'SKROZ DOBRA PEKARA'],
+    ['Lidl', 'Lidl'],
+    ['  SHOP   d.o.o.  101 CENTER  ', 'SHOP'],
+    ['101 CENTER', '101 CENTER'],
+    ['', ''],
+    ['---', '---'],
+  ])('extracts the merchant brand from %s', (fullName, expected) => {
+    expect(extractMerchantBrand(fullName)).toBe(expected);
+  });
+
+  test('collapses arbitrary branch labels through the shared brand key', () => {
+    const firstBrand = extractMerchantBrand(
+      'MIX MARKT 38103 NS CENTAR',
+    );
+    const secondBrand = extractMerchantBrand(
+      'MIX MARKT 41027 NS LIMAN',
+    );
+    const merchant = { name: firstBrand, aliases: [] };
+
+    expect(secondBrand).toBe(firstBrand);
+    expect(findMatchingMerchant([merchant], secondBrand)).toBe(merchant);
+  });
+
   test.each([
     'Lidl',
     'LIDL',

@@ -58,6 +58,7 @@ type ExpenseQueryRow = {
   created_at: string;
   category: { emoji: string; name: string; slug: string | null } | null;
   merchant: { name: string } | null;
+  receipt: { merchant_label: string | null } | null;
 };
 
 type CategoryBreakdownQueryRow = {
@@ -115,9 +116,11 @@ type ExistingExpenseRow = {
 type ReceiptForEditQueryRow = {
   id: string;
   merchant_id: string | null;
+  merchant_label: string | null;
   total: number | string | null;
   currency: string | null;
   payment_type: string | null;
+  raw_json: unknown;
   merchant: {
     name: string;
     type_id: string | null;
@@ -129,6 +132,7 @@ type ReceiptMutationSnapshotRow = {
   user_id: string;
   source: string;
   merchant_id: string | null;
+  merchant_label: string | null;
   tax_id: string | null;
   occurred_at: string | null;
   total: number | string | null;
@@ -199,6 +203,7 @@ export type Expense = {
   categorySlug: string | null;
   merchantId: string | null;
   merchantName: string | null;
+  merchantLabel: string | null;
   originalAmountCents: number;
   originalCurrency: string;
   amountRsdCents: number;
@@ -337,6 +342,7 @@ export type FiscalReceiptEditReceipt = {
   id: string;
   merchantId: string | null;
   merchantName: string;
+  merchantLabel: string;
   merchantTypeId: string | null;
   totalCents: number;
   currency: string;
@@ -347,6 +353,7 @@ export type FiscalReceiptEditDraft = {
   receiptId: string;
   merchantId: string | null;
   merchantName: string;
+  merchantLabel: string;
   merchantTypeId: string | null;
   occurredOn: string;
   totalCents: number;
@@ -366,6 +373,7 @@ export type UpdateFiscalReceiptExpenseInput = {
 
 export type UpdateFiscalReceiptInput = {
   merchant: FiscalReceiptMerchantInput | null;
+  merchantLabel: string;
   occurredOn: string;
   expenses: UpdateFiscalReceiptExpenseInput[];
 };
@@ -387,6 +395,7 @@ function mapExpense(row: ExpenseQueryRow): Expense {
     categorySlug: row.category?.slug ?? null,
     merchantId: row.merchant_id,
     merchantName: row.merchant?.name ?? null,
+    merchantLabel: row.receipt?.merchant_label ?? null,
     originalAmountCents: decimalToCents(row.original_amount),
     originalCurrency: row.original_currency,
     amountRsdCents: decimalToCents(row.amount_rsd),
@@ -503,7 +512,7 @@ export async function createMerchant(
 }
 
 const EXPENSE_SELECT =
-  'id,receipt_id,occurred_on,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name)';
+  'id,receipt_id,occurred_on,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,created_at,category:categories!expenses_category_id_fkey(emoji,name,slug),merchant:merchants!expenses_merchant_id_fkey(name),receipt:receipts!expenses_receipt_id_fkey(merchant_label)';
 
 export function buildFiscalReceiptEditDraft(
   receipt: FiscalReceiptEditReceipt,
@@ -530,6 +539,7 @@ export function buildFiscalReceiptEditDraft(
     receiptId: receipt.id,
     merchantId: receipt.merchantId,
     merchantName: receipt.merchantName,
+    merchantLabel: receipt.merchantLabel,
     merchantTypeId: receipt.merchantTypeId,
     occurredOn: firstExpense.occurredOn,
     totalCents: receipt.totalCents,
@@ -570,7 +580,7 @@ export async function getFiscalReceiptForEdit(
   const { data: receiptData, error: receiptError } = await supabase
     .from('receipts')
     .select(
-      'id,merchant_id,total,currency,payment_type,merchant:merchants!receipts_merchant_id_fkey(name,type_id)',
+      'id,merchant_id,merchant_label,total,currency,payment_type,raw_json,merchant:merchants!receipts_merchant_id_fkey(name,type_id)',
     )
     .eq('id', receiptId)
     .maybeSingle();
@@ -600,11 +610,17 @@ export async function getFiscalReceiptForEdit(
   }
 
   const receipt = receiptData as unknown as ReceiptForEditQueryRow;
+  const merchantLabel =
+    receipt.merchant_label?.trim() ||
+    rawReceiptMerchantLabel(receipt.raw_json) ||
+    receipt.merchant?.name ||
+    '';
   return buildFiscalReceiptEditDraft(
     {
       id: receipt.id,
       merchantId: receipt.merchant_id,
       merchantName: receipt.merchant?.name ?? '',
+      merchantLabel,
       merchantTypeId: receipt.merchant?.type_id ?? null,
       totalCents:
         receipt.total === null
@@ -1077,8 +1093,11 @@ export async function saveFiscalReceipt(
     if (!merchantName || !input.merchant.typeId) {
       throw new Error('Укажите название и тип места.');
     }
-    const originalName = input.receipt.merchantName.trim();
-    const aliases = originalName ? [originalName] : [];
+    const aliases =
+      learnedAliasesWithNormalizedIncoming(
+        { aliases: [], name: merchantName },
+        input.receipt.merchantName,
+      ) ?? [];
     const { data, error } = await supabase
       .from('merchants')
       .insert({
@@ -1098,6 +1117,9 @@ export async function saveFiscalReceipt(
 
   const source = input.receipt.source ?? 'fiscal_qr';
   const currency = input.receipt.currency;
+  const merchantLabel =
+    input.receipt.merchantLabel?.trim() ||
+    input.receipt.merchantName.trim();
   const rates = isCurrency(currency)
     ? await ratesForExpense(occurredOn)
     : null;
@@ -1110,6 +1132,7 @@ export async function saveFiscalReceipt(
         user_id: userId,
         source,
         merchant_id: merchantId,
+        merchant_label: merchantLabel || null,
         tax_id: input.receipt.taxId,
         occurred_at: input.receipt.occurredAt,
         total: centsToDecimal(input.receipt.totalCents),
@@ -1191,7 +1214,7 @@ export async function saveFiscalReceipt(
 }
 
 const RECEIPT_MUTATION_SELECT =
-  'id,user_id,source,merchant_id,tax_id,occurred_at,total,currency,payment_type,raw_json,parsed_ok,created_at';
+  'id,user_id,source,merchant_id,merchant_label,tax_id,occurred_at,total,currency,payment_type,raw_json,parsed_ok,created_at';
 const EXPENSE_MUTATION_SELECT =
   'id,user_id,occurred_on,occurred_at,description,raw_name,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,fx_rate_date,note,source,receipt_id,is_recurring,created_at,updated_at';
 
@@ -1257,6 +1280,20 @@ function rawReceiptMerchantName(rawJson: unknown): string {
   }
 
   const merchantName = (rawJson as Record<string, unknown>).merchantName;
+  return typeof merchantName === 'string' ? merchantName.trim() : '';
+}
+
+function rawReceiptMerchantLabel(rawJson: unknown): string {
+  if (typeof rawJson !== 'object' || rawJson === null) {
+    return '';
+  }
+
+  const receipt = rawJson as Record<string, unknown>;
+  const merchantLabel = receipt.merchantLabel;
+  if (typeof merchantLabel === 'string' && merchantLabel.trim()) {
+    return merchantLabel.trim();
+  }
+  const merchantName = receipt.merchantName;
   return typeof merchantName === 'string' ? merchantName.trim() : '';
 }
 
@@ -1560,6 +1597,7 @@ export async function updateFiscalReceipt(
       .from('receipts')
       .update({
         merchant_id: resolvedMerchant.id,
+        merchant_label: input.merchantLabel.trim() || null,
         ...(dateChanged
           ? {
               occurred_at: receiptTimestampForDate(

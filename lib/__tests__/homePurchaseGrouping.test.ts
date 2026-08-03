@@ -45,6 +45,7 @@ function createExpense(
     categorySlug: 'groceries',
     merchantId: receiptId ? 'merchant' : null,
     merchantName: receiptId ? 'Market' : null,
+    merchantLabel: receiptId ? 'Market 101 Center' : null,
     originalAmountCents: amounts.rsd,
     originalCurrency: 'RSD',
     amountRsdCents: amounts.rsd,
@@ -85,6 +86,7 @@ describe('Home purchase grouping', () => {
             slug: 'groceries',
           },
           merchant: { name: 'Market' },
+          receipt: { merchant_label: 'Market 101 Center' },
         },
       ],
       error: null,
@@ -101,8 +103,12 @@ describe('Home purchase grouping', () => {
 
     expect(result[0]?.receiptId).toBe('receipt-a');
     expect(result[0]?.rawName).toBe('HLEB 7 ZRNA SECENI (KOM) (E)');
+    expect(result[0]?.merchantLabel).toBe('Market 101 Center');
     expect(select).toHaveBeenCalledWith(
       expect.stringContaining('raw_name'),
+    );
+    expect(select).toHaveBeenCalledWith(
+      expect.stringContaining('merchant_label'),
     );
   });
 

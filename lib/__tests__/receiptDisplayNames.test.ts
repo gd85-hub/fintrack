@@ -65,6 +65,7 @@ describe('receipt display-name persistence', () => {
         ok: true,
         source: 'fiscal_qr',
         merchantName: 'UNIVEREXPORT',
+        merchantLabel: 'UNIVEREXPORT 1369800-MP190',
         taxId: '101692669',
         occurredAt: '2026-08-02T12:00:00+02:00',
         totalCents: 25000,
@@ -97,5 +98,152 @@ describe('receipt display-name persistence', () => {
         raw_name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
       }),
     ]);
+    expect(receiptInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        merchant_id: 'merchant-1',
+        merchant_label: 'UNIVEREXPORT 1369800-MP190',
+      }),
+    );
+  });
+
+  test('creates one brand merchant and keeps each branch label', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+    ratesMock.mockResolvedValue({
+      date: '2026-08-03',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+
+    const merchantSingle = jest.fn(async () => ({
+      data: { id: 'merchant-brand' },
+      error: null,
+    }));
+    const merchantSelect = jest.fn(() => ({ single: merchantSingle }));
+    const merchantInsert = jest.fn(() => ({ select: merchantSelect }));
+    const receiptSingle = jest.fn(async () => ({
+      data: { id: 'receipt-brand' },
+      error: null,
+    }));
+    const receiptSelect = jest.fn(() => ({ single: receiptSingle }));
+    const receiptInsert = jest.fn(() => ({ select: receiptSelect }));
+    const expenseInsert = jest.fn(async () => ({ error: null }));
+
+    fromMock
+      .mockReturnValueOnce({ insert: merchantInsert })
+      .mockReturnValueOnce({ insert: receiptInsert })
+      .mockReturnValueOnce({ insert: expenseInsert });
+
+    await saveFiscalReceipt({
+      receipt: {
+        ok: true,
+        source: 'fiscal_qr',
+        merchantName: 'MIX MARKT',
+        merchantLabel: 'MIX MARKT 38103 NS CENTAR',
+        taxId: '101692669',
+        occurredAt: '2026-08-03T12:00:00+02:00',
+        totalCents: 10_000,
+        currency: 'RSD',
+        paymentType: 'Карточка',
+        items: [
+          {
+            name: 'HLEB',
+            quantity: 1,
+            unitPriceCents: 10_000,
+            lineTotalCents: 10_000,
+            vatLabel: 'E',
+          },
+        ],
+      },
+      merchant: { name: 'MIX MARKT', typeId: 'shop' },
+      expenses: [
+        {
+          amountCents: 10_000,
+          categoryId: 'groceries',
+          description: 'Хлеб',
+          rawName: 'HLEB',
+        },
+      ],
+    });
+
+    expect(merchantInsert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      name: 'MIX MARKT',
+      type_id: 'shop',
+      aliases: [],
+    });
+    expect(receiptInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        merchant_id: 'merchant-brand',
+        merchant_label: 'MIX MARKT 38103 NS CENTAR',
+      }),
+    );
+
+    const existingMerchantQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn(async () => ({
+        data: { name: 'MIX MARKT', aliases: [] },
+        error: null,
+      })),
+    };
+    const secondReceiptSingle = jest.fn(async () => ({
+      data: { id: 'receipt-second-branch' },
+      error: null,
+    }));
+    const secondReceiptSelect = jest.fn(() => ({
+      single: secondReceiptSingle,
+    }));
+    const secondReceiptInsert = jest.fn(() => ({
+      select: secondReceiptSelect,
+    }));
+    const secondExpenseInsert = jest.fn(async () => ({ error: null }));
+
+    fromMock
+      .mockReturnValueOnce(existingMerchantQuery)
+      .mockReturnValueOnce({ insert: secondReceiptInsert })
+      .mockReturnValueOnce({ insert: secondExpenseInsert });
+
+    await saveFiscalReceipt({
+      receipt: {
+        ok: true,
+        source: 'fiscal_qr',
+        merchantName: 'MIX MARKT',
+        merchantLabel: 'MIX MARKT 41027 NS LIMAN',
+        taxId: '101692669',
+        occurredAt: '2026-08-03T13:00:00+02:00',
+        totalCents: 12_000,
+        currency: 'RSD',
+        paymentType: 'Карточка',
+        items: [
+          {
+            name: 'MLEKO',
+            quantity: 1,
+            unitPriceCents: 12_000,
+            lineTotalCents: 12_000,
+            vatLabel: 'E',
+          },
+        ],
+      },
+      merchant: { existingId: 'merchant-brand' },
+      expenses: [
+        {
+          amountCents: 12_000,
+          categoryId: 'groceries',
+          description: 'Молоко',
+          rawName: 'MLEKO',
+        },
+      ],
+    });
+
+    expect(merchantInsert).toHaveBeenCalledTimes(1);
+    expect(secondReceiptInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        merchant_id: 'merchant-brand',
+        merchant_label: 'MIX MARKT 41027 NS LIMAN',
+      }),
+    );
   });
 });

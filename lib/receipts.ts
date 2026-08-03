@@ -21,6 +21,7 @@ export type ParsedReceiptItem = {
 export type ParsedReceipt = {
   ok: true;
   merchantName: string;
+  merchantLabel?: string | null;
   merchantTypeSlug?: string | null;
   taxId: string | null;
   occurredAt: string | null;
@@ -116,9 +117,51 @@ const merchantSuffixes = new Set([
   'shop',
   'store',
 ]);
+const merchantLegalSuffixPattern =
+  /(?:^|\s)(?:d\s*[.\-]?\s*o\s*[.\-]?\s*o|a\s*[.\-]?\s*d|doo|ad|ltd|llc)\s*[.,;:!?]*$/iu;
+const trailingMerchantPunctuationPattern = /[\p{P}\p{S}]+$/gu;
 
 function merchantSpelling(value: string) {
   return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+function isMerchantStoreCodeToken(token: string): boolean {
+  const normalized = token.replace(
+    /^[^\p{L}\p{N}]+|[^\p{L}\p{N}-]+$/gu,
+    '',
+  );
+  return /\d/u.test(normalized);
+}
+
+function withoutMerchantBrandNoise(value: string): string {
+  let brand = value.trim();
+  let previous = '';
+
+  while (brand && brand !== previous) {
+    previous = brand;
+    brand = brand
+      .replace(merchantLegalSuffixPattern, '')
+      .trim()
+      .replace(trailingMerchantPunctuationPattern, '')
+      .trim();
+  }
+
+  return brand;
+}
+
+export function extractMerchantBrand(fullName: string): string {
+  const fullLabel = merchantSpelling(fullName);
+  if (!fullLabel) {
+    return '';
+  }
+
+  const tokens = fullLabel.split(' ');
+  const storeCodeIndex = tokens.findIndex(isMerchantStoreCodeToken);
+  const candidate =
+    storeCodeIndex >= 0
+      ? tokens.slice(0, storeCodeIndex).join(' ')
+      : fullLabel;
+  return withoutMerchantBrandNoise(candidate) || fullLabel;
 }
 
 function withoutMerchantSuffixes(tokens: string[]) {
@@ -256,9 +299,11 @@ function validateResult(value: unknown): ReceiptParseResult {
     return { ok: false, error: 'parse_failed', ...(raw ? { raw } : {}) };
   }
 
+  const merchantLabel = merchantSpelling(value.merchantName);
   return {
     ok: true,
-    merchantName: value.merchantName.trim(),
+    merchantName: extractMerchantBrand(merchantLabel),
+    merchantLabel,
     taxId: value.taxId,
     occurredAt: value.occurredAt,
     totalCents: value.totalCents,

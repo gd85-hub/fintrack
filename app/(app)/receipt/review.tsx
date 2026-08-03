@@ -386,6 +386,19 @@ export default function ReviewReceiptScreen() {
     editDraft?.totalCents ?? draft?.totalCents ?? 0;
   const receiptPaymentType =
     editDraft?.paymentType ?? draft?.paymentType ?? null;
+  const receiptMerchantLabel =
+    editDraft?.merchantLabel ??
+    draft?.merchantLabel ??
+    draft?.merchantName ??
+    '';
+  const selectedMerchantName =
+    merchantMode === 'existing'
+      ? merchants.find((merchant) => merchant.id === merchantId)?.name ??
+        merchantName
+      : merchantName;
+  const showMerchantLabel =
+    receiptMerchantLabel.trim() !== '' &&
+    receiptMerchantLabel.trim() !== selectedMerchantName.trim();
 
   const totalsMismatch = reviewTotalsMismatch(
     includedTotal,
@@ -492,6 +505,7 @@ export default function ReviewReceiptScreen() {
         }
         const result = await updateFiscalReceipt(editReceiptId, {
           merchant,
+          merchantLabel: receiptMerchantLabel,
           occurredOn,
           expenses: items.map((item) => {
             if (!item.expenseId) {
@@ -661,6 +675,11 @@ export default function ReviewReceiptScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Место</Text>
+          {showMerchantLabel ? (
+            <Text numberOfLines={2} style={styles.merchantLabel}>
+              В чеке: {receiptMerchantLabel}
+            </Text>
+          ) : null}
           <View style={styles.modeChips}>
             <Pressable
               accessibilityRole="radio"
@@ -1107,6 +1126,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
+  },
+  merchantLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.small,
   },
   modeChip: {
     borderColor: theme.colors.border,

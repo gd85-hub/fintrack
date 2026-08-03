@@ -48,7 +48,7 @@ Expo reads `.env` at startup only. After changing it, restart with `npx expo sta
 
 Apply the migration in `supabase/migrations/` **once** on a fresh project (SQL Editor paste, or `supabase db push`). Never re-run an applied migration; new changes go in a new migration file.
 
-Existing projects must apply `20260802000000_item_categorization.sql` and then `20260802010000_item_display_names.sql` before enabling automatic receipt-item categorization. The first creates the per-user dictionary with RLS; the second adds nullable raw/display-name columns without backfilling receipt data.
+Existing projects must apply `20260802000000_item_categorization.sql`, `20260802010000_item_display_names.sql`, and then `20260803000000_merchant_brand_labels.sql`. The first creates the per-user dictionary with RLS; the second adds nullable raw/display-name columns; the third adds the nullable original merchant label to receipts. None backfill existing receipt data.
 
 For development, turn **off** email confirmation (Supabase -> Authentication -> Sign In / Providers -> Email -> *Confirm email*). With it on, sign-up returns no session and the app shows a "check your email" state instead of logging you in.
 
@@ -118,7 +118,7 @@ supabase/
 ### Data model
 
 - **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`; its editable human label is stored in `description` and the original receipt text in nullable `raw_name`.
-- **`receipts`** - one row per scanned receipt (merchant, tax id, timestamp, total, parsed payload). Home groups every non-null `receipt_id` as one editable purchase, including receipts with only one remaining item. Receipt **images are never stored**.
+- **`receipts`** - one row per scanned receipt (merchant, original `merchant_label`, tax id, timestamp, total, parsed payload). Home groups every non-null `receipt_id` as one editable purchase, including receipts with only one remaining item. Receipt **images are never stored**.
 - **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
 - **`item_category_rules`** - a private per-user dictionary from normalized raw item names to a category or routine exclusion, with the learned human label in `display_name`. Final review choices overwrite older rules and increment their hit count.
 - **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
@@ -136,6 +136,7 @@ Reference tables use `user_id IS NULL` for shared system defaults and a non-null
 - **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
 - **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
 - **Receipt categorization is dictionary-first.** Known item names resolve locally from the user's RLS-protected rules; only unknown names use the text-only model, and final review choices teach the next receipt.
+- **Merchant brands are shared across branches.** A generic store-code rule turns an incoming printed branch label into the initial merchant brand, while `receipts.merchant_label` keeps the full original text. Explicit user selections and edited merchant names always win and existing merchants are never renamed automatically.
 - **Device fetches the tax page; server only parses.** The tax site blocks cloud servers but serves the device; parsing lives server-side (with a hostname allowlist) so fixes don't require a new app build.
 - **SUF QR scanning is native-only.** Browsers can't fetch the Serbian tax page (CORS). Photo and email-screenshot receipt upload remains available on Web.
 - **No image storage.** Receipt photos/pages are parsed and discarded.

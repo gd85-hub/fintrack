@@ -6,7 +6,7 @@ import {
 
 import type { Category, MerchantType } from './db';
 import { parseLocalISO } from './dates';
-import type { ParsedReceipt } from './receipts';
+import { extractMerchantBrand, type ParsedReceipt } from './receipts';
 import { supabase } from './supabase';
 
 export const maximumReceiptImages = 5;
@@ -291,10 +291,12 @@ export function receiptFromImageAnalysis(
   if (!analysis.occurredOn || !analysis.currency) {
     return null;
   }
+  const merchantLabel = analysis.merchantName?.trim() ?? '';
   return {
     ok: true,
     source: 'ocr_photo',
-    merchantName: analysis.merchantName ?? '',
+    merchantName: extractMerchantBrand(merchantLabel),
+    merchantLabel,
     merchantTypeSlug: analysis.merchantTypeSlug,
     taxId: null,
     occurredAt: null,

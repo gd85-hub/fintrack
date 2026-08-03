@@ -30,6 +30,7 @@ const receiptSnapshot = {
   user_id: 'user-1',
   source: 'fiscal_qr',
   merchant_id: 'merchant-old',
+  merchant_label: 'OLD MARKET 101 CENTER',
   tax_id: '123456789',
   occurred_at: '2026-08-01T12:34:00+02:00',
   total: '300.00',
@@ -105,6 +106,7 @@ function expense(
     categorySlug: 'groceries',
     merchantId: 'merchant-old',
     merchantName: 'Old Market',
+    merchantLabel: 'OLD MARKET 101 CENTER',
     originalAmountCents: amountCents,
     originalCurrency: 'RSD',
     amountRsdCents: amountCents,
@@ -189,6 +191,7 @@ describe('saved receipt edit draft', () => {
         id: 'receipt-1',
         merchantId: 'merchant-old',
         merchantName: 'Old Market',
+        merchantLabel: 'OLD MARKET 101 CENTER',
         merchantTypeId: 'shop',
         totalCents: 30_000,
         currency: 'RSD',
@@ -204,6 +207,7 @@ describe('saved receipt edit draft', () => {
       receiptId: 'receipt-1',
       merchantId: 'merchant-old',
       merchantName: 'Old Market',
+      merchantLabel: 'OLD MARKET 101 CENTER',
       merchantTypeId: 'shop',
       occurredOn: '2026-08-01',
       totalCents: 30_000,
@@ -272,6 +276,7 @@ describe('updateFiscalReceipt', () => {
     await expect(
       updateFiscalReceipt('receipt-1', {
         merchant: { existingId: 'merchant-new' },
+        merchantLabel: 'OLD MARKET 101 CENTER',
         occurredOn: '2026-08-03',
         expenses: [
           {
@@ -319,6 +324,7 @@ describe('updateFiscalReceipt', () => {
     );
     expect(receiptUpdate.update).toHaveBeenCalledWith({
       merchant_id: 'merchant-new',
+      merchant_label: 'OLD MARKET 101 CENTER',
       occurred_at: '2026-08-03T12:34:00+02:00',
       total: '300.00',
     });
@@ -352,6 +358,7 @@ describe('updateFiscalReceipt', () => {
     await expect(
       updateFiscalReceipt('receipt-1', {
         merchant: { existingId: 'merchant-old' },
+        merchantLabel: 'OLD MARKET 101 CENTER',
         occurredOn: '2026-08-01',
         expenses: [
           {
@@ -396,6 +403,7 @@ describe('updateFiscalReceipt', () => {
     );
     expect(receiptUpdate.update).toHaveBeenCalledWith({
       merchant_id: 'merchant-old',
+      merchant_label: 'OLD MARKET 101 CENTER',
       total: '100.00',
     });
   });
@@ -429,6 +437,7 @@ describe('updateFiscalReceipt', () => {
 
     await updateFiscalReceipt('receipt-1', {
       merchant: { existingId: 'merchant-old' },
+      merchantLabel: 'OLD MARKET 101 CENTER',
       occurredOn: '2026-08-01',
       expenses: [
         {
@@ -466,6 +475,7 @@ describe('updateFiscalReceipt', () => {
     expect(unchangedPayload).not.toHaveProperty('amount_rsd');
     expect(receiptUpdate.update).toHaveBeenCalledWith({
       merchant_id: 'merchant-old',
+      merchant_label: 'OLD MARKET 101 CENTER',
       total: '350.00',
     });
   });
@@ -488,6 +498,7 @@ describe('updateFiscalReceipt', () => {
     await expect(
       updateFiscalReceipt('receipt-1', {
         merchant: null,
+        merchantLabel: 'OLD MARKET 101 CENTER',
         occurredOn: '2026-08-01',
         expenses: expenseSnapshots.map((item) => ({
           id: item.id,
@@ -537,6 +548,7 @@ describe('updateFiscalReceipt', () => {
     await expect(
       updateFiscalReceipt('receipt-1', {
         merchant: { existingId: 'merchant-old' },
+        merchantLabel: 'OLD MARKET 101 CENTER',
         occurredOn: '2026-08-01',
         expenses: expenseSnapshots.map((item) => ({
           id: item.id,
