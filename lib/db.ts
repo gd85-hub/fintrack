@@ -4,7 +4,6 @@ import {
   centsToDecimal,
   convertAll,
   distributeCents,
-  type Currency,
   decimalToCents,
   isCurrency,
   normalizeCurrencyCode,
@@ -151,7 +150,7 @@ type AnalyticsExpenseQueryRow = {
 
 type ExistingExpenseRow = {
   original_amount: number | string;
-  original_currency: Currency;
+  original_currency: string;
   occurred_on: string;
 };
 
@@ -386,12 +385,13 @@ export type MonthlyFixedVariableBreakdown = {
 
 export type ExpenseInput = {
   amountCents: number;
-  currency: Currency;
+  currency: string;
   categoryId: string;
   merchantId: string | null;
   occurredOn: string;
   description: string;
   note: string;
+  manualRsdCents?: number | null;
 };
 
 export type FiscalReceiptExpenseInput = {
@@ -1669,21 +1669,32 @@ export async function getExpense(id: string): Promise<Expense | null> {
   return data ? mapExpense(data as unknown as ExpenseQueryRow) : null;
 }
 
-async function conversionPayload(input: ExpenseInput) {
-  const rates = await ratesForExpense(input.occurredOn);
-  const converted = convertAll(
-    input.amountCents,
-    input.currency,
-    rates.usdRsd,
-    rates.eurRsd,
-  );
+async function conversionPayload(
+  input: ExpenseInput,
+  currency: string,
+) {
+  if (!isCurrency(currency)) {
+    const manualRsdCents = input.manualRsdCents ?? null;
+    if (
+      manualRsdCents !== null &&
+      (!Number.isSafeInteger(manualRsdCents) || manualRsdCents <= 0)
+    ) {
+      throw new Error('Сумма в RSD должна быть больше нуля.');
+    }
+    return receiptExpenseAmounts(
+      input.amountCents,
+      currency,
+      null,
+      manualRsdCents,
+    );
+  }
 
-  return {
-    amount_rsd: centsToDecimal(converted.rsd),
-    amount_usd: centsToDecimal(converted.usd),
-    amount_eur: centsToDecimal(converted.eur),
-    fx_rate_date: rates.date,
-  };
+  const rates = await ratesForExpense(input.occurredOn);
+  return receiptExpenseAmounts(
+    input.amountCents,
+    currency,
+    rates,
+  );
 }
 
 async function bumpMerchantUsage(merchantId: string | null): Promise<void> {
@@ -1705,9 +1716,13 @@ async function bumpMerchantUsage(merchantId: string | null): Promise<void> {
 }
 
 export async function insertExpense(input: ExpenseInput): Promise<void> {
+  const currency = normalizeCurrencyCode(input.currency);
+  if (!currency) {
+    throw new Error('Укажите трёхбуквенный код валюты.');
+  }
   const [userId, converted] = await Promise.all([
     authenticatedUserId(),
-    conversionPayload(input),
+    conversionPayload(input, currency),
   ]);
 
   const { error } = await supabase.from('expenses').insert({
@@ -1717,7 +1732,7 @@ export async function insertExpense(input: ExpenseInput): Promise<void> {
     category_id: input.categoryId,
     merchant_id: input.merchantId,
     original_amount: centsToDecimal(input.amountCents),
-    original_currency: input.currency,
+    original_currency: currency,
     ...converted,
     note: input.note.trim() || null,
     source: 'manual',
@@ -1734,6 +1749,10 @@ export async function updateExpense(
   id: string,
   input: ExpenseInput,
 ): Promise<void> {
+  const currency = normalizeCurrencyCode(input.currency);
+  if (!currency) {
+    throw new Error('Укажите трёхбуквенный код валюты.');
+  }
   const { data, error: fetchError } = await supabase
     .from('expenses')
     .select('original_amount,original_currency,occurred_on')
@@ -1747,10 +1766,13 @@ export async function updateExpense(
   const existing = data as unknown as ExistingExpenseRow;
   const conversionChanged =
     decimalToCents(existing.original_amount) !== input.amountCents ||
-    existing.original_currency !== input.currency ||
-    existing.occurred_on !== input.occurredOn;
+    existing.original_currency !== currency ||
+    existing.occurred_on !== input.occurredOn ||
+    !isCurrency(currency);
 
-  const converted = conversionChanged ? await conversionPayload(input) : {};
+  const converted = conversionChanged
+    ? await conversionPayload(input, currency)
+    : {};
   const { error } = await supabase
     .from('expenses')
     .update({
@@ -1759,7 +1781,7 @@ export async function updateExpense(
       category_id: input.categoryId,
       merchant_id: input.merchantId,
       original_amount: centsToDecimal(input.amountCents),
-      original_currency: input.currency,
+      original_currency: currency,
       ...converted,
       note: input.note.trim() || null,
       source: 'manual',

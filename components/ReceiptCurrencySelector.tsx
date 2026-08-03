@@ -16,6 +16,7 @@ import { theme } from '../lib/theme';
 
 type ReceiptCurrencySelectorProps = {
   disabled?: boolean;
+  label?: string;
   onChange: (currency: string) => void;
   value: string;
 };
@@ -26,6 +27,7 @@ function isCommonCurrency(value: string) {
 
 export function ReceiptCurrencySelector({
   disabled = false,
+  label = 'Валюта чека',
   onChange,
   value,
 }: ReceiptCurrencySelectorProps) {
@@ -46,7 +48,7 @@ export function ReceiptCurrencySelector({
   return (
     <>
       <Pressable
-        accessibilityLabel="Валюта чека"
+        accessibilityLabel={label}
         accessibilityRole="button"
         disabled={disabled}
         onPress={open}
@@ -69,7 +71,7 @@ export function ReceiptCurrencySelector({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.header}>
-              <Text style={styles.title}>Валюта чека</Text>
+              <Text style={styles.title}>{label}</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setVisible(false)}

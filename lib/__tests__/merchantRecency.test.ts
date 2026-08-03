@@ -97,4 +97,113 @@ describe('merchant usage recency', () => {
     });
     expect(recency.eq).toHaveBeenCalledWith('id', 'merchant-1');
   });
+
+  test('changes TMT to KZT and stores only the manual RSD value', async () => {
+    const existingExpenseQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn(async () => ({
+        data: {
+          original_amount: '125.00',
+          original_currency: 'TMT',
+          occurred_on: '2026-08-03',
+        },
+        error: null,
+      })),
+    };
+    const expenseEq = jest.fn(async () => ({ error: null }));
+    const expenseUpdate = jest.fn(() => ({ eq: expenseEq }));
+    const recency = recencyClient();
+    fromMock
+      .mockReturnValueOnce(existingExpenseQuery)
+      .mockReturnValueOnce({ update: expenseUpdate })
+      .mockReturnValueOnce(recency.client);
+
+    await updateExpense('expense-1', {
+      ...input,
+      currency: 'KZT',
+      manualRsdCents: 9_876,
+    });
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(expenseUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: '98.76',
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+    );
+  });
+
+  test('switches a manual expense to EUR and replaces manual values with FX', async () => {
+    ratesMock.mockResolvedValue({
+      date: '2026-08-03',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+    const existingExpenseQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn(async () => ({
+        data: {
+          original_amount: '125.00',
+          original_currency: 'KZT',
+          occurred_on: '2026-08-03',
+        },
+        error: null,
+      })),
+    };
+    const expenseEq = jest.fn(async () => ({ error: null }));
+    const expenseUpdate = jest.fn(() => ({ eq: expenseEq }));
+    const recency = recencyClient();
+    fromMock
+      .mockReturnValueOnce(existingExpenseQuery)
+      .mockReturnValueOnce({ update: expenseUpdate })
+      .mockReturnValueOnce(recency.client);
+
+    await updateExpense('expense-1', {
+      ...input,
+      currency: 'EUR',
+      manualRsdCents: null,
+    });
+
+    expect(ratesMock).toHaveBeenCalledTimes(1);
+    expect(ratesMock).toHaveBeenCalledWith('2026-08-03');
+    expect(expenseUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'EUR',
+        amount_rsd: '14625.00',
+        amount_usd: '132.95',
+        amount_eur: '125.00',
+        fx_rate_date: '2026-08-03',
+      }),
+    );
+  });
+
+  test('inserts an exotic-currency expense without fabricating FX', async () => {
+    const expenseInsert = jest.fn(async () => ({ error: null }));
+    const recency = recencyClient();
+    fromMock
+      .mockReturnValueOnce({ insert: expenseInsert })
+      .mockReturnValueOnce(recency.client);
+
+    await insertExpense({
+      ...input,
+      currency: 'KZT',
+      manualRsdCents: null,
+    });
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(expenseInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'KZT',
+        amount_rsd: null,
+        amount_usd: null,
+        amount_eur: null,
+        fx_rate_date: null,
+      }),
+    );
+  });
 });

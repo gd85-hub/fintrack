@@ -34,7 +34,6 @@ import {
   centsToInput,
   convertAll,
   type ConvertedAmounts,
-  type Currency,
   formatMoney,
   isCurrency,
   parseAmountInput,
@@ -42,10 +41,10 @@ import {
 import { theme } from '../lib/theme';
 import { CategoryPicker } from './CategoryPicker';
 import { ConfirmDialog } from './ConfirmDialog';
-import { CurrencySelector } from './CurrencySelector';
 import { DatePicker } from './DatePicker';
 import { LoadingScreen } from './LoadingScreen';
 import { MerchantPicker } from './MerchantPicker';
+import { ReceiptCurrencySelector } from './ReceiptCurrencySelector';
 
 type ExpenseEditorScreenProps = {
   expenseId?: string;
@@ -71,10 +70,15 @@ function ExpenseForm({
   const [amount, setAmount] = useState(
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
   );
-  const [currency, setCurrency] = useState<Currency>(
-    initialExpense && isCurrency(initialExpense.originalCurrency)
-      ? initialExpense.originalCurrency
-      : 'RSD',
+  const [currency, setCurrency] = useState(
+    initialExpense?.originalCurrency ?? 'RSD',
+  );
+  const [manualRsdInput, setManualRsdInput] = useState(
+    initialExpense &&
+      !isCurrency(initialExpense.originalCurrency) &&
+      initialExpense.amountRsdCents > 0
+      ? centsToInput(initialExpense.amountRsdCents)
+      : '',
   );
   const [categoryId, setCategoryId] = useState<string | null>(
     initialExpense?.categoryId ?? null,
@@ -101,14 +105,32 @@ function ExpenseForm({
   const [deleting, setDeleting] = useState(false);
 
   const parsedAmount = parseAmountInput(amount);
+  const parsedManualRsd = manualRsdInput.trim()
+    ? parseAmountInput(manualRsdInput)
+    : null;
   const validAmount = parsedAmount !== null && parsedAmount > 0;
   const validDate = parseLocalISO(date) !== null;
-  const canSave = validAmount && validDate && categoryId !== null && !saving;
+  const automaticCurrency = isCurrency(currency) ? currency : null;
+  const hasInvalidManualRsd =
+    automaticCurrency === null &&
+    manualRsdInput.trim() !== '' &&
+    (parsedManualRsd === null || parsedManualRsd <= 0);
+  const canSave =
+    validAmount &&
+    validDate &&
+    categoryId !== null &&
+    !hasInvalidManualRsd &&
+    !saving;
 
   useEffect(() => {
     let active = true;
 
-    if (!validAmount || !validDate || parsedAmount === null) {
+    if (
+      !automaticCurrency ||
+      !validAmount ||
+      !validDate ||
+      parsedAmount === null
+    ) {
       setPreview(null);
       setRateError('');
       setPreviewLoading(false);
@@ -127,7 +149,7 @@ function ExpenseForm({
             setPreview(
               convertAll(
                 parsedAmount,
-                currency,
+                automaticCurrency,
                 rates.usdRsd,
                 rates.eurRsd,
               ),
@@ -152,7 +174,21 @@ function ExpenseForm({
       active = false;
       clearTimeout(timeout);
     };
-  }, [currency, date, parsedAmount, retryKey, validAmount, validDate]);
+  }, [
+    automaticCurrency,
+    date,
+    parsedAmount,
+    retryKey,
+    validAmount,
+    validDate,
+  ]);
+
+  function handleCurrencyChange(nextCurrency: string) {
+    setCurrency(nextCurrency);
+    if (isCurrency(nextCurrency)) {
+      setManualRsdInput('');
+    }
+  }
 
   function handleMerchantCreated(merchant: Merchant) {
     setMerchants((current) =>
@@ -173,6 +209,13 @@ function ExpenseForm({
       return;
     }
 
+    if (hasInvalidManualRsd) {
+      setFormError(
+        'Введите корректную сумму в RSD или оставьте поле пустым.',
+      );
+      return;
+    }
+
     if (!validDate) {
       setFormError('Выберите корректную дату.');
       return;
@@ -186,6 +229,7 @@ function ExpenseForm({
       occurredOn: date,
       description,
       note,
+      manualRsdCents: automaticCurrency ? null : parsedManualRsd,
     };
 
     setSaving(true);
@@ -270,12 +314,45 @@ function ExpenseForm({
 
         <View style={styles.field}>
           <Text style={styles.label}>Валюта</Text>
-          <CurrencySelector
-            accessibilityLabel="Валюта траты"
-            onChange={setCurrency}
+          <ReceiptCurrencySelector
+            disabled={saving}
+            label="Валюта траты"
+            onChange={handleCurrencyChange}
             value={currency}
           />
         </View>
+
+        {!automaticCurrency ? (
+          <View style={styles.field}>
+            <Text style={styles.label}>Сумма в RSD (вручную)</Text>
+            <View style={styles.manualAmountRow}>
+              <TextInput
+                accessibilityLabel="Сумма в RSD вручную"
+                editable={!saving}
+                inputMode="decimal"
+                maxLength={20}
+                onChangeText={setManualRsdInput}
+                placeholder="0,00"
+                placeholderTextColor={theme.colors.textMuted}
+                style={[
+                  styles.input,
+                  styles.manualAmountInput,
+                  hasInvalidManualRsd && styles.invalidInput,
+                ]}
+                value={manualRsdInput}
+              />
+              <Text style={styles.manualCurrency}>RSD</Text>
+            </View>
+            <Text style={styles.helperText}>
+              Оставьте пустым, если эквивалент пока неизвестен.
+            </Text>
+            {hasInvalidManualRsd ? (
+              <Text accessibilityRole="alert" style={styles.errorText}>
+                Введите сумму больше нуля
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         <CategoryPicker
           categories={categories}
@@ -488,27 +565,6 @@ export function ExpenseEditorScreen({
     );
   }
 
-  if (expense && !isCurrency(expense.originalCurrency)) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>
-          Конвертация из {expense.originalCurrency} пока ожидает поддержки.
-          Эту трату нельзя редактировать вручную.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.secondaryAction,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.secondaryActionText}>Назад</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
     <ExpenseForm
       categories={categories}
@@ -587,6 +643,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: theme.fontSizes.title,
   },
+  helperText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSizes.caption,
+  },
   inlineError: {
     gap: theme.spacing.xs,
   },
@@ -600,9 +660,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
   },
+  invalidInput: {
+    borderColor: theme.colors.danger,
+  },
   label: {
     color: theme.colors.text,
     fontSize: theme.fontSizes.label,
+    fontWeight: '600',
+  },
+  manualAmountInput: {
+    flex: 1,
+  },
+  manualAmountRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  manualCurrency: {
+    color: theme.colors.text,
+    fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   multilineInput: {
