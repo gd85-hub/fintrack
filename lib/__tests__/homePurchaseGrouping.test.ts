@@ -8,6 +8,7 @@ import { type Expense, listExpensesByMonth } from '../db';
 import {
   collapseIdenticalPurchaseItems,
   decideHomeRowPresentation,
+  resolveHomeRowHeader,
 } from '../homeRowPresentation';
 import type { Currency } from '../money';
 import { supabase } from '../supabase';
@@ -315,5 +316,31 @@ describe('Home purchase grouping', () => {
     expect(
       decideHomeRowPresentation(manualUnit?.expenses.length ?? 0),
     ).toEqual({ expandable: false, kind: 'expense' });
+  });
+
+  test('uses the merchant brand as the header and falls back to description', () => {
+    const withMerchant = {
+      ...createExpense('mince', null, {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      description: 'Фарш',
+      merchantName: 'IDEA',
+    };
+    const withoutMerchant = {
+      ...createExpense('rent', null, {
+        rsd: 50_000,
+        usd: 450,
+        eur: 420,
+      }),
+      description: 'Аренда квартиры',
+      merchantName: null,
+    };
+
+    expect(resolveHomeRowHeader([withMerchant])).toBe('IDEA');
+    expect(resolveHomeRowHeader([withoutMerchant])).toBe(
+      'Аренда квартиры',
+    );
   });
 });

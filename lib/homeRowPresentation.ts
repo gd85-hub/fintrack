@@ -1,6 +1,7 @@
 type PurchaseItemCandidate = {
   categoryName?: string;
   description: string;
+  merchantName?: string | null;
   originalAmountCents: number;
   originalCurrency: string;
   quantity?: number | null;
@@ -22,6 +23,20 @@ export type HomeRowPresentation =
 
 function purchaseItemDisplayName(item: PurchaseItemCandidate): string {
   return item.description.trim() || item.categoryName?.trim() || '';
+}
+
+export function resolveHomeRowHeader(
+  items: readonly PurchaseItemCandidate[],
+): string {
+  const merchantName = items
+    .find((item) => item.merchantName?.trim())
+    ?.merchantName?.trim();
+  if (merchantName) {
+    return merchantName;
+  }
+
+  const firstItem = items[0];
+  return firstItem ? purchaseItemDisplayName(firstItem) : '';
 }
 
 function purchaseItemUnitPrice(item: PurchaseItemCandidate): number {

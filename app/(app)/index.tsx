@@ -36,6 +36,7 @@ import {
 import {
   collapseIdenticalPurchaseItems,
   decideHomeRowPresentation,
+  resolveHomeRowHeader,
 } from '../../lib/homeRowPresentation';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme } from '../../lib/theme';
@@ -123,23 +124,6 @@ export function purchaseUnitsTotal(
   );
 }
 
-function expenseDisplayAmount(
-  expense: Expense,
-  displayCurrency: Currency,
-) {
-  if (expense.fxRateDate === null) {
-    return {
-      amountCents: expense.originalAmountCents,
-      currency: expense.originalCurrency,
-    };
-  }
-
-  return {
-    amountCents: amountForCurrency(expense, displayCurrency),
-    currency: displayCurrency,
-  };
-}
-
 function purchaseDisplayAmount(
   expenses: readonly Expense[],
   displayCurrency: Currency,
@@ -203,66 +187,23 @@ function purchaseCategoryHint(expenses: readonly Expense[]): string {
   return `${emojis}${emojis ? ' ' : ''}Разные категории`;
 }
 
-type ExpenseRowProps = {
-  displayCurrency: Currency;
-  expense: Expense;
-  onPress: () => void;
-};
-
-function ExpenseRow({
-  displayCurrency,
-  expense,
-  onPress,
-}: ExpenseRowProps) {
-  const displayAmount = expenseDisplayAmount(expense, displayCurrency);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.expenseRow,
-        pressed && styles.rowPressed,
-      ]}
-    >
-      <View style={styles.expenseCopy}>
-        <Text numberOfLines={1} style={styles.expenseTitle}>
-          {expense.description.trim() || expense.categoryName}
-        </Text>
-        <Text numberOfLines={1} style={styles.categoryMarker}>
-          {`${expense.categoryEmoji} ${expense.categoryName}`.trim()}
-        </Text>
-        {expense.merchantName ? (
-          <Text numberOfLines={1} style={styles.expenseSubtitle}>
-            {expense.merchantName}
-          </Text>
-        ) : null}
-        {expense.fxRateDate === null ? (
-          <Text style={styles.expenseSubtitle}>
-            Конвертация ожидает
-          </Text>
-        ) : null}
-      </View>
-      <Text style={styles.expenseAmount}>
-        {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
-      </Text>
-    </Pressable>
-  );
+function purchasePositionLabel(itemCount: number): string {
+  return itemCount === 1 ? '1 позиция' : `${itemCount} позиций`;
 }
 
-type ReceiptPurchaseRowProps = {
+type PurchaseRowProps = {
   displayCurrency: Currency;
   expanded: boolean;
-  onDelete: () => void;
-  onEdit: () => void;
+  onDelete?: () => void;
+  onEdit?: () => void;
   onOpenExpense: (expenseId: string) => void;
-  onShowMore: () => void;
-  onToggle: () => void;
+  onShowMore?: () => void;
+  onToggle?: () => void;
   unit: PurchaseUnit;
   visibleCount: number;
 };
 
-function ReceiptPurchaseRow({
+function PurchaseRow({
   displayCurrency,
   expanded,
   onDelete,
@@ -272,20 +213,28 @@ function ReceiptPurchaseRow({
   onToggle,
   unit,
   visibleCount,
-}: ReceiptPurchaseRowProps) {
+}: PurchaseRowProps) {
   const displayAmount = purchaseDisplayAmount(
     unit.expenses,
     displayCurrency,
   );
   const firstExpense = unit.expenses[0];
-  const merchantName =
-    unit.expenses.find((expense) => expense.merchantName)?.merchantName ??
-    'Без места';
+  const header = resolveHomeRowHeader(unit.expenses);
+  const merchantName = unit.expenses
+    .find((expense) => expense.merchantName?.trim())
+    ?.merchantName?.trim();
   const merchantLabel = unit.expenses
     .find((expense) => expense.merchantLabel?.trim())
     ?.merchantLabel?.trim();
   const showMerchantLabel =
-    merchantLabel !== undefined && merchantLabel !== merchantName;
+    merchantName !== undefined &&
+    merchantLabel !== undefined &&
+    merchantLabel !== header;
+  const expandable = decideHomeRowPresentation(
+    unit.expenses.length,
+  ).expandable;
+  const rowExpanded = expandable && expanded;
+  const positionLabel = purchasePositionLabel(unit.expenses.length);
   const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
   const visibleItems = collapsedItems.slice(0, visibleCount);
   const remaining = collapsedItems.length - visibleItems.length;
@@ -294,13 +243,23 @@ function ReceiptPurchaseRow({
     return null;
   }
 
+  const handleRowPress = () => {
+    if (expandable) {
+      onToggle?.();
+      return;
+    }
+    onOpenExpense(firstExpense.id);
+  };
+
   return (
     <View style={styles.purchaseUnit}>
       <Pressable
-        accessibilityLabel={`${merchantName}${showMerchantLabel ? `, ${merchantLabel}` : ''}, ${unit.expenses.length} позиций, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
+        accessibilityLabel={`${header}${showMerchantLabel ? `, ${merchantLabel}` : ''}, ${positionLabel}, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
         accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        onPress={onToggle}
+        accessibilityState={
+          expandable ? { expanded: rowExpanded } : undefined
+        }
+        onPress={handleRowPress}
         style={({ pressed }) => [
           styles.expenseRow,
           pressed && styles.rowPressed,
@@ -308,7 +267,7 @@ function ReceiptPurchaseRow({
       >
         <View style={styles.expenseCopy}>
           <Text numberOfLines={1} style={styles.purchaseTitle}>
-            {merchantName}
+            {header}
           </Text>
           {showMerchantLabel ? (
             <Text numberOfLines={1} style={styles.purchaseMerchantLabel}>
@@ -316,57 +275,60 @@ function ReceiptPurchaseRow({
             </Text>
           ) : null}
           <Text numberOfLines={1} style={styles.expenseSubtitle}>
-            {unit.expenses.length} позиций ·{' '}
-            {purchaseCategoryHint(unit.expenses)}
+            {positionLabel} · {purchaseCategoryHint(unit.expenses)}
           </Text>
         </View>
         <Text style={styles.expenseAmount}>
           {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
         </Text>
-        <Text
-          style={[
-            styles.expandIcon,
-            expanded && styles.expandIconExpanded,
-          ]}
-        >
-          ›
-        </Text>
+        {expandable ? (
+          <Text
+            style={[
+              styles.expandIcon,
+              rowExpanded && styles.expandIconExpanded,
+            ]}
+          >
+            ›
+          </Text>
+        ) : null}
       </Pressable>
 
-      {expanded ? (
+      {rowExpanded ? (
         <View style={styles.purchaseDetails}>
           <View style={styles.purchaseActions}>
             <Text style={styles.purchaseDetailsTitle}>
               Позиции чека
             </Text>
-            <View style={styles.purchaseActionButtons}>
-              <Pressable
-                accessibilityLabel="Редактировать всю покупку"
-                accessibilityRole="button"
-                onPress={onEdit}
-                style={({ pressed }) => [
-                  styles.editPurchaseButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.editPurchaseText}>
-                  Редактировать покупку
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
-                accessibilityRole="button"
-                onPress={onDelete}
-                style={({ pressed }) => [
-                  styles.deletePurchaseButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.deletePurchaseText}>
-                  Удалить покупку
-                </Text>
-              </Pressable>
-            </View>
+            {onEdit && onDelete ? (
+              <View style={styles.purchaseActionButtons}>
+                <Pressable
+                  accessibilityLabel="Редактировать всю покупку"
+                  accessibilityRole="button"
+                  onPress={onEdit}
+                  style={({ pressed }) => [
+                    styles.editPurchaseButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.editPurchaseText}>
+                    Редактировать покупку
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
+                  accessibilityRole="button"
+                  onPress={onDelete}
+                  style={({ pressed }) => [
+                    styles.deletePurchaseButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.deletePurchaseText}>
+                    Удалить покупку
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           {visibleItems.map((item) => {
@@ -407,7 +369,7 @@ function ReceiptPurchaseRow({
             );
           })}
 
-          {remaining > 0 ? (
+          {remaining > 0 && onShowMore ? (
             <Pressable
               accessibilityLabel={`Показать ещё ${Math.min(expensePageSize, remaining)} позиций`}
               accessibilityRole="button"
@@ -830,46 +792,51 @@ export default function HomeScreen() {
                     const rowPresentation = decideHomeRowPresentation(
                       unit.expenses.length,
                     );
-
-                    if (rowPresentation.kind === 'expense') {
-                      return (
-                        <ExpenseRow
-                          displayCurrency={displayCurrency}
-                          expense={expense}
-                          key={unit.key}
-                          onPress={() =>
-                            router.push(`/(app)/expense/${expense.id}`)
-                          }
-                        />
-                      );
-                    }
-
                     const receiptId = unit.receiptId;
-                    if (receiptId === null) {
+                    if (rowPresentation.expandable && receiptId === null) {
                       return null;
                     }
+
                     return (
-                      <ReceiptPurchaseRow
+                      <PurchaseRow
                         displayCurrency={displayCurrency}
-                        expanded={expandedReceiptIds.has(receiptId)}
-                        key={unit.key}
-                        onDelete={() =>
-                          requestPurchaseDelete(receiptId)
+                        expanded={
+                          receiptId !== null &&
+                          expandedReceiptIds.has(receiptId)
                         }
-                        onEdit={() =>
-                          router.push(
-                            `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
-                          )
+                        key={unit.key}
+                        onDelete={
+                          rowPresentation.expandable && receiptId !== null
+                            ? () => requestPurchaseDelete(receiptId)
+                            : undefined
+                        }
+                        onEdit={
+                          rowPresentation.expandable && receiptId !== null
+                            ? () =>
+                                router.push(
+                                  `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
+                                )
+                            : undefined
                         }
                         onOpenExpense={(expenseId) =>
                           router.push(`/(app)/expense/${expenseId}`)
                         }
-                        onShowMore={() => showMoreReceipt(receiptId)}
-                        onToggle={() => toggleReceipt(receiptId)}
+                        onShowMore={
+                          rowPresentation.expandable && receiptId !== null
+                            ? () => showMoreReceipt(receiptId)
+                            : undefined
+                        }
+                        onToggle={
+                          rowPresentation.expandable && receiptId !== null
+                            ? () => toggleReceipt(receiptId)
+                            : undefined
+                        }
                         unit={unit}
                         visibleCount={
-                          receiptVisibleCounts[receiptId] ??
-                          expensePageSize
+                          receiptId === null
+                            ? expensePageSize
+                            : receiptVisibleCounts[receiptId] ??
+                              expensePageSize
                         }
                       />
                     );
@@ -1024,10 +991,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'right',
   },
-  categoryMarker: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.small,
-  },
   expenseCopy: {
     flex: 1,
     gap: theme.spacing.xxs,
@@ -1044,10 +1007,6 @@ const styles = StyleSheet.create({
   expenseSubtitle: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.caption,
-  },
-  expenseTitle: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.body,
   },
   expandIcon: {
     color: theme.colors.textMuted,
