@@ -64,7 +64,11 @@ const maximumAiItems = 60;
 const trailingParentheticalNoise =
   /\s*\(\s*(?:k\s*o\s*m|\p{L})\s*\)\s*$/iu;
 const trailingSizeNoise =
-  /\s*(?:\d+(?:[.,]\d+)?\s*(?:ml|cl|dl|l|mg|g|gr|kg)|\d+\s*\/\s*\d+)\s*$/iu;
+  /\s*(?:\d+(?:[.,]\d+)?\s*(?:ml|cl|dl|mg|gr|kg|l|g|мл|кл|дл|мг|гр|кг|л|г|kom\.?|kpl|ком|шт\.?)(?![\p{L}\p{N}])|\d+\s*\/\s*\d+)\s*$/iu;
+const trailingCountNoise =
+  /(?:\s*\/\s*|\s+)(?:kom\.?|kpl|ком|шт\.?)\s*$/iu;
+const separatorNoise = /[-–—/·]+/gu;
+const leadingArticleNoise = /^\d{6,}(?=\s|$)\s*/u;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -85,6 +89,12 @@ export function normalizeItemName(name: string) {
     const withoutNoise = normalized
       .replace(trailingParentheticalNoise, '')
       .replace(trailingSizeNoise, '')
+      .replace(trailingCountNoise, '')
+      .replace(separatorNoise, ' ')
+      // Preserve a dot only when it has a digit on both sides.
+      .replace(/(^|[^\d])\./gu, '$1 ')
+      .replace(/\.(?=$|[^\d])/gu, ' ')
+      .replace(leadingArticleNoise, '')
       .trim()
       .replace(/\s+/gu, ' ');
     if (withoutNoise === normalized) {
@@ -93,7 +103,11 @@ export function normalizeItemName(name: string) {
     normalized = withoutNoise;
   }
 
-  return normalized;
+  return normalized
+    .normalize('NFKC')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/gu, ' ');
 }
 
 async function authenticatedUserId() {
