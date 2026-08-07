@@ -17,9 +17,10 @@ export type CollapsedPurchaseItem<T extends PurchaseItemCandidate> = {
   unitPriceCents: number;
 };
 
-export type HomeRowPresentation =
-  | { expandable: false; kind: 'expense' }
-  | { expandable: true; kind: 'purchase' };
+export type HomeRowPresentation = {
+  expandable: true;
+  kind: 'expense' | 'purchase';
+};
 
 function purchaseItemDisplayName(item: PurchaseItemCandidate): string {
   return item.description.trim() || item.categoryName?.trim() || '';
@@ -99,7 +100,8 @@ export function collapseIdenticalPurchaseItems<
 export function decideHomeRowPresentation(
   itemCount: number,
 ): HomeRowPresentation {
-  return itemCount >= 2
-    ? { expandable: true, kind: 'purchase' }
-    : { expandable: false, kind: 'expense' };
+  return {
+    expandable: true,
+    kind: itemCount >= 2 ? 'purchase' : 'expense',
+  };
 }

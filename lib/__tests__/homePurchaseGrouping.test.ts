@@ -289,13 +289,13 @@ describe('Home purchase grouping', () => {
     expect(collapsed).toHaveLength(2);
   });
 
-  test('chooses row behavior only from item count', () => {
+  test('keeps row kind by item count while making every row expandable', () => {
     expect(decideHomeRowPresentation(2)).toEqual({
       expandable: true,
       kind: 'purchase',
     });
     expect(decideHomeRowPresentation(1)).toEqual({
-      expandable: false,
+      expandable: true,
       kind: 'expense',
     });
 
@@ -313,10 +313,10 @@ describe('Home purchase grouping', () => {
     ]);
     expect(
       decideHomeRowPresentation(receiptUnit?.expenses.length ?? 0),
-    ).toEqual({ expandable: false, kind: 'expense' });
+    ).toEqual({ expandable: true, kind: 'expense' });
     expect(
       decideHomeRowPresentation(manualUnit?.expenses.length ?? 0),
-    ).toEqual({ expandable: false, kind: 'expense' });
+    ).toEqual({ expandable: true, kind: 'expense' });
   });
 
   test('uses the merchant brand as the header and falls back to description', () => {

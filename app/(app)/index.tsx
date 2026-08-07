@@ -54,7 +54,9 @@ export type PurchaseUnit = {
 
 type PendingPurchaseDelete = {
   expenseCount: number;
-  receiptId: string;
+  expenseIds: string[];
+  receiptId: string | null;
+  unitKey: string;
 };
 
 const expensePageSize = 10;
@@ -434,10 +436,10 @@ export default function HomeScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
-  const [expandedReceiptIds, setExpandedReceiptIds] = useState<Set<string>>(
+  const [expandedUnitKeys, setExpandedUnitKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  const [receiptVisibleCounts, setReceiptVisibleCounts] = useState<
+  const [unitVisibleCounts, setUnitVisibleCounts] = useState<
     Record<string, number>
   >({});
   const [pendingPurchaseDelete, setPendingPurchaseDelete] =
@@ -452,8 +454,8 @@ export default function HomeScreen() {
   }, [requestedMonth]);
 
   useEffect(() => {
-    setExpandedReceiptIds(new Set());
-    setReceiptVisibleCounts({});
+    setExpandedUnitKeys(new Set());
+    setUnitVisibleCounts({});
     setPurchaseErrorMessage('');
   }, [visibleMonth]);
 
@@ -531,43 +533,43 @@ export default function HomeScreen() {
     }
   }
 
-  function toggleReceipt(receiptId: string) {
-    const willExpand = !expandedReceiptIds.has(receiptId);
+  function toggleUnit(unitKey: string) {
+    const willExpand = !expandedUnitKeys.has(unitKey);
 
-    setExpandedReceiptIds((current) => {
+    setExpandedUnitKeys((current) => {
       const next = new Set(current);
       if (willExpand) {
-        next.add(receiptId);
+        next.add(unitKey);
       } else {
-        next.delete(receiptId);
+        next.delete(unitKey);
       }
       return next;
     });
-    setReceiptVisibleCounts((current) => {
+    setUnitVisibleCounts((current) => {
       if (willExpand) {
-        return { ...current, [receiptId]: expensePageSize };
+        return { ...current, [unitKey]: expensePageSize };
       }
 
       const next = { ...current };
-      delete next[receiptId];
+      delete next[unitKey];
       return next;
     });
   }
 
-  function showMoreReceipt(receiptId: string) {
-    setReceiptVisibleCounts((current) => ({
+  function showMoreUnit(unitKey: string) {
+    setUnitVisibleCounts((current) => ({
       ...current,
-      [receiptId]:
-        (current[receiptId] ?? expensePageSize) + expensePageSize,
+      [unitKey]: (current[unitKey] ?? expensePageSize) + expensePageSize,
     }));
   }
 
-  function requestPurchaseDelete(receiptId: string) {
-    const expenseCount = expenses.filter(
-      (expense) => expense.receiptId === receiptId,
-    ).length;
-
-    setPendingPurchaseDelete({ expenseCount, receiptId });
+  function requestPurchaseDelete(unit: PurchaseUnit) {
+    setPendingPurchaseDelete({
+      expenseCount: unit.expenses.length,
+      expenseIds: unit.expenses.map((expense) => expense.id),
+      receiptId: unit.receiptId,
+      unitKey: unit.key,
+    });
   }
 
   async function handlePurchaseDelete() {
@@ -575,20 +577,19 @@ export default function HomeScreen() {
       return;
     }
 
-    const { receiptId } = pendingPurchaseDelete;
-    const receiptExpenses = expenses.filter(
-      (expense) => expense.receiptId === receiptId,
-    );
+    const { expenseIds, receiptId, unitKey } = pendingPurchaseDelete;
     let deletionFailed = false;
 
     setDeletingPurchase(true);
     setPurchaseErrorMessage('');
 
     try {
-      for (const expense of receiptExpenses) {
-        await deleteExpense(expense.id);
+      for (const expenseId of expenseIds) {
+        await deleteExpense(expenseId);
       }
-      await deleteReceipt(receiptId);
+      if (receiptId !== null) {
+        await deleteReceipt(receiptId);
+      }
     } catch (error: unknown) {
       deletionFailed = true;
       console.error('Unable to delete the complete purchase:', error);
@@ -612,14 +613,14 @@ export default function HomeScreen() {
     } finally {
       setDeletingPurchase(false);
       setPendingPurchaseDelete(null);
-      setExpandedReceiptIds((current) => {
+      setExpandedUnitKeys((current) => {
         const next = new Set(current);
-        next.delete(receiptId);
+        next.delete(unitKey);
         return next;
       });
-      setReceiptVisibleCounts((current) => {
+      setUnitVisibleCounts((current) => {
         const next = { ...current };
-        delete next[receiptId];
+        delete next[unitKey];
         return next;
       });
     }
@@ -785,54 +786,31 @@ export default function HomeScreen() {
                       return null;
                     }
 
-                    const rowPresentation = decideHomeRowPresentation(
-                      unit.expenses.length,
-                    );
                     const receiptId = unit.receiptId;
-                    if (rowPresentation.expandable && receiptId === null) {
-                      return null;
-                    }
 
                     return (
                       <PurchaseRow
                         displayCurrency={displayCurrency}
-                        expanded={
-                          receiptId !== null &&
-                          expandedReceiptIds.has(receiptId)
-                        }
+                        expanded={expandedUnitKeys.has(unit.key)}
                         key={unit.key}
-                        onDelete={
-                          rowPresentation.expandable && receiptId !== null
-                            ? () => requestPurchaseDelete(receiptId)
-                            : undefined
-                        }
+                        onDelete={() => requestPurchaseDelete(unit)}
                         onEdit={
-                          rowPresentation.expandable && receiptId !== null
+                          receiptId !== null
                             ? () =>
                                 router.push(
                                   `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
                                 )
-                            : undefined
+                            : () =>
+                                router.push(`/(app)/expense/${expense.id}`)
                         }
                         onOpenExpense={(expenseId) =>
                           router.push(`/(app)/expense/${expenseId}`)
                         }
-                        onShowMore={
-                          rowPresentation.expandable && receiptId !== null
-                            ? () => showMoreReceipt(receiptId)
-                            : undefined
-                        }
-                        onToggle={
-                          rowPresentation.expandable && receiptId !== null
-                            ? () => toggleReceipt(receiptId)
-                            : undefined
-                        }
+                        onShowMore={() => showMoreUnit(unit.key)}
+                        onToggle={() => toggleUnit(unit.key)}
                         unit={unit}
                         visibleCount={
-                          receiptId === null
-                            ? expensePageSize
-                            : receiptVisibleCounts[receiptId] ??
-                              expensePageSize
+                          unitVisibleCounts[unit.key] ?? expensePageSize
                         }
                       />
                     );
