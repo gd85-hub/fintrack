@@ -157,34 +157,27 @@ function purchaseDisplayAmount(
   };
 }
 
-function purchaseCategoryHint(expenses: readonly Expense[]): string {
-  const categories = new Map<
-    string,
-    { emoji: string; name: string }
-  >();
+export function purchaseCategoryHint(expenses: readonly Expense[]): string {
+  const categories = new Map<string, string>();
 
   for (const expense of expenses) {
     if (!categories.has(expense.categoryId)) {
-      categories.set(expense.categoryId, {
-        emoji: expense.categoryEmoji,
-        name: expense.categoryName,
-      });
+      categories.set(expense.categoryId, expense.categoryEmoji);
     }
   }
 
-  if (categories.size === 1) {
-    const category = categories.values().next().value;
-    return category
-      ? `${category.emoji} ${category.name}`.trim()
-      : '';
+  const emojis = new Set<string>();
+  for (const categoryEmoji of categories.values()) {
+    const emoji = categoryEmoji.trim();
+    if (emoji) {
+      emojis.add(emoji);
+    }
+    if (emojis.size === 3) {
+      break;
+    }
   }
 
-  const emojis = [...categories.values()]
-    .slice(0, 3)
-    .map((category) => category.emoji)
-    .filter(Boolean)
-    .join(' ');
-  return `${emojis}${emojis ? ' ' : ''}Разные категории`;
+  return [...emojis].join(' ');
 }
 
 function purchasePositionLabel(itemCount: number): string {
@@ -235,6 +228,7 @@ function PurchaseRow({
   ).expandable;
   const rowExpanded = expandable && expanded;
   const positionLabel = purchasePositionLabel(unit.expenses.length);
+  const categoryHint = purchaseCategoryHint(unit.expenses);
   const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
   const visibleItems = collapsedItems.slice(0, visibleCount);
   const remaining = collapsedItems.length - visibleItems.length;
@@ -275,10 +269,10 @@ function PurchaseRow({
             </Text>
           ) : null}
           <Text numberOfLines={1} style={styles.expenseSubtitle}>
-            {positionLabel} · {purchaseCategoryHint(unit.expenses)}
+            {categoryHint ? `${positionLabel} · ${categoryHint}` : positionLabel}
           </Text>
         </View>
-        <Text style={styles.expenseAmount}>
+        <Text numberOfLines={1} style={styles.expenseAmount}>
           {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
         </Text>
         {expandable ? (
@@ -290,7 +284,9 @@ function PurchaseRow({
           >
             ›
           </Text>
-        ) : null}
+        ) : (
+          <View style={styles.expandIconSpacer} />
+        )}
       </Pressable>
 
       {rowExpanded ? (
@@ -988,6 +984,7 @@ const styles = StyleSheet.create({
   expenseAmount: {
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
+    fontVariant: ['tabular-nums'],
     fontWeight: '600',
     textAlign: 'right',
   },
@@ -1016,6 +1013,9 @@ const styles = StyleSheet.create({
   },
   expandIconExpanded: {
     transform: [{ rotate: '90deg' }],
+  },
+  expandIconSpacer: {
+    width: theme.spacing.md,
   },
   floatingButton: {
     alignItems: 'center',

@@ -2,6 +2,7 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 import {
   buildPurchaseUnits,
+  purchaseCategoryHint,
   purchaseUnitsTotal,
 } from '../../app/(app)/index';
 import { type Expense, listExpensesByMonth } from '../db';
@@ -342,5 +343,59 @@ describe('Home purchase grouping', () => {
     expect(resolveHomeRowHeader([withoutMerchant])).toBe(
       'Аренда квартиры',
     );
+  });
+
+  test('uses only the emoji for a single category hint', () => {
+    const expense = createExpense('single-category', null, {
+      rsd: 1_000,
+      usd: 10,
+      eur: 9,
+    });
+
+    expect(purchaseCategoryHint([expense])).toBe('🛒');
+  });
+
+  test('shows at most three unique category emojis without words', () => {
+    const expenses = ['🛒', '☕', '🍞', '🚕'].map((emoji, index) => ({
+      ...createExpense(`category-${index}`, 'receipt-a', {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      categoryId: `category-${index}`,
+      categoryEmoji: emoji,
+      categoryName: `Категория ${index}`,
+    }));
+
+    expect(purchaseCategoryHint(expenses)).toBe('🛒 ☕ 🍞');
+    expect(purchaseCategoryHint(expenses)).not.toContain('Категория');
+  });
+
+  test('deduplicates emojis shared by different categories', () => {
+    const expenses = ['🛒', '🛒', '☕'].map((emoji, index) => ({
+      ...createExpense(`duplicate-${index}`, 'receipt-a', {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      categoryId: `duplicate-${index}`,
+      categoryEmoji: emoji,
+    }));
+
+    expect(purchaseCategoryHint(expenses)).toBe('🛒 ☕');
+  });
+
+  test('returns an empty category hint when every emoji is blank', () => {
+    const expenses = ['', '   '].map((emoji, index) => ({
+      ...createExpense(`empty-${index}`, 'receipt-a', {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      categoryId: `empty-${index}`,
+      categoryEmoji: emoji,
+    }));
+
+    expect(purchaseCategoryHint(expenses)).toBe('');
   });
 });
