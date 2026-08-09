@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Platform,
   Pressable,
-  ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   type ViewStyle,
@@ -50,6 +50,13 @@ export type PurchaseUnit = {
   expenses: Expense[];
   key: string;
   receiptId: string | null;
+};
+
+export type HomeDaySection = {
+  data: PurchaseUnit[];
+  date: string;
+  dayTotal: number;
+  units: PurchaseUnit[];
 };
 
 type PendingPurchaseDelete = {
@@ -104,6 +111,26 @@ export function buildPurchaseUnits(
   }
 
   return units;
+}
+
+export function buildDaySections(
+  groups: readonly ExpenseGroup[],
+  collapsedDays: ReadonlySet<string>,
+  displayCurrency: Currency,
+): HomeDaySection[] {
+  return groups.map((group) => {
+    const units = buildPurchaseUnits(group.expenses);
+
+    return {
+      data: collapsedDays.has(group.date) ? [] : units,
+      date: group.date,
+      dayTotal: group.expenses.reduce(
+        (sum, expense) => sum + amountForCurrency(expense, displayCurrency),
+        0,
+      ),
+      units,
+    };
+  });
 }
 
 export function purchaseUnitTotal(
@@ -388,6 +415,14 @@ function PurchaseRow({
   );
 }
 
+function PurchaseRowSeparator() {
+  return <View style={styles.purchaseRowSeparator} />;
+}
+
+function DaySectionFooter() {
+  return <View style={styles.daySectionGap} />;
+}
+
 function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
   const groups = new Map<string, Expense[]>();
 
@@ -436,6 +471,9 @@ export default function HomeScreen() {
   const [retryKey, setRetryKey] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [expandedUnitKeys, setExpandedUnitKeys] = useState<Set<string>>(
     () => new Set(),
   );
@@ -454,6 +492,7 @@ export default function HomeScreen() {
   }, [requestedMonth]);
 
   useEffect(() => {
+    setCollapsedDays(new Set());
     setExpandedUnitKeys(new Set());
     setUnitVisibleCounts({});
     setPurchaseErrorMessage('');
@@ -511,6 +550,10 @@ export default function HomeScreen() {
     () => groupExpenses(visibleExpenses),
     [visibleExpenses],
   );
+  const sections = useMemo(
+    () => buildDaySections(groups, collapsedDays, displayCurrency),
+    [collapsedDays, displayCurrency, groups],
+  );
   const monthTotal = useMemo(
     () =>
       expenses.reduce(
@@ -522,7 +565,7 @@ export default function HomeScreen() {
   );
   const canMoveForward = visibleMonth < currentMonth;
 
-  async function handleSignOut() {
+  const handleSignOut = useCallback(async () => {
     setSigningOut(true);
     setErrorMessage('');
     const { error } = await signOut();
@@ -531,104 +574,11 @@ export default function HomeScreen() {
       setErrorMessage('Не удалось выйти. Попробуйте ещё раз.');
       setSigningOut(false);
     }
-  }
+  }, [signOut]);
 
-  function toggleUnit(unitKey: string) {
-    const willExpand = !expandedUnitKeys.has(unitKey);
-
-    setExpandedUnitKeys((current) => {
-      const next = new Set(current);
-      if (willExpand) {
-        next.add(unitKey);
-      } else {
-        next.delete(unitKey);
-      }
-      return next;
-    });
-    setUnitVisibleCounts((current) => {
-      if (willExpand) {
-        return { ...current, [unitKey]: expensePageSize };
-      }
-
-      const next = { ...current };
-      delete next[unitKey];
-      return next;
-    });
-  }
-
-  function showMoreUnit(unitKey: string) {
-    setUnitVisibleCounts((current) => ({
-      ...current,
-      [unitKey]: (current[unitKey] ?? expensePageSize) + expensePageSize,
-    }));
-  }
-
-  function requestPurchaseDelete(unit: PurchaseUnit) {
-    setPendingPurchaseDelete({
-      expenseCount: unit.expenses.length,
-      expenseIds: unit.expenses.map((expense) => expense.id),
-      receiptId: unit.receiptId,
-      unitKey: unit.key,
-    });
-  }
-
-  async function handlePurchaseDelete() {
-    if (!pendingPurchaseDelete) {
-      return;
-    }
-
-    const { expenseIds, receiptId, unitKey } = pendingPurchaseDelete;
-    let deletionFailed = false;
-
-    setDeletingPurchase(true);
-    setPurchaseErrorMessage('');
-
-    try {
-      for (const expenseId of expenseIds) {
-        await deleteExpense(expenseId);
-      }
-      if (receiptId !== null) {
-        await deleteReceipt(receiptId);
-      }
-    } catch (error: unknown) {
-      deletionFailed = true;
-      console.error('Unable to delete the complete purchase:', error);
-    }
-
-    try {
-      const refreshedExpenses = await listExpensesByMonth(visibleMonth);
-      setExpenses(refreshedExpenses);
-      if (deletionFailed) {
-        setPurchaseErrorMessage(
-          'Не удалось удалить покупку полностью. Список обновлён.',
-        );
-      }
-    } catch (error: unknown) {
-      console.error('Unable to refresh expenses after deletion:', error);
-      setErrorMessage(
-        deletionFailed
-          ? 'Не удалось удалить покупку полностью и обновить список. Попробуйте ещё раз.'
-          : 'Покупка удалена, но не удалось обновить список. Попробуйте ещё раз.',
-      );
-    } finally {
-      setDeletingPurchase(false);
-      setPendingPurchaseDelete(null);
-      setExpandedUnitKeys((current) => {
-        const next = new Set(current);
-        next.delete(unitKey);
-        return next;
-      });
-      setUnitVisibleCounts((current) => {
-        const next = { ...current };
-        delete next[unitKey];
-        return next;
-      });
-    }
-  }
-
-  return (
-    <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+  const listHeaderElement = useMemo(
+    () => (
+      <View style={styles.listHeader}>
         <View style={styles.accountRow}>
           <Text style={styles.appName}>Fintrack</Text>
           <View style={styles.accountActions}>
@@ -747,79 +697,223 @@ export default function HomeScreen() {
         ) : null}
 
         {loading ? <LoadingScreen compact /> : null}
+      </View>
+    ),
+    [
+      canMoveForward,
+      displayCurrency,
+      errorMessage,
+      handleSignOut,
+      loading,
+      monthTotal,
+      needsAttentionExpenses.length,
+      needsAttentionOnly,
+      purchaseErrorMessage,
+      router,
+      setDisplayCurrency,
+      signingOut,
+      visibleMonth,
+    ],
+  );
 
-        {!loading && !errorMessage && groups.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>
-              Пока нет трат за этот месяц
-            </Text>
-            <Text style={styles.emptyHint}>
-              Нажмите «+», чтобы добавить первую трату
-            </Text>
-          </View>
-        ) : null}
+  const listEmptyElement = useMemo(
+    () =>
+      !loading && !errorMessage && sections.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Пока нет трат за этот месяц</Text>
+          <Text style={styles.emptyHint}>
+            Нажмите «+», чтобы добавить первую трату
+          </Text>
+        </View>
+      ) : null,
+    [errorMessage, loading, sections.length],
+  );
 
-        {!loading && !errorMessage
-          ? groups.map((group) => {
-              const dayTotal = group.expenses.reduce(
-                (sum, expense) =>
-                  sum + amountForCurrency(expense, displayCurrency),
-                0,
-              );
-              const purchaseUnits = buildPurchaseUnits(group.expenses);
+  const listSections = useMemo(
+    () => (loading || errorMessage ? [] : sections),
+    [errorMessage, loading, sections],
+  );
 
-              return (
-                <View key={group.date} style={styles.dayGroup}>
-                  <View style={styles.dayHeader}>
-                    <Text style={styles.dayTitle}>
-                      {formatDayHeader(group.date)}
-                    </Text>
-                    <Text style={styles.dayTotal}>
-                      {formatMoney(dayTotal)} {displayCurrency}
-                    </Text>
-                  </View>
+  function toggleDay(date: string) {
+    setCollapsedDays((current) => {
+      const next = new Set(current);
+      if (next.has(date)) {
+        next.delete(date);
+      } else {
+        next.add(date);
+      }
+      return next;
+    });
+  }
 
-                  {purchaseUnits.map((unit) => {
-                    const expense = unit.expenses[0];
+  function toggleUnit(unitKey: string) {
+    const willExpand = !expandedUnitKeys.has(unitKey);
 
-                    if (!expense) {
-                      return null;
-                    }
+    setExpandedUnitKeys((current) => {
+      const next = new Set(current);
+      if (willExpand) {
+        next.add(unitKey);
+      } else {
+        next.delete(unitKey);
+      }
+      return next;
+    });
+    setUnitVisibleCounts((current) => {
+      if (willExpand) {
+        return { ...current, [unitKey]: expensePageSize };
+      }
 
-                    const receiptId = unit.receiptId;
+      const next = { ...current };
+      delete next[unitKey];
+      return next;
+    });
+  }
 
-                    return (
-                      <PurchaseRow
-                        displayCurrency={displayCurrency}
-                        expanded={expandedUnitKeys.has(unit.key)}
-                        key={unit.key}
-                        onDelete={() => requestPurchaseDelete(unit)}
-                        onEdit={
-                          receiptId !== null
-                            ? () =>
-                                router.push(
-                                  `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
-                                )
-                            : () =>
-                                router.push(`/(app)/expense/${expense.id}`)
-                        }
-                        onOpenExpense={(expenseId) =>
-                          router.push(`/(app)/expense/${expenseId}`)
-                        }
-                        onShowMore={() => showMoreUnit(unit.key)}
-                        onToggle={() => toggleUnit(unit.key)}
-                        unit={unit}
-                        visibleCount={
-                          unitVisibleCounts[unit.key] ?? expensePageSize
-                        }
-                      />
-                    );
-                  })}
-                </View>
-              );
-            })
-          : null}
-      </ScrollView>
+  function showMoreUnit(unitKey: string) {
+    setUnitVisibleCounts((current) => ({
+      ...current,
+      [unitKey]: (current[unitKey] ?? expensePageSize) + expensePageSize,
+    }));
+  }
+
+  function requestPurchaseDelete(unit: PurchaseUnit) {
+    setPendingPurchaseDelete({
+      expenseCount: unit.expenses.length,
+      expenseIds: unit.expenses.map((expense) => expense.id),
+      receiptId: unit.receiptId,
+      unitKey: unit.key,
+    });
+  }
+
+  async function handlePurchaseDelete() {
+    if (!pendingPurchaseDelete) {
+      return;
+    }
+
+    const { expenseIds, receiptId, unitKey } = pendingPurchaseDelete;
+    let deletionFailed = false;
+
+    setDeletingPurchase(true);
+    setPurchaseErrorMessage('');
+
+    try {
+      for (const expenseId of expenseIds) {
+        await deleteExpense(expenseId);
+      }
+      if (receiptId !== null) {
+        await deleteReceipt(receiptId);
+      }
+    } catch (error: unknown) {
+      deletionFailed = true;
+      console.error('Unable to delete the complete purchase:', error);
+    }
+
+    try {
+      const refreshedExpenses = await listExpensesByMonth(visibleMonth);
+      setExpenses(refreshedExpenses);
+      if (deletionFailed) {
+        setPurchaseErrorMessage(
+          'Не удалось удалить покупку полностью. Список обновлён.',
+        );
+      }
+    } catch (error: unknown) {
+      console.error('Unable to refresh expenses after deletion:', error);
+      setErrorMessage(
+        deletionFailed
+          ? 'Не удалось удалить покупку полностью и обновить список. Попробуйте ещё раз.'
+          : 'Покупка удалена, но не удалось обновить список. Попробуйте ещё раз.',
+      );
+    } finally {
+      setDeletingPurchase(false);
+      setPendingPurchaseDelete(null);
+      setExpandedUnitKeys((current) => {
+        const next = new Set(current);
+        next.delete(unitKey);
+        return next;
+      });
+      setUnitVisibleCounts((current) => {
+        const next = { ...current };
+        delete next[unitKey];
+        return next;
+      });
+    }
+  }
+
+  return (
+    <View style={styles.screen}>
+      <SectionList<PurchaseUnit, HomeDaySection>
+        contentContainerStyle={styles.content}
+        ItemSeparatorComponent={PurchaseRowSeparator}
+        keyExtractor={(unit) => unit.key}
+        ListEmptyComponent={listEmptyElement}
+        ListHeaderComponent={listHeaderElement}
+        renderItem={({ item: unit }) => {
+          const expense = unit.expenses[0];
+
+          if (!expense) {
+            return null;
+          }
+
+          const receiptId = unit.receiptId;
+
+          return (
+            <PurchaseRow
+              displayCurrency={displayCurrency}
+              expanded={expandedUnitKeys.has(unit.key)}
+              onDelete={() => requestPurchaseDelete(unit)}
+              onEdit={
+                receiptId !== null
+                  ? () =>
+                      router.push(
+                        `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
+                      )
+                  : () => router.push(`/(app)/expense/${expense.id}`)
+              }
+              onOpenExpense={(expenseId) =>
+                router.push(`/(app)/expense/${expenseId}`)
+              }
+              onShowMore={() => showMoreUnit(unit.key)}
+              onToggle={() => toggleUnit(unit.key)}
+              unit={unit}
+              visibleCount={unitVisibleCounts[unit.key] ?? expensePageSize}
+            />
+          );
+        }}
+        renderSectionFooter={DaySectionFooter}
+        renderSectionHeader={({ section }) => {
+          const collapsed = collapsedDays.has(section.date);
+
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: !collapsed }}
+              onPress={() => toggleDay(section.date)}
+              style={({ pressed }) => [
+                styles.dayHeader,
+                pressed && styles.rowPressed,
+              ]}
+            >
+              <Text numberOfLines={1} style={styles.dayTitle}>
+                {formatDayHeader(section.date)}
+              </Text>
+              <Text numberOfLines={1} style={styles.dayTotal}>
+                {formatMoney(section.dayTotal)} {displayCurrency}
+              </Text>
+              <Text
+                style={[
+                  styles.expandIcon,
+                  !collapsed && styles.expandIconExpanded,
+                ]}
+              >
+                ›
+              </Text>
+            </Pressable>
+          );
+        }}
+        sections={listSections}
+        stickySectionHeadersEnabled={true}
+        style={styles.list}
+      />
 
       <Pressable
         accessibilityLabel={
@@ -887,20 +981,21 @@ const styles = StyleSheet.create({
   },
   content: {
     alignSelf: 'center',
-    gap: theme.spacing.lg,
     maxWidth: theme.sizes.maxContentWidth,
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.listBottom,
     width: '100%',
   },
-  dayGroup: {
-    gap: theme.spacing.xs,
-  },
   dayHeader: {
     alignItems: 'center',
+    backgroundColor: theme.colors.background,
     flexDirection: 'row',
     gap: theme.spacing.sm,
     justifyContent: 'space-between',
+    paddingBottom: theme.spacing.xs,
+  },
+  daySectionGap: {
+    height: theme.spacing.lg,
   },
   dayTitle: {
     color: theme.colors.textMuted,
@@ -911,7 +1006,9 @@ const styles = StyleSheet.create({
   dayTotal: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.dayHeader,
+    fontVariant: ['tabular-nums'],
     fontWeight: '600',
+    textAlign: 'right',
   },
   deletePurchaseButton: {
     justifyContent: 'center',
@@ -1023,6 +1120,13 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
+  list: {
+    flex: 1,
+  },
+  listHeader: {
+    gap: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
+  },
   monthButton: {
     alignItems: 'center',
     height: theme.sizes.iconButton,
@@ -1083,6 +1187,9 @@ const styles = StyleSheet.create({
   purchaseItem: {
     borderBottomColor: theme.colors.border,
     borderBottomWidth: theme.sizes.border,
+  },
+  purchaseRowSeparator: {
+    height: theme.spacing.xs,
   },
   purchaseMerchantLabel: {
     color: theme.colors.textMuted,

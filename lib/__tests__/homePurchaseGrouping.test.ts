@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 import {
+  buildDaySections,
   buildPurchaseUnits,
   purchaseCategoryHint,
   purchaseUnitsTotal,
@@ -150,6 +151,56 @@ describe('Home purchase grouping', () => {
       'receipt-a-2',
     ]);
     expect(units[1]?.expenses).toHaveLength(1);
+  });
+
+  test('builds ordered day sections with totals and collapsed data', () => {
+    const firstDayExpenses = [
+      createExpense('receipt-a-1', 'receipt-a', {
+        rsd: 1_000,
+        usd: 10,
+        eur: 9,
+      }),
+      createExpense('receipt-a-2', 'receipt-a', {
+        rsd: 2_000,
+        usd: 20,
+        eur: 18,
+      }),
+    ];
+    const secondDayExpense = {
+      ...createExpense('manual', null, { rsd: 500, usd: 5, eur: 4 }),
+      occurredOn: '2026-07-31',
+    };
+
+    const sections = buildDaySections(
+      [
+        { date: '2026-08-01', expenses: firstDayExpenses },
+        { date: '2026-07-31', expenses: [secondDayExpense] },
+      ],
+      new Set(['2026-08-01']),
+      'RSD',
+    );
+
+    expect(
+      sections.map(({ data, date, dayTotal, units }) => ({
+        data: data.map((unit) => unit.key),
+        date,
+        dayTotal,
+        units: units.map((unit) => unit.key),
+      })),
+    ).toEqual([
+      {
+        data: [],
+        date: '2026-08-01',
+        dayTotal: 3_000,
+        units: ['receipt:receipt-a'],
+      },
+      {
+        data: ['expense:manual'],
+        date: '2026-07-31',
+        dayTotal: 500,
+        units: ['expense:manual'],
+      },
+    ]);
   });
 
   test.each<Currency>(['RSD', 'USD', 'EUR'])(
