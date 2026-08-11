@@ -14,14 +14,17 @@ Replaces a Google Sheets tracker whose main problem was manual data entry.
 |---|---|---|
 | 0 | Scaffolding, DB schema, RLS, email auth | Done |
 | 1 | Manual expenses in 3 currencies, NBS rates, month list, edit/delete | Done |
-| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses + whole-purchase editing | Code done; native device test pending |
-| 3 | Photo / email-screenshot receipts (any country) via vision model | Code done; Edge Function deployment and native rebuild pending |
-| 4 | Analytics | In progress: categories + merchants + drilldown done; trends / fixed-vs-variable / subscriptions pending |
+| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses + whole-purchase editing | Done (tested on device) |
+| 3 | Photo / email-screenshot receipts (any country) via vision model + text categorization | Done |
+| 4 | Analytics: categories + merchants + drilldown | Done; trends / fixed-vs-variable / subscription analytics pending |
+| 5 | Home feed UX pass: `SectionList` with sticky day headers, collapsible days, unified expandable purchase rows; per-user categorization dictionary | Done |
+| 6 | Distribution: Android preview build (EAS) + web deploy (EAS Hosting) | Done |
 
 ### Known open items
-- **Scanning not yet tested on a real phone.** Public Expo Go lags Expo SDK 57, so a **development build via EAS** is needed to run on device. Scanning is native-only anyway (the tax page can't be fetched from a browser due to CORS).
-- **Design pass pending.** Minor visual inconsistencies to unify in one pass: expanded analytics rows differ slightly in style between blocks; the date field in the expense editor shows a raw ISO date (`2026-07-30`) instead of a formatted one; small arrow/indent inconsistencies.
-- Deferred niceties: category management UI + FK-on-delete handling for categories; "check your email" state polish.
+- **Analytics depth pending**: trends over time, fixed-vs-variable split, and subscription forecasting are not built yet.
+- **Web is view + manual entry only.** QR scanning is native-only (the tax page can't be fetched from a browser due to CORS), so the deployed web build shows a placeholder for scanning.
+- **Deferred niceties** tracked in [`BACKLOG.md`](./BACKLOG.md): duplicate-scan (QR + photo) detection, refunds/negative amounts, quick-repeat/templates, CSV export, budgets, and more.
+- The date field in the expense editor still shows a raw ISO date (`2026-07-30`) instead of a formatted one.
 
 ## Prerequisites
 
@@ -83,6 +86,30 @@ supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=...
 supabase functions deploy analyze-receipt-image
 supabase functions deploy categorize-items
 ```
+
+### 4. Distribution (standalone build + web)
+
+Standalone builds do **not** read the local `.env`. Set the two public vars as **EAS Environment Variables** (visibility **Plain text**, assigned to development/preview/production). Never mark them `Secret` — secret vars are not readable outside EAS servers and won't be inlined into the client bundle.
+
+```bash
+eas env:create   # EXPO_PUBLIC_SUPABASE_URL, then run again for EXPO_PUBLIC_SUPABASE_ANON_KEY
+eas env:list --environment preview   # verify both landed
+```
+
+Android preview APK (installable, internal distribution):
+
+```bash
+eas build --profile preview --platform android
+```
+
+Web (EAS Hosting). This is a client-only app, so use single-page output — set `expo.web.output` to `"single"` in `app.json`, then:
+
+```bash
+npx expo export --platform web   # inlines EXPO_PUBLIC_* from .env into dist/
+eas deploy                       # preview URL; `eas deploy --prod` for the stable URL
+```
+
+Web is **view + manual entry only** — QR scanning is native-only.
 
 ## Run
 
