@@ -14,10 +14,14 @@ Two independent axes describe an expense: **category** (what the money was for �
 ## Working features (do not regress)
 
 - Email/password auth with persisted session.
-- Manual expense entry in RSD/USD/EUR with NBS conversion and a live 3-currency preview.
-- Month list with day grouping, edit, delete, display-currency toggle.
-- Fiscal receipt scanning (Serbian SUF QR): **native-only** (see CORS note); parses the receipt journal server-side; one receipt -> one `receipts` row + one `expenses` row per line item.
-- Analytics screen (read-only): category breakdown, merchant/merchant-type breakdown, in-place expense drilldown with "show more", on-screen currency toggle.
+- Manual expense entry in RSD/USD/EUR with NBS conversion and a live 3-currency preview; exotic currencies (KZT/RUB/TRY/other) via a manual RSD equivalent.
+- Home feed as a `SectionList`: sticky opaque day headers, collapsible days (in-memory, reset on month change), day totals aligned to the amount column. Every purchase renders as a unified, expandable row (single-item and manual expenses included); expansion shows the line item(s) and edit/delete actions.
+- Fiscal receipt scanning (Serbian SUF QR): **native-only** (see CORS note); the device downloads the page HTML, the Edge Function parses the journal; one receipt -> one `receipts` row + one `expenses` row per line item.
+- Photo / email-screenshot receipt recognition via a vision model (`analyze-receipt-image`): merchant, date, currency, totals, human item names.
+- Per-user categorization dictionary (`item_category_rules`), **dictionary-first**; unknown item names go to the text model (`categorize-items`); final review choices teach the dictionary.
+- Merchant brand normalization (shared across branches) with the full original label kept in `receipts.merchant_label`.
+- Places / categories management (rename, merge, delete) with reference re-pointing before delete; system rows read-only; "Не распознано" protected.
+- Analytics screen (read-only): category and merchant/merchant-type breakdowns, in-place drilldown with "show more", on-screen currency toggle.
 
 ## Non-negotiable rules
 
@@ -55,6 +59,13 @@ No client-side transactions exist. When one action writes several rows (receipt 
 - `parse-receipt` still validates `sourceUrl` against a hostname **allowlist** (`suf.purs.gov.rs` + sandbox/tap variants), requires `https`, path `/v/`, non-empty `vl`, and caps HTML size. This guards against parsing arbitrary attacker HTML.
 - Edge Functions keep `verify_jwt = true`, never throw, always return JSON, and use idempotent upserts.
 - The SUF item table is rendered client-side by JS and is empty in raw HTML - parse the `<pre>` **journal** block instead (merchant, TIN, line items, totals, timestamp). The journal wraps names at ~40 chars, so an item is one-or-more name lines followed by one amounts line.
+- **Item-name dictionary key.** The dictionary key is `normalizeItemName(rawName)`, computed the **same** way on write (learning) and read (resolution). `normalizeItemName` strips size/measure units in **both Cyrillic and Latin** (л/мл/г/кг as well as l/ml/g/kg), normalizes punctuation, and drops leading barcodes — never revert it to Latin-only unit stripping, which caused rescans to miss learned corrections.
+
+### Home feed
+- The feed is a `SectionList` (one section per day). Keep sticky day headers **opaque** (no bleed-through) and preserve bottom padding that clears the floating buttons.
+- Day-collapse state and per-purchase expansion state are **independent** in-memory sets; both reset on month change. Purchase expansion is keyed by **`unit.key`** (works for receipt-backed and manual units alike) — do not re-key it on `receiptId`, and do not make expandability depend on item count. Every purchase is expandable.
+- Edit routing is by type: receipt-backed unit -> `receipt/review`, manual single -> the expense editor. Delete removes the unit's expenses via `deleteExpense`, and additionally `deleteReceipt` **only** when `receiptId` is non-null.
+- The "В чеке: …" raw-name line is shown only when `rawName` is present; manual expenses have none. Don't force it.
 
 ### UI
 - Every color, spacing, radius, and font size comes from `lib/theme.ts`. No hardcoded hex/px in screens or components. `grep` for hex outside `lib/theme.ts` must be empty.
@@ -105,11 +116,11 @@ app/(auth)/           sign-in, sign-up
 app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
 components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, ReceiptCamera.{native,web}
 contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
-lib/                  money, dates, fx, db, receipts, theme, supabase, authErrors
+lib/                  money, dates, fx, db, receipts, itemCategorization, homeRowPresentation, theme, supabase, authErrors
   __tests__/          unit tests
 supabase/
-  migrations/         SQL (Phase 0 foundation; do not edit applied migrations)
-  functions/          sync-fx, parse-receipt (Deno)
+  migrations/         Phase 0 foundation + additive migrations (item categorization, item display names, merchant brand labels); do not edit applied migrations
+  functions/          sync-fx, parse-receipt (+parser.ts), analyze-receipt-image, categorize-items (Deno)
 ```
 
 ## Definition of done (every task)
