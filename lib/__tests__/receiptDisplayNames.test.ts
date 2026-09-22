@@ -247,7 +247,7 @@ describe('receipt display-name persistence', () => {
           },
         ],
       },
-      merchant: { name: 'MIX MARKT', typeId: 'shop' },
+      merchant: { name: 'MIX MARKT' },
       expenses: [
         {
           amountCents: 10_000,
@@ -261,7 +261,7 @@ describe('receipt display-name persistence', () => {
     expect(merchantInsert).toHaveBeenCalledWith({
       user_id: 'user-1',
       name: 'MIX MARKT',
-      type_id: 'shop',
+      type_id: null,
       aliases: [],
     });
     expect(receiptInsert).toHaveBeenCalledWith(

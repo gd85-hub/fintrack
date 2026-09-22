@@ -18,7 +18,6 @@ const validItem = {
 function modelOutput(overrides: Record<string, unknown> = {}) {
   return {
     merchantName: 'SKROZ DOBRA PEKARA',
-    merchantTypeSlug: 'cafe',
     occurredOn: '2026-07-29',
     currency: 'RSD',
     totalCents: 35000,
@@ -68,7 +67,7 @@ describe('receipt image Edge output validation', () => {
     const result = validateModelOutput(
       modelOutput({ occurredOn: '29.07.2026.', currency: ' rsd ' }),
       new Set(['Кафе']),
-      new Set(['cafe']),
+      new Set(),
       false,
       '',
     );
@@ -91,7 +90,7 @@ describe('receipt image Edge output validation', () => {
         confidence: 'uncertain',
       }),
       new Set(['Кафе']),
-      new Set(['cafe']),
+      new Set(),
       false,
       '',
     );
@@ -112,7 +111,7 @@ describe('receipt image Edge output validation', () => {
       validateModelOutput(
         modelOutput({ items: [] }),
         new Set(['Кафе']),
-        new Set(['cafe']),
+        new Set(),
         false,
         '',
       ),
@@ -123,7 +122,6 @@ describe('receipt image Edge output validation', () => {
     const result = validateModelOutput(
       {
         merchantName: 'Srbijavoz',
-        merchantTypeSlug: 'transport',
         occurredOn: '2026-08-02',
         currency: 'RSD',
         totalCents: 2000,
@@ -148,7 +146,7 @@ describe('receipt image Edge output validation', () => {
         ],
       },
       new Set(['Транспорт', 'Продукты']),
-      new Set(['transport']),
+      new Set(),
       false,
       '',
     );

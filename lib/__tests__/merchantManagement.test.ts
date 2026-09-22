@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { mergeMerchants } from '../db';
+import { createMerchant, mergeMerchants } from '../db';
 import {
   findMerchantRenameCollision,
   merchantUsageCounts,
@@ -49,7 +49,6 @@ const target = {
   id: 'target',
   user_id: 'user-1',
   name: 'Target',
-  type_id: 'shop',
   aliases: ['Target alias'],
   created_at: '2026-08-01T10:00:00Z',
   updated_at: '2026-08-01T10:00:00Z',
@@ -92,6 +91,45 @@ describe('merchant management helpers', () => {
       first: 2,
       second: 1,
       unused: 0,
+    });
+  });
+});
+
+describe('createMerchant', () => {
+  beforeEach(() => {
+    getSessionMock.mockReset();
+    fromMock.mockReset();
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+  });
+
+  test('creates a merchant from a name and clears its legacy type', async () => {
+    const row = {
+      id: 'merchant-new',
+      name: 'Новое место',
+      aliases: [],
+      created_at: '2026-09-22T10:00:00Z',
+      updated_at: '2026-09-22T10:00:00Z',
+    };
+    const single = jest.fn(async () => ({ data: row, error: null }));
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    fromMock.mockReturnValueOnce({ insert });
+
+    await expect(createMerchant('  Новое место  ')).resolves.toEqual({
+      id: 'merchant-new',
+      name: 'Новое место',
+      aliases: [],
+      createdAt: '2026-09-22T10:00:00Z',
+      updatedAt: '2026-09-22T10:00:00Z',
+    });
+    expect(insert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      name: 'Новое место',
+      type_id: null,
+      aliases: [],
     });
   });
 });
@@ -165,6 +203,7 @@ describe('mergeMerchants', () => {
         'Source B',
         'B alias',
       ],
+      type_id: null,
     });
     expect(sourceDelete.inFilter).toHaveBeenCalledWith('id', [
       'source-a',

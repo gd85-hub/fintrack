@@ -340,8 +340,7 @@ export default function MerchantsScreen() {
                         {merchant.name}
                       </Text>
                       <Text style={styles.merchantMeta}>
-                        {merchant.typeEmoji} {merchant.typeName} · Трат:{' '}
-                        {merchant.usageCount}
+                        Трат: {merchant.usageCount}
                       </Text>
                     </View>
                   </Pressable>
@@ -460,8 +459,7 @@ export default function MerchantsScreen() {
                         {merchant.name}
                       </Text>
                       <Text style={styles.merchantMeta}>
-                        {merchant.typeEmoji} {merchant.typeName} · Трат:{' '}
-                        {merchant.usageCount}
+                        Трат: {merchant.usageCount}
                       </Text>
                     </View>
                     <View style={styles.cardActions}>

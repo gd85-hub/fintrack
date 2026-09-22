@@ -21,14 +21,12 @@ import {
   getFiscalReceiptForEdit,
   listCategories,
   listMerchants,
-  listMerchantTypes,
   saveFiscalReceipt,
   updateFiscalReceipt,
   type Category,
   type FiscalReceiptEditDraft,
   type FiscalReceiptMerchantInput,
   type Merchant,
-  type MerchantType,
 } from '../../../lib/db';
 import { formatLongDate, parseLocalISO } from '../../../lib/dates';
 import {
@@ -127,7 +125,6 @@ export default function ReviewReceiptScreen() {
     useState<FiscalReceiptEditDraft | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
-  const [merchantTypes, setMerchantTypes] = useState<MerchantType[]>([]);
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [merchantMode, setMerchantMode] =
     useState<MerchantMode>('new');
@@ -135,7 +132,6 @@ export default function ReviewReceiptScreen() {
   const [merchantName, setMerchantName] = useState(
     draft?.merchantName ?? '',
   );
-  const [merchantTypeId, setMerchantTypeId] = useState<string | null>(null);
   const [occurredOn, setOccurredOn] = useState('');
   const [receiptCurrency, setReceiptCurrency] = useState(
     draft?.currency ?? 'RSD',
@@ -166,7 +162,6 @@ export default function ReviewReceiptScreen() {
     void Promise.all([
       listCategories(),
       listMerchants(),
-      listMerchantTypes(),
       editReceiptId
         ? getFiscalReceiptForEdit(editReceiptId)
         : Promise.resolve(null),
@@ -174,7 +169,6 @@ export default function ReviewReceiptScreen() {
       ([
         loadedCategories,
         loadedMerchants,
-        loadedTypes,
         loadedEditDraft,
       ]) => {
         if (!active) {
@@ -186,14 +180,8 @@ export default function ReviewReceiptScreen() {
         if (!uncategorized) {
           throw new Error('Категория «Не распознано» не найдена.');
         }
-        const defaultType =
-          loadedTypes.find((type) => type.slug === 'shop') ??
-          loadedTypes[0] ??
-          null;
-
         setCategories(loadedCategories);
         setMerchants(loadedMerchants);
-        setMerchantTypes(loadedTypes);
         setBulkCategoryId(null);
 
         if (isEditMode) {
@@ -207,9 +195,6 @@ export default function ReviewReceiptScreen() {
           );
           setMerchantId(loadedEditDraft.merchantId);
           setMerchantName(loadedEditDraft.merchantName);
-          setMerchantTypeId(
-            loadedEditDraft.merchantTypeId ?? defaultType?.id ?? null,
-          );
           setOccurredOn(loadedEditDraft.occurredOn);
           setReceiptCurrency(loadedEditDraft.currency);
           setManualRsdInput(
@@ -248,10 +233,6 @@ export default function ReviewReceiptScreen() {
           loadedMerchants,
           draft.merchantName,
         );
-        const scanDefaultType =
-          loadedTypes.find(
-            (type) => type.slug === draft.merchantTypeSlug,
-          ) ?? defaultType;
         const categoriesByName = new Map(
           loadedCategories.map((category) => [
             normalizeCategoryName(category.name),
@@ -262,9 +243,6 @@ export default function ReviewReceiptScreen() {
         setMerchantMode(matched ? 'existing' : 'new');
         setMerchantId(matched?.id ?? null);
         setMerchantName(draft.merchantName);
-        setMerchantTypeId(
-          matched?.typeId ?? scanDefaultType?.id ?? null,
-        );
         setOccurredOn(parsedReceiptDate(draft));
         setReceiptCurrency(draft.currency);
         setManualRsdInput('');
@@ -511,18 +489,14 @@ export default function ReviewReceiptScreen() {
     if (merchantMode === 'existing' && merchantId) {
       merchant = { existingId: merchantId };
     }
-    if (
-      merchantMode === 'new' &&
-      merchantName.trim() &&
-      merchantTypeId
-    ) {
-      merchant = { name: merchantName, typeId: merchantTypeId };
+    if (merchantMode === 'new' && merchantName.trim()) {
+      merchant = { name: merchantName };
     }
     if (!merchant && includedItems.length > 0) {
       setErrorMessage(
         merchantMode === 'existing'
           ? 'Выберите существующее место.'
-          : 'Укажите название и тип нового места.',
+          : 'Укажите название нового места.',
       );
       return;
     }
@@ -797,7 +771,6 @@ export default function ReviewReceiptScreen() {
             <MerchantPicker
               allowCreate={false}
               merchants={merchants}
-              merchantTypes={merchantTypes}
               onChange={setMerchantId}
               value={merchantId}
             />
@@ -813,34 +786,6 @@ export default function ReviewReceiptScreen() {
                 style={styles.input}
                 value={merchantName}
               />
-              <Text style={styles.label}>Тип места</Text>
-              <View style={styles.typeChips}>
-                {merchantTypes.map((type) => {
-                  const selected = type.id === merchantTypeId;
-                  return (
-                    <Pressable
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      key={type.id}
-                      onPress={() => setMerchantTypeId(type.id)}
-                      style={({ pressed }) => [
-                        styles.typeChip,
-                        selected && styles.typeChipSelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.typeChipText,
-                          selected && styles.typeChipTextSelected,
-                        ]}
-                      >
-                        {type.emoji} {type.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
             </View>
           )}
         </View>
@@ -1354,28 +1299,5 @@ const styles = StyleSheet.create({
   warningText: {
     color: theme.colors.text,
     fontSize: theme.fontSizes.body,
-  },
-  typeChip: {
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.chip,
-    borderWidth: theme.sizes.border,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  typeChipSelected: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
-  },
-  typeChipText: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.caption,
-  },
-  typeChipTextSelected: {
-    color: theme.colors.white,
-  },
-  typeChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
   },
 });

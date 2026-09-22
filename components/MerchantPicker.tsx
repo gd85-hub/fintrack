@@ -12,7 +12,6 @@ import {
 import {
   createMerchant,
   type Merchant,
-  type MerchantType,
 } from '../lib/db';
 import { filterAndSortMerchants } from '../lib/merchantSearch';
 import { theme } from '../lib/theme';
@@ -20,7 +19,6 @@ import { theme } from '../lib/theme';
 type MerchantPickerProps = {
   allowCreate?: boolean;
   merchants: Merchant[];
-  merchantTypes: MerchantType[];
   value: string | null;
   onChange: (merchantId: string | null) => void;
   onCreated?: (merchant: Merchant) => void;
@@ -29,7 +27,6 @@ type MerchantPickerProps = {
 export function MerchantPicker({
   allowCreate = true,
   merchants,
-  merchantTypes,
   value,
   onChange,
   onCreated,
@@ -37,7 +34,6 @@ export function MerchantPicker({
   const [visible, setVisible] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const [typeId, setTypeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [query, setQuery] = useState('');
@@ -61,8 +57,8 @@ export function MerchantPicker({
 
   async function handleCreate() {
     const trimmedName = name.trim();
-    if (!trimmedName || !typeId) {
-      setErrorMessage('Укажите название и тип места.');
+    if (!trimmedName) {
+      setErrorMessage('Укажите название места.');
       return;
     }
 
@@ -70,11 +66,10 @@ export function MerchantPicker({
     setErrorMessage('');
 
     try {
-      const merchant = await createMerchant(trimmedName, typeId);
+      const merchant = await createMerchant(trimmedName);
       onCreated?.(merchant);
       onChange(merchant.id);
       setName('');
-      setTypeId(null);
       close();
     } catch (error: unknown) {
       console.error('Unable to create merchant:', error);
@@ -150,34 +145,6 @@ export function MerchantPicker({
                     style={styles.input}
                     value={name}
                   />
-
-                  <View style={styles.typeChips}>
-                    {merchantTypes.map((merchantType) => {
-                      const selectedType = merchantType.id === typeId;
-                      return (
-                        <Pressable
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected: selectedType }}
-                          key={merchantType.id}
-                          onPress={() => setTypeId(merchantType.id)}
-                          style={({ pressed }) => [
-                            styles.typeChip,
-                            selectedType && styles.typeChipSelected,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.typeChipText,
-                              selectedType && styles.typeChipTextSelected,
-                            ]}
-                          >
-                            {merchantType.emoji} {merchantType.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
 
                   {errorMessage ? (
                     <Text style={styles.error}>{errorMessage}</Text>
@@ -424,29 +391,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
-  },
-  typeChip: {
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.chip,
-    borderWidth: theme.sizes.border,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-  },
-  typeChipSelected: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
-  },
-  typeChipText: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.caption,
-  },
-  typeChipTextSelected: {
-    color: theme.colors.white,
-  },
-  typeChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.xs,
   },
   value: {
     color: theme.colors.text,

@@ -48,21 +48,30 @@ const analysisPayload = {
   confidence: 'high' as const,
 };
 
+const expectedAnalysis = {
+  ok: true as const,
+  merchantName: 'Anthropic',
+  occurredOn: '2026-08-02',
+  currency: 'USD',
+  totalCents: 1000,
+  items: analysisPayload.items,
+  confidence: 'high' as const,
+};
+
 describe('receipt image analysis', () => {
   beforeEach(() => {
     manipulateMock.mockReset();
     invokeMock.mockReset();
   });
 
-  test('validates and maps structured analysis into the shared receipt draft', () => {
+  test('ignores merchant type and maps the rest into the shared receipt draft', () => {
     const analysis = validateReceiptImageAnalysis(analysisPayload);
-    expect(analysis).toEqual(analysisPayload);
+    expect(analysis).toEqual(expectedAnalysis);
     expect(analysis.ok && receiptFromImageAnalysis(analysis)).toEqual({
       ok: true,
       source: 'ocr_photo',
       merchantName: 'Anthropic',
       merchantLabel: 'Anthropic',
-      merchantTypeSlug: 'online',
       taxId: null,
       occurredAt: null,
       occurredOn: '2026-08-02',
@@ -169,7 +178,7 @@ describe('receipt image analysis', () => {
           },
         ],
       ),
-    ).resolves.toEqual(analysisPayload);
+    ).resolves.toEqual(expectedAnalysis);
     expect(invokeMock).toHaveBeenCalledWith('analyze-receipt-image', {
       body: {
         images: ['YWJjZA=='],

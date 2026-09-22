@@ -29,7 +29,6 @@ import {
   type FixedVariableCategoryBreakdown,
   type MerchantBreakdown,
   merchantBreakdownByMonth,
-  type MerchantTypeBreakdown,
   listExpensesForAnalytics,
   type MonthlyCategoryBreakdown,
   type MonthlyMerchantBreakdown,
@@ -56,15 +55,11 @@ type RankedCategory = {
   share: number;
 };
 
-type RankedMerchantType = {
+type RankedMerchant = {
   amount: number;
   color: PaletteColor;
-  merchants: Array<{
-    amount: number;
-    merchant: MerchantBreakdown;
-  }>;
+  merchant: MerchantBreakdown;
   share: number;
-  type: MerchantTypeBreakdown;
 };
 
 type RankedFixedVariableBucket = {
@@ -235,9 +230,6 @@ export default function AnalyticsScreen() {
   const [analyticsExpenses, setAnalyticsExpenses] = useState<
     AnalyticsExpense[]
   >([]);
-  const [expandedTypeKeys, setExpandedTypeKeys] = useState<Set<string>>(
-    () => new Set(),
-  );
   const [expandedExpenseTypes, setExpandedExpenseTypes] = useState<
     Set<ExpenseCategoryType>
   >(() => new Set());
@@ -258,7 +250,6 @@ export default function AnalyticsScreen() {
       setBreakdown(null);
       setMerchantBreakdown(null);
       setAnalyticsExpenses([]);
-      setExpandedTypeKeys(new Set());
       setExpandedExpenseTypes(new Set());
       setCategoryVisibleCounts({});
       setMerchantVisibleCounts({});
@@ -326,37 +317,22 @@ export default function AnalyticsScreen() {
   const merchantTotal = merchantBreakdown
     ? amountForCurrency(merchantBreakdown, displayCurrency)
     : 0;
-  const rankedMerchantTypes = useMemo<RankedMerchantType[]>(() => {
+  const rankedMerchants = useMemo<RankedMerchant[]>(() => {
     if (!merchantBreakdown || merchantTotal <= 0) {
       return [];
     }
 
-    return merchantBreakdown.types
-      .map((type) => ({
-        amount: amountForCurrency(type, displayCurrency),
-        color: colorForKey(type.typeId),
-        merchants: type.merchants
-          .map((merchant) => ({
-            amount: amountForCurrency(merchant, displayCurrency),
-            merchant,
-          }))
-          .filter(({ amount }) => amount > 0)
-          .sort((left, right) => right.amount - left.amount),
-        type,
+    return merchantBreakdown.merchants
+      .map((merchant) => ({
+        amount: amountForCurrency(merchant, displayCurrency),
+        color: colorForKey(merchant.merchantId),
+        merchant,
       }))
       .filter(({ amount }) => amount > 0)
-      .sort((left, right) => {
-        if (left.type.typeId === null) {
-          return right.type.typeId === null ? 0 : 1;
-        }
-        if (right.type.typeId === null) {
-          return -1;
-        }
-        return right.amount - left.amount;
-      })
-      .map((type) => ({
-        ...type,
-        share: (type.amount / merchantTotal) * 100,
+      .sort((left, right) => right.amount - left.amount)
+      .map((merchant) => ({
+        ...merchant,
+        share: (merchant.amount / merchantTotal) * 100,
       }));
   }, [displayCurrency, merchantBreakdown, merchantTotal]);
   const fixedVariableBreakdown = useMemo(
@@ -420,19 +396,6 @@ export default function AnalyticsScreen() {
     router.replace({
       pathname: '/(app)',
       params: { month: visibleMonth },
-    });
-  }
-
-  function toggleType(typeId: string | null) {
-    const typeKey = typeId ?? unknownMerchantKey;
-    setExpandedTypeKeys((current) => {
-      const next = new Set(current);
-      if (next.has(typeKey)) {
-        next.delete(typeKey);
-      } else {
-        next.add(typeKey);
-      }
-      return next;
     });
   }
 
@@ -670,31 +633,41 @@ export default function AnalyticsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>По местам</Text>
               <ShareBar
-                accessibilityLabel="Доли трат по типам мест"
-                segments={rankedMerchantTypes.map(
-                  ({ amount, color, type }) => ({
-                    id: type.typeId ?? unknownMerchantKey,
+                accessibilityLabel="Доли трат по местам"
+                segments={rankedMerchants.map(
+                  ({ amount, color, merchant }) => ({
+                    id: merchant.merchantId ?? unknownMerchantKey,
                     amount,
                     color,
                   }),
                 )}
               />
 
-              <View style={styles.merchantTypeList}>
-                {rankedMerchantTypes.map(
-                  ({ amount, color, merchants, share, type }) => {
-                    const typeKey =
-                      type.typeId ?? unknownMerchantKey;
-                    const expanded = expandedTypeKeys.has(typeKey);
+              <View style={styles.categoryList}>
+                {rankedMerchants.map(
+                  ({ amount, color, merchant, share }) => {
+                    const merchantKey =
+                      merchant.merchantId ?? unknownMerchantKey;
+                    const visibleCount =
+                      merchantVisibleCounts[merchantKey];
+                    const expanded = visibleCount !== undefined;
+                    const merchantExpenses =
+                      expensesByMerchant.get(merchantKey) ?? [];
+
                     return (
-                      <View key={typeKey} style={styles.merchantTypeGroup}>
+                      <View
+                        key={merchantKey}
+                        style={styles.categoryGroup}
+                      >
                         <Pressable
-                          accessibilityLabel={`${type.typeName}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${type.count}`}
+                          accessibilityLabel={`${merchant.name}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${merchant.count}`}
                           accessibilityRole="button"
                           accessibilityState={{ expanded }}
-                          onPress={() => toggleType(type.typeId)}
+                          onPress={() =>
+                            toggleMerchant(merchant.merchantId)
+                          }
                           style={({ pressed }) => [
-                            styles.merchantTypeHeader,
+                            styles.categoryRow,
                             pressed && styles.rowPressed,
                           ]}
                         >
@@ -704,16 +677,16 @@ export default function AnalyticsScreen() {
                               { backgroundColor: color },
                             ]}
                           />
-                          <Text style={styles.emoji}>{type.emoji}</Text>
                           <View style={styles.categoryCopy}>
                             <Text
                               numberOfLines={1}
                               style={styles.categoryName}
                             >
-                              {type.typeName}
+                              {merchant.name}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {formatShare(share)} · Операций: {type.count}
+                              {formatShare(share)} · Операций:{' '}
+                              {merchant.count}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
@@ -729,92 +702,15 @@ export default function AnalyticsScreen() {
                           </Text>
                         </Pressable>
 
-                        {type.typeId === null ? (
-                          <Text style={styles.unknownHint}>
-                            Можно уточнить, отредактировав трату
-                          </Text>
-                        ) : null}
-
                         {expanded ? (
-                          <DrilldownPanel>
-                            {merchants.map(
-                              ({ amount: merchantAmount, merchant }) => {
-                                const merchantKey =
-                                  merchant.merchantId ??
-                                  unknownMerchantKey;
-                                const merchantVisibleCount =
-                                  merchantVisibleCounts[merchantKey];
-                                const merchantExpanded =
-                                  merchantVisibleCount !== undefined;
-                                const merchantExpenses =
-                                  expensesByMerchant.get(merchantKey) ?? [];
-
-                                return (
-                                  <View
-                                    key={merchantKey}
-                                    style={styles.merchantGroup}
-                                  >
-                                    <Pressable
-                                      accessibilityLabel={`${merchant.name}, ${formatMoney(merchantAmount)} ${displayCurrency}, операций: ${merchant.count}`}
-                                      accessibilityRole="button"
-                                      accessibilityState={{
-                                        expanded: merchantExpanded,
-                                      }}
-                                      onPress={() =>
-                                        toggleMerchant(
-                                          merchant.merchantId,
-                                        )
-                                      }
-                                      style={({ pressed }) => [
-                                        styles.merchantRow,
-                                        pressed && styles.rowPressed,
-                                      ]}
-                                    >
-                                      <View style={styles.merchantCopy}>
-                                        <Text
-                                          numberOfLines={1}
-                                          style={styles.merchantName}
-                                        >
-                                          {merchant.name}
-                        </Text>
-                                        <Text style={styles.merchantMeta}>
-                                          Операций: {merchant.count}
-                                        </Text>
-                                      </View>
-                                      <Text style={styles.merchantAmount}>
-                                        {formatMoney(merchantAmount)}{' '}
-                                        {displayCurrency}
-                                      </Text>
-                                      <Text
-                                        style={[
-                                          styles.expandIcon,
-                                          merchantExpanded &&
-                                            styles.expandIconExpanded,
-                                        ]}
-                                      >
-                                        ›
-                                      </Text>
-                                    </Pressable>
-
-                                    {merchantExpanded ? (
-                                      <ExpenseDetails
-                                        currency={displayCurrency}
-                                        expenses={merchantExpenses}
-                                        onShowMore={() =>
-                                          showMoreMerchant(
-                                            merchant.merchantId,
-                                          )
-                                        }
-                                        visibleCount={
-                                          merchantVisibleCount
-                                        }
-                                      />
-                                    ) : null}
-                                  </View>
-                                );
-                              },
-                            )}
-                          </DrilldownPanel>
+                          <ExpenseDetails
+                            currency={displayCurrency}
+                            expenses={merchantExpenses}
+                            onShowMore={() =>
+                              showMoreMerchant(merchant.merchantId)
+                            }
+                            visibleCount={visibleCount}
+                          />
                         ) : null}
                       </View>
                     );
@@ -1092,9 +988,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xxs,
   },
-  merchantGroup: {
-    gap: theme.spacing.xxs,
-  },
   merchantMeta: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.small,
@@ -1108,20 +1001,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing.sm,
     minHeight: theme.sizes.iconButton,
-  },
-  merchantTypeGroup: {
-    borderBottomColor: theme.colors.border,
-    borderBottomWidth: theme.sizes.border,
-  },
-  merchantTypeHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    minHeight: theme.sizes.floatingButton,
-    paddingVertical: theme.spacing.xs,
-  },
-  merchantTypeList: {
-    gap: theme.spacing.xs,
   },
   monthTotal: {
     color: theme.colors.text,
@@ -1175,11 +1054,5 @@ const styles = StyleSheet.create({
   totalLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.label,
-  },
-  unknownHint: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.small,
-    paddingBottom: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.lg,
   },
 });

@@ -195,7 +195,6 @@ describe('saved receipt edit draft', () => {
         merchantId: 'merchant-old',
         merchantName: 'Old Market',
         merchantLabel: 'OLD MARKET 101 CENTER',
-        merchantTypeId: 'shop',
         totalCents: 30_000,
         currency: 'RSD',
         paymentType: 'Карточка',
@@ -211,7 +210,6 @@ describe('saved receipt edit draft', () => {
       merchantId: 'merchant-old',
       merchantName: 'Old Market',
       merchantLabel: 'OLD MARKET 101 CENTER',
-      merchantTypeId: 'shop',
       occurredOn: '2026-08-01',
       totalCents: 30_000,
       currency: 'RSD',
@@ -336,6 +334,63 @@ describe('updateFiscalReceipt', () => {
     expect(aliasUpdate.update).toHaveBeenCalledWith({
       aliases: ['OLD MARKET'],
     });
+  });
+
+  test('creates a replacement merchant from its name without a type', async () => {
+    const receiptQuery = singleResultClient(
+      receiptSnapshot,
+      'maybeSingle',
+    );
+    const expensesQuery = listResultClient(expenseSnapshots);
+    const merchantSingle = jest.fn(async () => ({
+      data: { id: 'merchant-created' },
+      error: null,
+    }));
+    const merchantSelect = jest.fn(() => ({ single: merchantSingle }));
+    const merchantInsert = jest.fn(() => ({ select: merchantSelect }));
+    const firstExpenseUpdate = twoFilterMutationClient('update');
+    const secondExpenseUpdate = twoFilterMutationClient('update');
+    const receiptUpdate = oneFilterUpdateClient();
+
+    fromMock
+      .mockReturnValueOnce(receiptQuery.client)
+      .mockReturnValueOnce(expensesQuery.client)
+      .mockReturnValueOnce({ insert: merchantInsert })
+      .mockReturnValueOnce(firstExpenseUpdate.client)
+      .mockReturnValueOnce(secondExpenseUpdate.client)
+      .mockReturnValueOnce(receiptUpdate.client);
+
+    await expect(
+      updateFiscalReceipt('receipt-1', {
+        merchant: { name: 'New Market' },
+        merchantLabel: 'OLD MARKET 101 CENTER',
+        occurredOn: '2026-08-01',
+        expenses: expenseSnapshots.map((item) => ({
+          id: item.id,
+          amountCents: Number(item.original_amount) * 100,
+          categoryId: item.category_id,
+          description: item.description,
+          rawName: item.raw_name,
+          included: true,
+        })),
+      }),
+    ).resolves.toEqual({ deleted: false });
+
+    expect(merchantInsert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      name: 'New Market',
+      type_id: null,
+      aliases: ['OLD MARKET'],
+    });
+    expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({ merchant_id: 'merchant-created' }),
+    );
+    expect(secondExpenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({ merchant_id: 'merchant-created' }),
+    );
+    expect(receiptUpdate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ merchant_id: 'merchant-created' }),
+    );
   });
 
   test('deletes an excluded item, lowers the total, and preserves FX', async () => {

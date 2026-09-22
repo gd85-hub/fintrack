@@ -61,7 +61,6 @@ type MerchantTypeQueryRow = {
 type MerchantQueryRow = {
   id: string;
   name: string;
-  type_id: string | null;
   aliases: string[];
   created_at: string;
   updated_at: string;
@@ -121,12 +120,6 @@ type MerchantBreakdownQueryRow = {
   amount_eur: number | string | null;
   merchant: {
     name: string;
-    type_id: string | null;
-    type: {
-      emoji: string;
-      name: string;
-      sort: number;
-    } | null;
   } | null;
 };
 
@@ -164,7 +157,6 @@ type ReceiptForEditQueryRow = {
   raw_json: unknown;
   merchant: {
     name: string;
-    type_id: string | null;
   } | null;
 };
 
@@ -247,15 +239,12 @@ export type MerchantType = {
 export type Merchant = {
   id: string;
   name: string;
-  typeId: string | null;
   aliases: string[];
   createdAt: string;
   updatedAt: string;
 };
 
 export type ManagedMerchant = Merchant & {
-  typeEmoji: string;
-  typeName: string;
   usageCount: number;
 };
 
@@ -321,19 +310,8 @@ export type MerchantBreakdown = {
   count: number;
 };
 
-export type MerchantTypeBreakdown = {
-  typeId: string | null;
-  emoji: string;
-  typeName: string;
-  totalRsd: number;
-  totalUsd: number;
-  totalEur: number;
-  count: number;
-  merchants: MerchantBreakdown[];
-};
-
 export type MonthlyMerchantBreakdown = {
-  types: MerchantTypeBreakdown[];
+  merchants: MerchantBreakdown[];
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
@@ -403,7 +381,7 @@ export type FiscalReceiptExpenseInput = {
 
 export type FiscalReceiptMerchantInput =
   | { existingId: string }
-  | { name: string; typeId: string };
+  | { name: string };
 
 export type SaveFiscalReceiptInput = {
   receipt: ParsedReceipt;
@@ -425,7 +403,6 @@ export type FiscalReceiptEditReceipt = {
   merchantId: string | null;
   merchantName: string;
   merchantLabel: string;
-  merchantTypeId: string | null;
   totalCents: number;
   currency: string;
   paymentType: string | null;
@@ -436,7 +413,6 @@ export type FiscalReceiptEditDraft = {
   merchantId: string | null;
   merchantName: string;
   merchantLabel: string;
-  merchantTypeId: string | null;
   occurredOn: string;
   totalCents: number;
   currency: string;
@@ -878,6 +854,7 @@ export async function deleteCategory(
   );
 }
 
+// Removed in Stage 2 together with the Edge Function merchant-type contract.
 export async function listMerchantTypes(): Promise<MerchantType[]> {
   const { data, error } = await supabase
     .from('merchant_types')
@@ -901,7 +878,7 @@ export async function listMerchantTypes(): Promise<MerchantType[]> {
 export async function listMerchants(): Promise<Merchant[]> {
   const { data, error } = await supabase
     .from('merchants')
-    .select('id,name,type_id,aliases,created_at,updated_at')
+    .select('id,name,aliases,created_at,updated_at')
     .eq('active', true)
     .order('name', { ascending: true });
 
@@ -912,7 +889,6 @@ export async function listMerchants(): Promise<Merchant[]> {
   return (data as unknown as MerchantQueryRow[]).map((row) => ({
     id: row.id,
     name: row.name,
-    typeId: row.type_id,
     aliases: row.aliases,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -921,7 +897,6 @@ export async function listMerchants(): Promise<Merchant[]> {
 
 export async function createMerchant(
   name: string,
-  typeId: string,
   aliases: string[] = [],
 ): Promise<Merchant> {
   const userId = await authenticatedUserId();
@@ -930,10 +905,10 @@ export async function createMerchant(
     .insert({
       user_id: userId,
       name: name.trim(),
-      type_id: typeId,
+      type_id: null,
       aliases,
     })
-    .select('id,name,type_id,aliases,created_at,updated_at')
+    .select('id,name,aliases,created_at,updated_at')
     .single();
 
   if (error) {
@@ -944,7 +919,6 @@ export async function createMerchant(
   return {
     id: row.id,
     name: row.name,
-    typeId: row.type_id,
     aliases: row.aliases,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -954,9 +928,8 @@ export async function createMerchant(
 export async function listMerchantsForManagement(): Promise<
   ManagedMerchant[]
 > {
-  const [merchants, merchantTypes, expenseResult] = await Promise.all([
+  const [merchants, expenseResult] = await Promise.all([
     listMerchants(),
-    listMerchantTypes(),
     supabase
       .from('expenses')
       .select('merchant_id')
@@ -966,9 +939,6 @@ export async function listMerchantsForManagement(): Promise<
     throw expenseResult.error;
   }
 
-  const typeById = new Map(
-    merchantTypes.map((merchantType) => [merchantType.id, merchantType]),
-  );
   const counts = merchantUsageCounts(
     merchants.map((merchant) => merchant.id),
     (expenseResult.data as unknown as ExpenseMerchantReferenceRow[]).map(
@@ -976,17 +946,10 @@ export async function listMerchantsForManagement(): Promise<
     ),
   );
 
-  return merchants.map((merchant) => {
-    const merchantType = merchant.typeId
-      ? typeById.get(merchant.typeId)
-      : null;
-    return {
-      ...merchant,
-      typeEmoji: merchantType?.emoji ?? '📍',
-      typeName: merchantType?.name ?? 'Тип не указан',
-      usageCount: counts.get(merchant.id) ?? 0,
-    };
-  });
+  return merchants.map((merchant) => ({
+    ...merchant,
+    usageCount: counts.get(merchant.id) ?? 0,
+  }));
 }
 
 export async function renameMerchant(
@@ -1002,7 +965,7 @@ export async function renameMerchant(
   const { data, error } = await supabase
     .from('merchants')
     .select(
-      'id,user_id,name,type_id,aliases,created_at,updated_at',
+      'id,user_id,name,aliases,created_at,updated_at',
     )
     .eq('user_id', userId);
   if (error) {
@@ -1035,7 +998,7 @@ export async function renameMerchant(
   );
   const { error: updateError } = await supabase
     .from('merchants')
-    .update({ aliases, name: trimmedName })
+    .update({ aliases, name: trimmedName, type_id: null })
     .eq('id', merchantId)
     .eq('user_id', userId);
   if (updateError) {
@@ -1148,7 +1111,7 @@ export async function mergeMerchants(
   const { data, error } = await supabase
     .from('merchants')
     .select(
-      'id,user_id,name,type_id,aliases,created_at,updated_at',
+      'id,user_id,name,aliases,created_at,updated_at',
     )
     .in('id', merchantIds)
     .eq('user_id', userId);
@@ -1211,7 +1174,7 @@ export async function mergeMerchants(
 
     const { error: aliasError } = await supabase
       .from('merchants')
-      .update({ aliases: mergedAliases })
+      .update({ aliases: mergedAliases, type_id: null })
       .eq('id', targetId)
       .eq('user_id', userId);
     if (aliasError) {
@@ -1286,7 +1249,6 @@ export function buildFiscalReceiptEditDraft(
     merchantId: receipt.merchantId,
     merchantName: receipt.merchantName,
     merchantLabel: receipt.merchantLabel,
-    merchantTypeId: receipt.merchantTypeId,
     occurredOn: firstExpense.occurredOn,
     totalCents: receipt.totalCents,
     currency,
@@ -1327,7 +1289,7 @@ export async function getFiscalReceiptForEdit(
   const { data: receiptData, error: receiptError } = await supabase
     .from('receipts')
     .select(
-      'id,merchant_id,merchant_label,total,currency,payment_type,raw_json,merchant:merchants!receipts_merchant_id_fkey(name,type_id)',
+      'id,merchant_id,merchant_label,total,currency,payment_type,raw_json,merchant:merchants!receipts_merchant_id_fkey(name)',
     )
     .eq('id', receiptId)
     .maybeSingle();
@@ -1377,7 +1339,6 @@ export async function getFiscalReceiptForEdit(
       merchantId: receipt.merchant_id,
       merchantName: receipt.merchant?.name ?? '',
       merchantLabel,
-      merchantTypeId: receipt.merchant?.type_id ?? null,
       totalCents:
         receipt.total === null
           ? expenses.reduce(
@@ -1458,7 +1419,7 @@ export async function merchantBreakdownByMonth(
   const { data, error } = await supabase
     .from('expenses')
     .select(
-      'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name,type_id,type:merchant_types!merchants_type_id_fkey(emoji,name,sort))',
+      'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name)',
     )
     .gte('occurred_on', first)
     .lte('occurred_on', last);
@@ -1467,14 +1428,7 @@ export async function merchantBreakdownByMonth(
     throw error;
   }
 
-  type MutableTypeBreakdown = Omit<
-    MerchantTypeBreakdown,
-    'merchants'
-  > & {
-    merchants: Map<string, MerchantBreakdown>;
-  };
-
-  const types = new Map<string, MutableTypeBreakdown>();
+  const merchants = new Map<string, MerchantBreakdown>();
   let totalRsd = 0;
   let totalUsd = 0;
   let totalEur = 0;
@@ -1487,32 +1441,9 @@ export async function merchantBreakdownByMonth(
     totalUsd += amountUsd;
     totalEur += amountEur;
 
-    const typeId = row.merchant?.type_id ?? null;
-    const typeKey = typeId ?? 'unknown';
     const merchantId = row.merchant_id;
     const merchantKey = merchantId ?? 'unknown';
-    let type = types.get(typeKey);
-
-    if (!type) {
-      type = {
-        typeId,
-        emoji: row.merchant?.type?.emoji ?? '📍',
-        typeName: row.merchant?.type?.name ?? 'Место не определено',
-        totalRsd: 0,
-        totalUsd: 0,
-        totalEur: 0,
-        count: 0,
-        merchants: new Map<string, MerchantBreakdown>(),
-      };
-      types.set(typeKey, type);
-    }
-
-    type.totalRsd += amountRsd;
-    type.totalUsd += amountUsd;
-    type.totalEur += amountEur;
-    type.count += 1;
-
-    const merchant = type.merchants.get(merchantKey);
+    const merchant = merchants.get(merchantKey);
     if (merchant) {
       merchant.totalRsd += amountRsd;
       merchant.totalUsd += amountUsd;
@@ -1521,7 +1452,7 @@ export async function merchantBreakdownByMonth(
       continue;
     }
 
-    type.merchants.set(merchantKey, {
+    merchants.set(merchantKey, {
       merchantId,
       name: row.merchant?.name ?? 'Без места',
       totalRsd: amountRsd,
@@ -1532,10 +1463,7 @@ export async function merchantBreakdownByMonth(
   }
 
   return {
-    types: [...types.values()].map(({ merchants, ...type }) => ({
-      ...type,
-      merchants: [...merchants.values()],
-    })),
+    merchants: [...merchants.values()],
     totalRsd,
     totalUsd,
     totalEur,
@@ -1914,8 +1842,8 @@ export async function saveFiscalReceipt(
     );
   } else {
     const merchantName = input.merchant.name.trim();
-    if (!merchantName || !input.merchant.typeId) {
-      throw new Error('Укажите название и тип места.');
+    if (!merchantName) {
+      throw new Error('Укажите название места.');
     }
     const aliases =
       learnedAliasesWithNormalizedIncoming(
@@ -1927,7 +1855,7 @@ export async function saveFiscalReceipt(
       .insert({
         user_id: userId,
         name: merchantName,
-        type_id: input.merchant.typeId,
+        type_id: null,
         aliases,
       })
       .select('id')
@@ -2170,8 +2098,8 @@ async function resolveReceiptEditMerchant(
   }
 
   const merchantName = merchant.name.trim();
-  if (!merchantName || !merchant.typeId) {
-    throw new Error('Укажите название и тип места.');
+  if (!merchantName) {
+    throw new Error('Укажите название места.');
   }
   const learnedAliases =
     learnedAliasesWithNormalizedIncoming(
@@ -2183,7 +2111,7 @@ async function resolveReceiptEditMerchant(
     .insert({
       user_id: userId,
       name: merchantName,
-      type_id: merchant.typeId,
+      type_id: null,
       aliases: learnedAliases,
     })
     .select('id')

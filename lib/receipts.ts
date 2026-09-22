@@ -22,7 +22,6 @@ export type ParsedReceipt = {
   ok: true;
   merchantName: string;
   merchantLabel?: string | null;
-  merchantTypeSlug?: string | null;
   taxId: string | null;
   occurredAt: string | null;
   occurredOn?: string;

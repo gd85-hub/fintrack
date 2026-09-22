@@ -38,7 +38,6 @@ export type ReceiptImageAnalysisItem = {
 export type ReceiptImageAnalysisSuccess = {
   ok: true;
   merchantName: string | null;
-  merchantTypeSlug: string | null;
   occurredOn: string | null;
   currency: string | null;
   totalCents: number | null;
@@ -172,8 +171,6 @@ export function validateReceiptImageAnalysis(
   if (
     (value.merchantName !== null &&
       typeof value.merchantName !== 'string') ||
-    (value.merchantTypeSlug !== null &&
-      typeof value.merchantTypeSlug !== 'string') ||
     occurredOn === undefined ||
     currency === undefined ||
     totalCents === undefined ||
@@ -188,10 +185,6 @@ export function validateReceiptImageAnalysis(
     merchantName:
       typeof value.merchantName === 'string'
         ? value.merchantName.trim() || null
-        : null,
-    merchantTypeSlug:
-      typeof value.merchantTypeSlug === 'string'
-        ? value.merchantTypeSlug.trim() || null
         : null,
     occurredOn,
     currency,
@@ -297,7 +290,6 @@ export function receiptFromImageAnalysis(
     source: 'ocr_photo',
     merchantName: extractMerchantBrand(merchantLabel),
     merchantLabel,
-    merchantTypeSlug: analysis.merchantTypeSlug,
     taxId: null,
     occurredAt: null,
     occurredOn: analysis.occurredOn,

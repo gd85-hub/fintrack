@@ -16,12 +16,10 @@ import {
   insertExpense,
   listCategories,
   listMerchants,
-  listMerchantTypes,
   type Category,
   type Expense,
   type ExpenseInput,
   type Merchant,
-  type MerchantType,
   updateExpense,
 } from '../lib/db';
 import {
@@ -54,7 +52,6 @@ type ExpenseFormProps = {
   initialExpense: Expense | null;
   categories: Category[];
   initialMerchants: Merchant[];
-  merchantTypes: MerchantType[];
 };
 
 const RATE_ERROR =
@@ -64,7 +61,6 @@ function ExpenseForm({
   initialExpense,
   categories,
   initialMerchants,
-  merchantTypes,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [amount, setAmount] = useState(
@@ -361,7 +357,6 @@ function ExpenseForm({
         />
 
         <MerchantPicker
-          merchantTypes={merchantTypes}
           merchants={merchants}
           onChange={setMerchantId}
           onCreated={handleMerchantCreated}
@@ -492,7 +487,6 @@ export function ExpenseEditorScreen({
   const [errorMessage, setErrorMessage] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
-  const [merchantTypes, setMerchantTypes] = useState<MerchantType[]>([]);
   const [expense, setExpense] = useState<Expense | null>(null);
 
   useEffect(() => {
@@ -501,14 +495,12 @@ export function ExpenseEditorScreen({
     void Promise.all([
       listCategories(),
       listMerchants(),
-      listMerchantTypes(),
       expenseId ? getExpense(expenseId) : Promise.resolve(null),
     ])
       .then(
         ([
           loadedCategories,
           loadedMerchants,
-          loadedMerchantTypes,
           loadedExpense,
         ]) => {
           if (!active) {
@@ -522,7 +514,6 @@ export function ExpenseEditorScreen({
 
           setCategories(loadedCategories);
           setMerchants(loadedMerchants);
-          setMerchantTypes(loadedMerchantTypes);
           setExpense(loadedExpense);
         },
       )
@@ -570,7 +561,6 @@ export function ExpenseEditorScreen({
       categories={categories}
       initialExpense={expense}
       initialMerchants={merchants}
-      merchantTypes={merchantTypes}
     />
   );
 }

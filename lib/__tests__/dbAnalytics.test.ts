@@ -166,30 +166,14 @@ describe('merchantBreakdownByMonth', () => {
         amount_rsd: '100.10',
         amount_usd: '1.00',
         amount_eur: '0.90',
-        merchant: {
-          name: 'Maxi',
-          type_id: 'shop',
-          type: {
-            emoji: '🛒',
-            name: 'Магазин',
-            sort: 10,
-          },
-        },
+        merchant: { name: 'Maxi' },
       },
       {
         merchant_id: 'lidl',
         amount_rsd: '49.90',
         amount_usd: '0.50',
         amount_eur: '0.40',
-        merchant: {
-          name: 'Lidl',
-          type_id: 'shop',
-          type: {
-            emoji: '🛒',
-            name: 'Магазин',
-            sort: 10,
-          },
-        },
+        merchant: { name: 'Lidl' },
       },
       {
         merchant_id: null,
@@ -207,52 +191,30 @@ describe('merchantBreakdownByMonth', () => {
     const merchantResult = await merchantBreakdownByMonth('2026-07');
 
     expect(merchantResult).toEqual({
-      types: [
+      merchants: [
         {
-          typeId: 'shop',
-          emoji: '🛒',
-          typeName: 'Магазин',
-          totalRsd: 15000,
-          totalUsd: 150,
-          totalEur: 130,
-          count: 2,
-          merchants: [
-            {
-              merchantId: 'maxi',
-              name: 'Maxi',
-              totalRsd: 10010,
-              totalUsd: 100,
-              totalEur: 90,
-              count: 1,
-            },
-            {
-              merchantId: 'lidl',
-              name: 'Lidl',
-              totalRsd: 4990,
-              totalUsd: 50,
-              totalEur: 40,
-              count: 1,
-            },
-          ],
+          merchantId: 'maxi',
+          name: 'Maxi',
+          totalRsd: 10010,
+          totalUsd: 100,
+          totalEur: 90,
+          count: 1,
         },
         {
-          typeId: null,
-          emoji: '📍',
-          typeName: 'Место не определено',
+          merchantId: 'lidl',
+          name: 'Lidl',
+          totalRsd: 4990,
+          totalUsd: 50,
+          totalEur: 40,
+          count: 1,
+        },
+        {
+          merchantId: null,
+          name: 'Без места',
           totalRsd: 5000,
           totalUsd: 45,
           totalEur: 42,
           count: 1,
-          merchants: [
-            {
-              merchantId: null,
-              name: 'Без места',
-              totalRsd: 5000,
-              totalUsd: 45,
-              totalEur: 42,
-              count: 1,
-            },
-          ],
         },
       ],
       totalRsd: 20000,
