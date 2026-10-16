@@ -5,12 +5,10 @@ import {
 } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Platform,
   Pressable,
   SectionList,
   StyleSheet,
   Text,
-  type ViewStyle,
   View,
 } from 'react-native';
 
@@ -18,7 +16,6 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { CurrencySelector } from '../../components/CurrencySelector';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
-import { useAuth } from '../../contexts/AuthContext';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import {
   deleteExpense,
@@ -28,7 +25,6 @@ import {
 } from '../../lib/db';
 import {
   formatDayHeader,
-  formatMonthTitle,
   monthBounds,
   shiftMonth,
   todayLocalISO,
@@ -455,7 +451,6 @@ function monthFromParam(value: string | string[] | undefined) {
 export default function HomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ month?: string | string[] }>();
-  const { signOut } = useAuth();
   const {
     currency: displayCurrency,
     setCurrency: setDisplayCurrency,
@@ -469,7 +464,6 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
-  const [signingOut, setSigningOut] = useState(false);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(
     () => new Set(),
@@ -563,51 +557,22 @@ export default function HomeScreen() {
       ),
     [displayCurrency, expenses],
   );
+  const monthTitle = useMemo(() => {
+    const firstDay = monthBounds(visibleMonth).first;
+    const year = Number(firstDay.slice(0, 4));
+    const monthIndex = Number(firstDay.slice(5, 7)) - 1;
+
+    return new Date(year, monthIndex, 1).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    });
+  }, [visibleMonth]);
   const canMoveForward = visibleMonth < currentMonth;
-
-  const handleSignOut = useCallback(async () => {
-    setSigningOut(true);
-    setErrorMessage('');
-    const { error } = await signOut();
-
-    if (error) {
-      setErrorMessage('Не удалось выйти. Попробуйте ещё раз.');
-      setSigningOut(false);
-    }
-  }, [signOut]);
 
   const listHeaderElement = useMemo(
     () => (
       <View style={styles.listHeader}>
-        <View style={styles.accountRow}>
-          <Text style={styles.appName}>Fintrack</Text>
-          <View style={styles.accountActions}>
-            <Pressable
-              accessibilityLabel="Открыть меню"
-              accessibilityRole="button"
-              onPress={() => router.push('/(app)/menu')}
-              style={({ pressed }) => [
-                styles.headerAction,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.headerActionText}>☰ Меню</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={signingOut}
-              onPress={() => void handleSignOut()}
-              style={({ pressed }) => [
-                styles.signOutButton,
-                (pressed || signingOut) && styles.pressed,
-              ]}
-            >
-              <Text style={styles.signOutText}>
-                {signingOut ? 'Выход…' : 'Выйти'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+        <Text style={styles.appName}>Fintrack</Text>
 
         <View style={styles.monthRow}>
           <Pressable
@@ -625,7 +590,7 @@ export default function HomeScreen() {
           </Pressable>
 
           <Text style={styles.monthTitle}>
-            {formatMonthTitle(visibleMonth)}
+            {monthTitle}
           </Text>
 
           <Pressable
@@ -703,15 +668,13 @@ export default function HomeScreen() {
       canMoveForward,
       displayCurrency,
       errorMessage,
-      handleSignOut,
       loading,
       monthTotal,
+      monthTitle,
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
-      router,
       setDisplayCurrency,
-      signingOut,
       visibleMonth,
     ],
   );
@@ -915,35 +878,6 @@ export default function HomeScreen() {
         style={styles.list}
       />
 
-      <Pressable
-        accessibilityLabel={
-          Platform.OS === 'web'
-            ? 'Чек из фото или скриншота'
-            : 'Сканировать чек'
-        }
-        accessibilityRole="button"
-        onPress={() => router.push('/(app)/receipt/scan')}
-        style={({ pressed }) => [
-          styles.floatingButton,
-          styles.scanFloatingButton,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Text style={styles.scanFloatingButtonText}>📷</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityLabel="Добавить трату"
-        accessibilityRole="button"
-        onPress={() => router.push('/(app)/expense/new')}
-        style={({ pressed }) => [
-          styles.floatingButton,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Text style={styles.floatingButtonText}>+</Text>
-      </Pressable>
-
       <ConfirmDialog
         confirming={deletingPurchase}
         onCancel={() => {
@@ -964,18 +898,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  accountActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  accountRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
   appName: {
-    color: theme.colors.text,
+    color: theme.color.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
@@ -1092,34 +1016,6 @@ const styles = StyleSheet.create({
   expandIconSpacer: {
     width: theme.spacing.md,
   },
-  floatingButton: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.accent,
-    borderRadius: theme.radii.round,
-    bottom: theme.spacing.floatingOffset,
-    height: theme.sizes.floatingButton,
-    justifyContent: 'center',
-    position: Platform.select({
-      web: 'fixed',
-      default: 'absolute',
-    }) as ViewStyle['position'],
-    right: theme.spacing.floatingOffset,
-    width: theme.sizes.floatingButton,
-  },
-  floatingButtonText: {
-    color: theme.colors.white,
-    fontSize: theme.fontSizes.title,
-    fontWeight: '400',
-  },
-  headerAction: {
-    justifyContent: 'center',
-    minHeight: theme.sizes.iconButton,
-  },
-  headerActionText: {
-    color: theme.colors.accent,
-    fontSize: theme.fontSizes.label,
-    fontWeight: '600',
-  },
   list: {
     flex: 1,
   },
@@ -1134,7 +1030,7 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   monthButtonText: {
-    color: theme.colors.text,
+    color: theme.color.text.primary,
     fontSize: theme.fontSizes.title,
   },
   monthRow: {
@@ -1143,14 +1039,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   monthTitle: {
-    color: theme.colors.text,
+    color: theme.color.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
     textAlign: 'center',
   },
   monthTotal: {
-    color: theme.colors.text,
+    color: theme.color.text.primary,
     fontSize: theme.fontSizes.monthTotal,
     fontWeight: '700',
     textAlign: 'center',
@@ -1211,24 +1107,9 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: theme.colors.surface,
   },
-  scanFloatingButton: {
-    bottom: theme.spacing.floatingStackOffset,
-  },
-  scanFloatingButtonText: {
-    fontSize: theme.fontSizes.body,
-  },
   screen: {
     backgroundColor: theme.colors.background,
     flex: 1,
-  },
-  signOutButton: {
-    minHeight: theme.sizes.iconButton,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xs,
-  },
-  signOutText: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.label,
   },
   showMoreButton: {
     alignItems: 'center',
