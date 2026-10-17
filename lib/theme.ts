@@ -26,6 +26,7 @@ export const theme = {
       selected: '#d2ecfe',
       overlay: '#ffffff',
       inverse: '#121b21',
+      border: '#0f172a14',
     },
     text: {
       primary: '#121b21',
@@ -33,6 +34,7 @@ export const theme = {
       tertiary: '#646d73',
       disabled: '#98a0a5',
       inverse: '#ffffff',
+      onInverse: '#ffffff',
     },
     icon: {
       primary: '#121b21',
@@ -40,6 +42,7 @@ export const theme = {
       action: '#0071a6',
       disabled: '#98a0a5',
       onMedia: '#ffffff',
+      onInverse: '#ffffff',
     },
     border: {
       subtle: '#0f172a0f',
@@ -47,6 +50,7 @@ export const theme = {
       strong: '#0f172a38',
       focus: '#005984',
       focusContrast: '#ffffff',
+      onInverse: '#ffffff3d',
     },
     separatorInset: '#0f172a1a',
     field: {
@@ -56,6 +60,11 @@ export const theme = {
       borderFocus: '#005984',
       placeholder: '#646d73',
       supportingError: '#b42318',
+      disabledFill: '#f4f6f8',
+      disabledContent: '#98a0a5',
+      disabledBorder: '#dadfe2',
+      readOnlyFill: '#e8ecee',
+      readOnlyContent: '#535c62',
     },
     action: {
       primary: {
@@ -74,6 +83,10 @@ export const theme = {
         pressed: '#e8ecee',
         content: '#121b21',
         border: '#7c848a',
+        focus: '#005984',
+        disabledFill: '#f4f6f8',
+        disabledContent: '#98a0a5',
+        disabledBorder: '#dadfe2',
       },
       link: {
         rest: '#0071a6',
@@ -88,6 +101,8 @@ export const theme = {
         pressed: '#912018',
         content: '#ffffff',
         focus: '#b42318',
+        disabledFill: '#dadfe2',
+        disabledContent: '#98a0a5',
       },
     },
     state: {
@@ -144,12 +159,25 @@ export const theme = {
         '#9e165f',
         '#4f7a21',
       ],
+      sequential: {
+        1: '#bee4fe',
+        3: '#52a8dd',
+        5: '#006a9c',
+      },
+      diverging: {
+        negative: '#b93815',
+        neutral: '#c7cdd1',
+        positive: '#107569',
+      },
+      selection: '#0071a6',
+      selectionOutline: '#121b21',
       grid: '#0f172a0f',
       axis: '#0f172a1f',
       label: '#646d73',
       muted: '#7c848a',
       tooltipFill: '#121b21',
       tooltipContent: '#ffffff',
+      tooltipBorder: '#ffffff3d',
     },
     overlay: {
       scrim: '#000000a6',
