@@ -214,6 +214,66 @@ export const theme = {
     small: 12,
     title: 28,
   },
+  fontFamily: {
+    regular: 'Inter_400Regular',
+    medium: 'Inter_500Medium',
+    semibold: 'Inter_600SemiBold',
+    bold: 'Inter_700Bold',
+  },
+  type: {
+    // Display/Hero — month balance on Home (only place this large)
+    displayHero: { fontFamily: 'Inter_700Bold', fontSize: 56, lineHeight: 60, letterSpacing: -1.12 },
+    // Display/Hero Small — same balance when the string is long (3 currencies / 6 digits)
+    displayHeroSmall: { fontFamily: 'Inter_700Bold', fontSize: 40, lineHeight: 44, letterSpacing: -0.6 },
+    // Title/Screen — screen title under the navbar
+    titleScreen: { fontFamily: 'Inter_700Bold', fontSize: 28, lineHeight: 34, letterSpacing: -0.28 },
+    // Title/Section — section heading inside a screen
+    titleSection: { fontFamily: 'Inter_700Bold', fontSize: 22, lineHeight: 28, letterSpacing: -0.22 },
+    // Title/Nav — navbar title, sheet header
+    titleNav: { fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 22, letterSpacing: 0 },
+    // Body/Strong — place name, receipt line-item name
+    bodyStrong: { fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 22, letterSpacing: 0 },
+    // Body/Default — settings row, ordinary text
+    bodyDefault: { fontFamily: 'Inter_400Regular', fontSize: 16, lineHeight: 22, letterSpacing: 0 },
+    // Amount/Row — expense amount in a row (tabular required)
+    amountRow: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 17,
+      lineHeight: 22,
+      letterSpacing: 0,
+      fontVariant: ['tabular-nums'],
+    },
+    // Amount/Row Exception — refund / top-up, one weight heavier to code the exception
+    amountRowException: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 17,
+      lineHeight: 22,
+      letterSpacing: 0,
+      fontVariant: ['tabular-nums'],
+    },
+    // Label/Default — button label, label under an action icon
+    labelDefault: { fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 20, letterSpacing: 0 },
+    // Caption/Default — category, service caption
+    captionDefault: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, letterSpacing: 0 },
+    // Amount/Secondary — second-currency equivalent (tabular)
+    amountSecondary: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
+      lineHeight: 18,
+      letterSpacing: 0,
+      fontVariant: ['tabular-nums'],
+    },
+    // Data/Value — value in a chart tooltip
+    dataValue: { fontFamily: 'Inter_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0 },
+    // Micro/Label — pill, counter, state marker (all-caps, tracked)
+    microLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 14, letterSpacing: 0.22 },
+    // Micro/Strong — active tab, status pill, category in chart tooltip
+    microStrong: { fontFamily: 'Inter_600SemiBold', fontSize: 11, lineHeight: 14, letterSpacing: 0 },
+    // Micro/Default — inactive tab (no tracking — caption, not eyebrow)
+    microDefault: { fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 14, letterSpacing: 0 },
+    // Data/Axis — axis labels, column labels, day numbers (smallest tier)
+    dataAxis: { fontFamily: 'Inter_500Medium', fontSize: 10, lineHeight: 14, letterSpacing: 0 },
+  },
   opacity: {
     disabled: 0.55,
     pressed: 0.7,

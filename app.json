@@ -18,7 +18,8 @@
           "cameraPermission": "Разрешите Fintrack сфотографировать чек.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "web": {
       "bundler": "metro",
