@@ -6,6 +6,7 @@ import {
 } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Platform,
   Pressable,
   SectionList,
   StyleSheet,
@@ -15,6 +16,7 @@ import {
 
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
+import { HomeActions } from '../../components/HomeActions';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
@@ -567,6 +569,16 @@ export default function HomeScreen() {
               {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
             </Text>
           </View>
+
+          <HomeActions
+            onManual={() => router.push('/(app)/expense/new')}
+            onReport={() => router.push('/(app)/analytics')}
+            onScan={
+              Platform.OS === 'web'
+                ? undefined
+                : () => router.push('/(app)/receipt/scan')
+            }
+          />
         </View>
 
         {needsAttentionExpenses.length > 0 ? (
@@ -621,6 +633,7 @@ export default function HomeScreen() {
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
+      router,
     ],
   );
 
