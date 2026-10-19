@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { CurrencySelector } from '../../components/CurrencySelector';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
+import { ListRow } from '../../components/ds/ListRow';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import {
   deleteExpense,
@@ -63,6 +64,10 @@ type PendingPurchaseDelete = {
 };
 
 const expensePageSize = 10;
+const purchaseRowTextOffset =
+  theme.scale.space[3] +
+  theme.scale.size.iconCircle +
+  theme.scale.space[3];
 
 function amountForCurrency(expense: Expense, currency: Currency): number {
   if (currency === 'USD') {
@@ -238,22 +243,14 @@ function PurchaseRow({
   );
   const firstExpense = unit.expenses[0];
   const header = resolveHomeRowHeader(unit.expenses);
-  const merchantName = unit.expenses
-    .find((expense) => expense.merchantName?.trim())
-    ?.merchantName?.trim();
-  const merchantLabel = unit.expenses
-    .find((expense) => expense.merchantLabel?.trim())
-    ?.merchantLabel?.trim();
-  const showMerchantLabel =
-    merchantName !== undefined &&
-    merchantLabel !== undefined &&
-    merchantLabel !== header;
+  const iconEmoji = unit.expenses
+    .find((expense) => expense.categoryEmoji.trim())
+    ?.categoryEmoji.trim();
   const expandable = decideHomeRowPresentation(
     unit.expenses.length,
   ).expandable;
   const rowExpanded = expandable && expanded;
   const positionLabel = purchasePositionLabel(unit.expenses.length);
-  const categoryHint = purchaseCategoryHint(unit.expenses);
   const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
   const visibleItems = collapsedItems.slice(0, visibleCount);
   const remaining = collapsedItems.length - visibleItems.length;
@@ -272,47 +269,14 @@ function PurchaseRow({
 
   return (
     <View style={styles.purchaseUnit}>
-      <Pressable
-        accessibilityLabel={`${header}${showMerchantLabel ? `, ${merchantLabel}` : ''}, ${positionLabel}, ${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
-        accessibilityRole="button"
-        accessibilityState={
-          expandable ? { expanded: rowExpanded } : undefined
-        }
+      <ListRow
+        amount={`${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
+        category={positionLabel}
+        iconEmoji={iconEmoji}
         onPress={handleRowPress}
-        style={({ pressed }) => [
-          styles.expenseRow,
-          pressed && styles.rowPressed,
-        ]}
-      >
-        <View style={styles.expenseCopy}>
-          <Text numberOfLines={1} style={styles.purchaseTitle}>
-            {header}
-          </Text>
-          {showMerchantLabel ? (
-            <Text numberOfLines={1} style={styles.purchaseMerchantLabel}>
-              {merchantLabel}
-            </Text>
-          ) : null}
-          <Text numberOfLines={1} style={styles.expenseSubtitle}>
-            {categoryHint ? `${positionLabel} · ${categoryHint}` : positionLabel}
-          </Text>
-        </View>
-        <Text numberOfLines={1} style={styles.expenseAmount}>
-          {formatMoney(displayAmount.amountCents)} {displayAmount.currency}
-        </Text>
-        {expandable ? (
-          <Text
-            style={[
-              styles.expandIcon,
-              rowExpanded && styles.expandIconExpanded,
-            ]}
-          >
-            ›
-          </Text>
-        ) : (
-          <View style={styles.expandIconSpacer} />
-        )}
-      </Pressable>
+        place={header}
+        showChevron={true}
+      />
 
       {rowExpanded ? (
         <View style={styles.purchaseDetails}>
@@ -862,14 +826,6 @@ export default function HomeScreen() {
               <Text numberOfLines={1} style={styles.dayTotal}>
                 {formatMoney(section.dayTotal)} {displayCurrency}
               </Text>
-              <Text
-                style={[
-                  styles.expandIcon,
-                  !collapsed && styles.expandIconExpanded,
-                ]}
-              >
-                ›
-              </Text>
             </Pressable>
           );
         }}
@@ -912,26 +868,26 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.color.bg.base,
     flexDirection: 'row',
-    gap: theme.spacing.sm,
+    gap: theme.scale.space[3],
     justifyContent: 'space-between',
-    paddingBottom: theme.spacing.xs,
+    paddingBottom: theme.scale.space[2],
+    paddingHorizontal: theme.scale.space[4],
+    paddingTop: theme.scale.space[5],
   },
   daySectionGap: {
     height: theme.spacing.lg,
   },
   dayTitle: {
-    color: theme.colors.textMuted,
+    ...theme.type.captionDefault,
+    color: theme.color.text.secondary,
     flex: 1,
-    fontSize: theme.fontSizes.dayHeader,
-    fontWeight: '600',
   },
   dayTotal: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.dayHeader,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
+    ...theme.type.amountSecondary,
+    color: theme.color.text.secondary,
+    fontVariant: [...theme.type.amountSecondary.fontVariant],
     textAlign: 'right',
   },
   deletePurchaseButton: {
@@ -979,42 +935,6 @@ const styles = StyleSheet.create({
     color: theme.colors.danger,
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
-  },
-  expenseAmount: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.body,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  expenseCopy: {
-    flex: 1,
-    gap: theme.spacing.xxs,
-  },
-  expenseRow: {
-    alignItems: 'center',
-    borderBottomColor: theme.colors.border,
-    borderBottomWidth: theme.sizes.border,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    minHeight: theme.sizes.floatingButton,
-    paddingVertical: theme.spacing.xs,
-  },
-  expenseSubtitle: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.caption,
-  },
-  expandIcon: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.body,
-    textAlign: 'center',
-    width: theme.spacing.md,
-  },
-  expandIconExpanded: {
-    transform: [{ rotate: '90deg' }],
-  },
-  expandIconSpacer: {
-    width: theme.spacing.md,
   },
   list: {
     flex: 1,
@@ -1085,16 +1005,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: theme.sizes.border,
   },
   purchaseRowSeparator: {
-    height: theme.spacing.xs,
-  },
-  purchaseMerchantLabel: {
-    color: theme.colors.textMuted,
-    fontSize: theme.fontSizes.small,
-  },
-  purchaseTitle: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '600',
+    backgroundColor: theme.color.separatorInset,
+    height: theme.scale.stroke.hairline,
+    marginLeft: purchaseRowTextOffset,
   },
   purchaseUnit: {
     width: '100%',

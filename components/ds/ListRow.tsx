@@ -17,6 +17,7 @@ export type ListRowProps = {
   equivalent?: string;
   kind?: 'default' | 'exception';
   icon?: ReactNode;
+  iconEmoji?: string;
   showChevron?: boolean;
   selected?: boolean;
   onPress?: () => void;
@@ -30,6 +31,7 @@ export function ListRow({
   equivalent,
   kind = 'default',
   icon,
+  iconEmoji,
   showChevron = true,
   selected = false,
   onPress,
@@ -37,6 +39,7 @@ export function ListRow({
 }: ListRowProps) {
   const [hovered, setHovered] = useState(false);
   const isException = kind === 'exception';
+  const visibleIconEmoji = iconEmoji?.trim() ?? '';
   const accessibilityParts = [place.trim(), amount.trim()];
 
   if (isException) {
@@ -72,6 +75,8 @@ export function ListRow({
             name="repeat"
             size={ICON_GLYPH}
           />
+        ) : visibleIconEmoji ? (
+          <Text style={styles.iconEmoji}>{visibleIconEmoji}</Text>
         ) : (
           icon
         )}
@@ -154,6 +159,10 @@ const styles = StyleSheet.create({
     height: theme.scale.size.iconCircle,
     justifyContent: 'center',
     width: theme.scale.size.iconCircle,
+  },
+  iconEmoji: {
+    fontSize: ICON_GLYPH,
+    textAlign: 'center',
   },
   place: {
     ...theme.type.bodyStrong,
