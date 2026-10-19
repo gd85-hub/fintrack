@@ -28,6 +28,21 @@ const MONTHS_GENITIVE = [
   'декабря',
 ] as const;
 
+const MONTHS_PREPOSITIONAL = [
+  'январе',
+  'феврале',
+  'марте',
+  'апреле',
+  'мае',
+  'июне',
+  'июле',
+  'августе',
+  'сентябре',
+  'октябре',
+  'ноябре',
+  'декабре',
+] as const;
+
 const WEEKDAYS = [
   'воскресенье',
   'понедельник',
@@ -140,6 +155,28 @@ export function formatMonthTitle(yyyyMm: string): string {
   }
 
   return `${MONTHS_NOMINATIVE[parts.month - 1]} ${parts.year}`;
+}
+
+export function formatMonthName(yyyyMm: string): string {
+  const bounds = monthBounds(yyyyMm);
+  const parts = parseLocalISO(bounds.first);
+
+  if (!parts) {
+    throw new Error('Month must use YYYY-MM format.');
+  }
+
+  return MONTHS_NOMINATIVE[parts.month - 1];
+}
+
+export function formatMonthPrepositional(yyyyMm: string): string {
+  const bounds = monthBounds(yyyyMm);
+  const parts = parseLocalISO(bounds.first);
+
+  if (!parts) {
+    throw new Error('Month must use YYYY-MM format.');
+  }
+
+  return MONTHS_PREPOSITIONAL[parts.month - 1];
 }
 
 export function shiftMonth(yyyyMm: string, delta: number): string {

@@ -1,3 +1,4 @@
+import Feather from '@expo/vector-icons/Feather';
 import {
   useFocusEffect,
   useLocalSearchParams,
@@ -13,11 +14,10 @@ import {
 } from 'react-native';
 
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { CurrencySelector } from '../../components/CurrencySelector';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
+import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
-import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import {
   deleteExpense,
   deleteReceipt,
@@ -26,8 +26,9 @@ import {
 } from '../../lib/db';
 import {
   formatDayHeader,
+  formatMonthName,
+  formatMonthPrepositional,
   monthBounds,
-  shiftMonth,
   todayLocalISO,
 } from '../../lib/dates';
 import {
@@ -215,7 +216,6 @@ function purchasePositionLabel(itemCount: number): string {
 }
 
 type PurchaseRowProps = {
-  displayCurrency: Currency;
   expanded: boolean;
   onDelete?: () => void;
   onEdit?: () => void;
@@ -227,7 +227,6 @@ type PurchaseRowProps = {
 };
 
 function PurchaseRow({
-  displayCurrency,
   expanded,
   onDelete,
   onEdit,
@@ -237,10 +236,7 @@ function PurchaseRow({
   unit,
   visibleCount,
 }: PurchaseRowProps) {
-  const displayAmount = purchaseDisplayAmount(
-    unit.expenses,
-    displayCurrency,
-  );
+  const displayAmount = purchaseDisplayAmount(unit.expenses, 'RSD');
   const firstExpense = unit.expenses[0];
   const header = resolveHomeRowHeader(unit.expenses);
   const iconEmoji = unit.expenses
@@ -320,7 +316,7 @@ function PurchaseRow({
             const expense = item.firstExpense;
             const itemAmount = purchaseDisplayAmount(
               item.expenses,
-              displayCurrency,
+              'RSD',
             );
             const displayName = `${item.displayName}${
               item.count > 1 ? ` ×${item.count}` : ''
@@ -415,10 +411,6 @@ function monthFromParam(value: string | string[] | undefined) {
 export default function HomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ month?: string | string[] }>();
-  const {
-    currency: displayCurrency,
-    setCurrency: setDisplayCurrency,
-  } = useDisplayCurrency();
   const currentMonth = todayLocalISO().slice(0, 7);
   const requestedMonth = monthFromParam(params.month);
   const [visibleMonth, setVisibleMonth] = useState(
@@ -442,6 +434,7 @@ export default function HomeScreen() {
     useState<PendingPurchaseDelete | null>(null);
   const [deletingPurchase, setDeletingPurchase] = useState(false);
   const [purchaseErrorMessage, setPurchaseErrorMessage] = useState('');
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
 
   useEffect(() => {
     if (requestedMonth) {
@@ -509,81 +502,72 @@ export default function HomeScreen() {
     [visibleExpenses],
   );
   const sections = useMemo(
-    () => buildDaySections(groups, collapsedDays, displayCurrency),
-    [collapsedDays, displayCurrency, groups],
+    () => buildDaySections(groups, collapsedDays, 'RSD'),
+    [collapsedDays, groups],
   );
-  const monthTotal = useMemo(
-    () =>
-      expenses.reduce(
+  const monthTotals = useMemo(
+    () => ({
+      rsd: expenses.reduce(
         (sum, expense) =>
-          sum + amountForCurrency(expense, displayCurrency),
+          sum + amountForCurrency(expense, 'RSD'),
         0,
       ),
-    [displayCurrency, expenses],
+      eur: expenses.reduce(
+        (sum, expense) => sum + amountForCurrency(expense, 'EUR'),
+        0,
+      ),
+      usd: expenses.reduce(
+        (sum, expense) => sum + amountForCurrency(expense, 'USD'),
+        0,
+      ),
+    }),
+    [expenses],
   );
-  const monthTitle = useMemo(() => {
-    const firstDay = monthBounds(visibleMonth).first;
-    const year = Number(firstDay.slice(0, 4));
-    const monthIndex = Number(firstDay.slice(5, 7)) - 1;
-
-    return new Date(year, monthIndex, 1).toLocaleDateString('en-US', {
-      month: 'long',
-      year: 'numeric',
-    });
-  }, [visibleMonth]);
-  const canMoveForward = visibleMonth < currentMonth;
+  const monthName = formatMonthName(visibleMonth);
+  const monthPrepositional = formatMonthPrepositional(visibleMonth);
 
   const listHeaderElement = useMemo(
     () => (
       <View style={styles.listHeader}>
-        <Text style={styles.appName}>Fintrack</Text>
+        <View>
+          <View style={styles.homeHeader}>
+            <Pressable
+              accessibilityLabel="Выбрать месяц"
+              accessibilityRole="button"
+              onPress={() => setMonthPickerVisible(true)}
+              style={({ pressed }) => [
+                styles.monthPickerButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text numberOfLines={1} style={styles.headerMonth}>
+                {monthName}
+              </Text>
+              <Feather
+                color={theme.color.icon.primary}
+                name="chevron-down"
+                size={theme.scale.size.iconMd}
+              />
+            </Pressable>
+          </View>
 
-        <View style={styles.monthRow}>
-          <Pressable
-            accessibilityLabel="Предыдущий месяц"
-            accessibilityRole="button"
-            onPress={() =>
-              setVisibleMonth((month) => shiftMonth(month, -1))
-            }
-            style={({ pressed }) => [
-              styles.monthButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.monthButtonText}>‹</Text>
-          </Pressable>
-
-          <Text style={styles.monthTitle}>
-            {monthTitle}
-          </Text>
-
-          <Pressable
-            accessibilityLabel="Следующий месяц"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canMoveForward }}
-            disabled={!canMoveForward}
-            onPress={() =>
-              setVisibleMonth((month) => shiftMonth(month, 1))
-            }
-            style={({ pressed }) => [
-              styles.monthButton,
-              !canMoveForward && styles.disabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.monthButtonText}>›</Text>
-          </Pressable>
+          <View style={styles.hero}>
+            <Text style={styles.heroTitle}>
+              Потрачено в {monthPrepositional}
+            </Text>
+            <Text
+              adjustsFontSizeToFit
+              numberOfLines={1}
+              style={styles.heroAmount}
+            >
+              {formatMoney(monthTotals.rsd)}
+              <Text style={styles.heroCurrency}> RSD</Text>
+            </Text>
+            <Text numberOfLines={1} style={styles.heroEquivalents}>
+              {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
+            </Text>
+          </View>
         </View>
-
-        <Text style={styles.monthTotal}>
-          {formatMoney(monthTotal)} {displayCurrency}
-        </Text>
-
-        <CurrencySelector
-          accessibilityLabel="Валюта отображения"
-          onChange={setDisplayCurrency}
-          value={displayCurrency}
-        />
 
         {needsAttentionExpenses.length > 0 ? (
           <Pressable
@@ -629,17 +613,14 @@ export default function HomeScreen() {
       </View>
     ),
     [
-      canMoveForward,
-      displayCurrency,
       errorMessage,
       loading,
-      monthTotal,
-      monthTitle,
+      monthName,
+      monthPrepositional,
+      monthTotals,
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
-      setDisplayCurrency,
-      visibleMonth,
     ],
   );
 
@@ -785,7 +766,6 @@ export default function HomeScreen() {
 
           return (
             <PurchaseRow
-              displayCurrency={displayCurrency}
               expanded={expandedUnitKeys.has(unit.key)}
               onDelete={() => requestPurchaseDelete(unit)}
               onEdit={
@@ -824,7 +804,7 @@ export default function HomeScreen() {
                 {formatDayHeader(section.date)}
               </Text>
               <Text numberOfLines={1} style={styles.dayTotal}>
-                {formatMoney(section.dayTotal)} {displayCurrency}
+                {formatMoney(section.dayTotal)} RSD
               </Text>
             </Pressable>
           );
@@ -832,6 +812,14 @@ export default function HomeScreen() {
         sections={listSections}
         stickySectionHeadersEnabled={true}
         style={styles.list}
+      />
+
+      <MonthPicker
+        currentMonth={currentMonth}
+        onClose={() => setMonthPickerVisible(false)}
+        onSelect={setVisibleMonth}
+        selectedMonth={visibleMonth}
+        visible={monthPickerVisible}
       />
 
       <ConfirmDialog
@@ -854,11 +842,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  appName: {
-    color: theme.color.text.primary,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '700',
-  },
   content: {
     alignSelf: 'center',
     maxWidth: theme.sizes.maxContentWidth,
@@ -908,9 +891,6 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
-  disabled: {
-    opacity: theme.opacity.disabled,
-  },
   emptyHint: {
     color: theme.colors.textMuted,
     fontSize: theme.fontSizes.label,
@@ -936,6 +916,40 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
   },
+  headerMonth: {
+    ...theme.type.titleScreen,
+    color: theme.color.text.primary,
+    flexShrink: 1,
+  },
+  hero: {
+    gap: theme.scale.space[1],
+    paddingHorizontal: theme.scale.space[4],
+    paddingTop: theme.scale.space[2],
+  },
+  heroAmount: {
+    ...theme.type.displayHero,
+    color: theme.color.text.primary,
+  },
+  heroCurrency: {
+    ...theme.type.titleSection,
+    color: theme.color.text.secondary,
+  },
+  heroEquivalents: {
+    ...theme.type.amountSecondary,
+    color: theme.color.text.secondary,
+    fontVariant: [...theme.type.amountSecondary.fontVariant],
+  },
+  heroTitle: {
+    ...theme.type.captionDefault,
+    color: theme.color.text.secondary,
+  },
+  homeHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.scale.space[2],
+    paddingHorizontal: theme.scale.space[4],
+    paddingVertical: theme.scale.space[1],
+  },
   list: {
     flex: 1,
   },
@@ -943,33 +957,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg,
     marginBottom: theme.spacing.lg,
   },
-  monthButton: {
+  monthPickerButton: {
     alignItems: 'center',
-    height: theme.sizes.iconButton,
-    justifyContent: 'center',
-    width: theme.sizes.iconButton,
-  },
-  monthButtonText: {
-    color: theme.color.text.primary,
-    fontSize: theme.fontSizes.title,
-  },
-  monthRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  monthTitle: {
-    color: theme.color.text.primary,
     flex: 1,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  monthTotal: {
-    color: theme.color.text.primary,
-    fontSize: theme.fontSizes.monthTotal,
-    fontWeight: '700',
-    textAlign: 'center',
+    flexDirection: 'row',
+    gap: theme.scale.space[2],
   },
   pressed: {
     opacity: theme.opacity.pressed,
