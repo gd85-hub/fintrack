@@ -4,6 +4,7 @@ import type { BottomTabBarProps } from 'expo-router/tabs';
 import { type ComponentProps, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -93,7 +94,10 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
   }
 
   function openAddRoute(
-    route: '/(app)/expense/new' | '/(app)/receipt/scan',
+    route:
+      | '/(app)/expense/new'
+      | '/(app)/receipt/scan'
+      | '/(app)/receipt/scan?mode=image',
   ) {
     setAddSheetVisible(false);
     router.push(route);
@@ -161,9 +165,35 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                 },
               ]}
             >
+              {Platform.OS !== 'web' ? (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => openAddRoute('/(app)/receipt/scan')}
+                    style={({ pressed }) => [
+                      styles.sheetAction,
+                      pressed && styles.sheetActionPressed,
+                    ]}
+                  >
+                    <Feather
+                      color={theme.color.icon.primary}
+                      name="camera"
+                      size={theme.spacing.lg}
+                    />
+                    <Text style={styles.sheetActionLabel}>
+                      Сканировать чек
+                    </Text>
+                  </Pressable>
+
+                  <View style={styles.sheetSeparator} />
+                </>
+              ) : null}
+
               <Pressable
                 accessibilityRole="button"
-                onPress={() => openAddRoute('/(app)/receipt/scan')}
+                onPress={() =>
+                  openAddRoute('/(app)/receipt/scan?mode=image')
+                }
                 style={({ pressed }) => [
                   styles.sheetAction,
                   pressed && styles.sheetActionPressed,
@@ -171,10 +201,12 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
               >
                 <Feather
                   color={theme.color.icon.primary}
-                  name="camera"
+                  name="image"
                   size={theme.spacing.lg}
                 />
-                <Text style={styles.sheetActionLabel}>Scan receipt</Text>
+                <Text style={styles.sheetActionLabel}>
+                  Загрузить фото
+                </Text>
               </Pressable>
 
               <View style={styles.sheetSeparator} />
@@ -192,7 +224,9 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                   name="edit-3"
                   size={theme.spacing.lg}
                 />
-                <Text style={styles.sheetActionLabel}>Add manually</Text>
+                <Text style={styles.sheetActionLabel}>
+                  Добавить вручную
+                </Text>
               </Pressable>
             </View>
           </View>

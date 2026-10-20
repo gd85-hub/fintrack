@@ -10,7 +10,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+} from 'expo-router';
 
 import { ReceiptCamera } from '../../../components/ReceiptCamera';
 import { ReceiptImageInput } from '../../../components/ReceiptImageInput';
@@ -145,10 +149,15 @@ function ImageReceiptFlow() {
 }
 
 function NativeScanReceiptScreen() {
+  const { mode } = useLocalSearchParams<{
+    mode?: string | string[];
+  }>();
+  const initialImageMode =
+    (Array.isArray(mode) ? mode[0] : mode) === 'image';
   const { setDraft } = useReceiptDraft();
   const [isFocused, setIsFocused] = useState(false);
   const [manualMode, setManualMode] = useState(false);
-  const [imageMode, setImageMode] = useState(false);
+  const [imageMode, setImageMode] = useState(initialImageMode);
   const [manualUrl, setManualUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
