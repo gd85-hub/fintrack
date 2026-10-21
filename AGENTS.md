@@ -15,7 +15,7 @@ Two independent axes describe an expense: **category** (what the money was for �
 
 - Email/password auth with persisted session.
 - Manual expense entry in RSD/USD/EUR with NBS conversion and a live 3-currency preview; exotic currencies (KZT/RUB/TRY/other) via a manual RSD equivalent.
-- Home feed as a `SectionList`: sticky opaque day headers, collapsible days (in-memory, reset on month change), day totals aligned to the amount column. Every purchase renders as a unified, expandable row (single-item and manual expenses included); expansion shows the line item(s) and edit/delete actions.
+- Home feed as a `FlatList` of **per-day cards** (`surface/raised` on the `bg/base` backdrop): each day is a card holding a **non-sticky** day header (date + day total) and that day's rows, with collapsible days (in-memory, reset on month change). Every purchase renders as a unified, expandable DS `List Row` (single-item and manual expenses included) with inset hairline dividers between rows; expansion shows the line item(s) and edit/delete actions. Above the feed: a **hero balance card** (RSD primary at `Display/Hero`, with EUR and USD equivalents), and a **month picker** (header month + chevron) in place of prev/next arrows. There are no in-feed add buttons — adding is via the **+** menu in the navigation.
 - Fiscal receipt scanning (Serbian SUF QR): **native-only** (see CORS note); the device downloads the page HTML, the Edge Function parses the journal; one receipt -> one `receipts` row + one `expenses` row per line item.
 - Photo / email-screenshot receipt recognition via a vision model (`analyze-receipt-image`): merchant, date, currency, totals, human item names.
 - Per-user categorization dictionary (`item_category_rules`), **dictionary-first**; unknown item names go to the text model (`categorize-items`); final review choices teach the dictionary.
@@ -62,13 +62,19 @@ No client-side transactions exist. When one action writes several rows (receipt 
 - **Item-name dictionary key.** The dictionary key is `normalizeItemName(rawName)`, computed the **same** way on write (learning) and read (resolution). `normalizeItemName` strips size/measure units in **both Cyrillic and Latin** (л/мл/г/кг as well as l/ml/g/kg), normalizes punctuation, and drops leading barcodes — never revert it to Latin-only unit stripping, which caused rescans to miss learned corrections.
 
 ### Home feed
-- The feed is a `SectionList` (one section per day). Keep sticky day headers **opaque** (no bleed-through) and preserve bottom padding that clears the floating buttons.
-- Day-collapse state and per-purchase expansion state are **independent** in-memory sets; both reset on month change. Purchase expansion is keyed by **`unit.key`** (works for receipt-backed and manual units alike) — do not re-key it on `receiptId`, and do not make expandability depend on item count. Every purchase is expandable.
+- The feed is a `FlatList` whose items are **per-day cards** (`surface/raised` fill, `radius/lg`, hairline `border/subtle`, on the `bg/base` backdrop, `space/4` gutters and inter-card gaps). Each card holds the day header and that day's rows. **Day headers live inside the card and are NOT sticky** — the earlier `SectionList`/sticky-opaque-header design was intentionally replaced when surfaces/cards were introduced; do not reintroduce `SectionList` or sticky headers. Preserve bottom padding that clears the bottom tab bar.
+- Day-collapse state and per-purchase expansion state are **independent** in-memory sets; both reset on month change. Purchase expansion is keyed by **`unit.key`** (receipt-backed and manual units alike) — do not re-key on `receiptId`, and do not make expandability depend on item count. Every purchase is expandable.
+- Rows render via the DS component `components/ds/ListRow` (category emoji in the circle, place, "N позиций", amount). Between rows within a card is an inset hairline (`separator/inset`, offset past the icon via a token-computed left inset). The expansion block (line items + edit/delete) renders inside the card.
 - Edit routing is by type: receipt-backed unit -> `receipt/review`, manual single -> the expense editor. Delete removes the unit's expenses via `deleteExpense`, and additionally `deleteReceipt` **only** when `receiptId` is non-null.
 - The "В чеке: …" raw-name line is shown only when `rawName` is present; manual expenses have none. Don't force it.
+- **Home currency is fixed to RSD** (hero primary, day totals, row amounts), with EUR and USD shown as equivalents in the hero — all computed from the **stored** per-currency amounts, never recomputed FX. The currency *selector* was removed from Home (it stays for analytics via `DisplayCurrencyContext`); this realizes the "show currencies simultaneously, not a toggle" bet. Do not restore a Home currency selector.
+- The month is chosen via the **month picker** (`components/MonthPicker`) opened from the header; do not restore prev/next month arrows.
 
 ### UI
 - Every color, spacing, radius, and font size comes from `lib/theme.ts`. No hardcoded hex/px in screens or components. `grep` for hex outside `lib/theme.ts` must be empty.
+- **Design-system tokens.** Color, typography, and spacing/size/radius/stroke come from `lib/theme.ts` as `theme.color.*`, `theme.type.*` (17 named roles), and `theme.scale.*` (radius/size/space/stroke) — mirroring the Fintrack Figma DS. Inter is bundled via `@expo-google-fonts/inter` and loaded in `app/_layout.tsx`. Prefer the DS components in `components/ds/` (ListRow, DayHeader, Divider, Panel) and these tokens over ad-hoc styles. The legacy flat `theme.colors` / `theme.fontSizes` / `theme.radii` / `theme.spacing` / `theme.sizes` remain for not-yet-migrated screens — don't delete them, but new/redesigned UI uses `theme.color`/`type`/`scale`.
+- **No elevation/shadow tokens exist yet.** Cards use a hairline `border/subtle` as the depth cue. Don't hardcode shadow values; if real elevation is needed it will be added as a token layer first.
+- **Navigation shell is platform-split** (`components/TabBar.tsx`): **Web = a fixed left sidebar** (`SIDEBAR_WIDTH`, with a "Добавить" button at the top; content is offset by `SIDEBAR_WIDTH` in `app/(app)/_layout.tsx`); **mobile = the bottom tab bar** with a center **+**. Adding an expense is only via the **+** menu: **Сканировать чек** (QR, native-only — hidden on web), **Загрузить фото** (`receipt/scan?mode=image`), **Добавить вручную** (`expense/new`).
 - All user-facing copy in **Russian**; code, identifiers, comments in **English**.
 - Minimalist: white background, near-black text, one accent color, generous whitespace.
 - **Web/native parity matters.** `flex: 1` does not guarantee full viewport height on react-native-web; absolutely positioned elements can end up off-screen. Floating buttons use `Platform.select({ web: 'fixed', default: 'absolute' })`. Verify every screen on Web, not just Android.
@@ -114,9 +120,9 @@ Unit tests (jest-expo) cover **pure logic**: money parsing/conversion/formatting
 ```
 app/(auth)/           sign-in, sign-up
 app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
-components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, ReceiptCamera.{native,web}
+components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, MonthPicker, TabBar (responsive nav), ReceiptCamera.{native,web}, ds/{ListRow,DayHeader,Divider,Panel}
 contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
-lib/                  money, dates, fx, db, receipts, itemCategorization, homeRowPresentation, theme, supabase, authErrors
+lib/                  money, dates, fx, db, receipts, itemCategorization, homeRowPresentation, theme (DS color/type/fontFamily/scale + legacy flat maps), supabase, authErrors
   __tests__/          unit tests
 supabase/
   migrations/         Phase 0 foundation + additive migrations (item categorization, item display names, merchant brand labels); do not edit applied migrations
