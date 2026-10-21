@@ -21,10 +21,12 @@ type SignUpResult = AuthResult & {
 
 type AuthContextValue = {
   session: Session | null;
+  user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   signOut: () => Promise<AuthResult>;
+  updateName: (name: string) => Promise<AuthResult>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -33,6 +35,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const sessionUserId = session?.user.id;
+  const user = session?.user ?? null;
 
   useEffect(() => {
     let active = true;
@@ -93,9 +96,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { error };
   }
 
+  async function updateName(name: string): Promise<AuthResult> {
+    const { data, error } = await supabase.auth.updateUser({
+      data: { name: name.trim() },
+    });
+
+    if (!error && data.user) {
+      const updatedUser = data.user;
+      setSession((current) =>
+        current ? { ...current, user: updatedUser } : current,
+      );
+    }
+
+    return { error };
+  }
+
   return (
     <AuthContext.Provider
-      value={{ session, loading, signIn, signUp, signOut }}
+      value={{ session, user, loading, signIn, signUp, signOut, updateName }}
     >
       {children}
     </AuthContext.Provider>
