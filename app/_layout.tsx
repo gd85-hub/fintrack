@@ -6,6 +6,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 
 import { AuthProvider } from '../contexts/AuthContext';
+import { LanguageProvider } from '../contexts/LanguageContext';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -20,8 +21,10 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }} />
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </AuthProvider>
+    </LanguageProvider>
   );
 }

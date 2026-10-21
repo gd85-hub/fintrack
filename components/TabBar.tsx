@@ -13,24 +13,29 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../lib/theme';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 
 type RouteTab = {
   icon: FeatherIconName;
-  label: string;
+  labelKey: 'nav.home' | 'nav.analytics' | 'nav.reports' | 'nav.settings';
   routeName: 'index' | 'analytics' | 'reports' | 'settings';
 };
 
 const leftTabs: readonly RouteTab[] = [
-  { icon: 'home', label: 'Home', routeName: 'index' },
-  { icon: 'bar-chart-2', label: 'Analytics', routeName: 'analytics' },
+  { icon: 'home', labelKey: 'nav.home', routeName: 'index' },
+  {
+    icon: 'bar-chart-2',
+    labelKey: 'nav.analytics',
+    routeName: 'analytics',
+  },
 ];
 
 const rightTabs: readonly RouteTab[] = [
-  { icon: 'file-text', label: 'Reports', routeName: 'reports' },
-  { icon: 'settings', label: 'Settings', routeName: 'settings' },
+  { icon: 'file-text', labelKey: 'nav.reports', routeName: 'reports' },
+  { icon: 'settings', labelKey: 'nav.settings', routeName: 'settings' },
 ];
 
 const sidebarTabs: readonly RouteTab[] = [...leftTabs, ...rightTabs];
@@ -46,6 +51,7 @@ const sidebarPosition = Platform.select({
 export function TabBar({ navigation, state }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useLanguage();
   const [addSheetVisible, setAddSheetVisible] = useState(false);
 
   function renderRouteTab(tab: RouteTab, placement: 'bottom' | 'sidebar') {
@@ -59,6 +65,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
     }
 
     const focused = state.index === routeIndex;
+    const label = t(tab.labelKey);
     const iconColor = focused
       ? theme.color.icon.action
       : theme.color.icon.secondary;
@@ -68,7 +75,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
 
     return (
       <Pressable
-        accessibilityLabel={tab.label}
+        accessibilityLabel={label}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
         key={tab.routeName}
@@ -102,7 +109,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
             { color: textColor },
           ]}
         >
-          {tab.label}
+          {label}
         </Text>
       </Pressable>
     );
@@ -141,7 +148,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
       {Platform.OS === 'web' ? (
         <View style={styles.sidebar}>
           <Pressable
-            accessibilityLabel="Добавить"
+            accessibilityLabel={t('nav.sidebarAdd')}
             accessibilityRole="button"
             accessibilityState={{ expanded: addSheetVisible }}
             onPress={() => setAddSheetVisible(true)}
@@ -155,7 +162,9 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
               name="plus"
               size={theme.scale.size.iconLg}
             />
-            <Text style={styles.sidebarAddLabel}>Добавить</Text>
+            <Text style={styles.sidebarAddLabel}>
+              {t('nav.sidebarAdd')}
+            </Text>
           </Pressable>
 
           <View style={styles.sidebarNav}>
@@ -177,7 +186,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
 
           <View style={styles.addSlot}>
             <Pressable
-              accessibilityLabel="Add"
+              accessibilityLabel={t('nav.add')}
               accessibilityRole="button"
               accessibilityState={{ expanded: addSheetVisible }}
               onPress={() => setAddSheetVisible(true)}
@@ -207,7 +216,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
       >
         <View style={styles.modalRoot}>
           <Pressable
-            accessibilityLabel="Close add menu"
+            accessibilityLabel={t('add.close')}
             accessibilityRole="button"
             onPress={() => setAddSheetVisible(false)}
             style={styles.scrim}
@@ -240,7 +249,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                       size={theme.spacing.lg}
                     />
                     <Text style={styles.sheetActionLabel}>
-                      Сканировать чек
+                      {t('add.scan')}
                     </Text>
                   </Pressable>
 
@@ -264,7 +273,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                   size={theme.spacing.lg}
                 />
                 <Text style={styles.sheetActionLabel}>
-                  Загрузить фото
+                  {t('add.photo')}
                 </Text>
               </Pressable>
 
@@ -284,7 +293,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                   size={theme.spacing.lg}
                 />
                 <Text style={styles.sheetActionLabel}>
-                  Добавить вручную
+                  {t('add.manual')}
                 </Text>
               </Pressable>
             </View>

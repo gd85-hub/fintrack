@@ -1,6 +1,6 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { type ReactNode, useCallback, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -13,6 +13,10 @@ import {
 
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  type Language,
+  useLanguage,
+} from '../../contexts/LanguageContext';
 import { theme } from '../../lib/theme';
 
 type SettingsRouteRowProps = {
@@ -56,7 +60,13 @@ function SettingsRouteRow({ label, onPress }: SettingsRouteRowProps) {
   );
 }
 
-function SettingsDisabledRow({ label }: { label: string }) {
+function SettingsDisabledRow({
+  comingSoon,
+  label,
+}: {
+  comingSoon: string;
+  label: string;
+}) {
   return (
     <View
       accessibilityRole="button"
@@ -65,21 +75,35 @@ function SettingsDisabledRow({ label }: { label: string }) {
     >
       <Text style={styles.disabledRowLabel}>{label}</Text>
       <View style={styles.soonTag}>
-        <Text style={styles.soonText}>Coming soon</Text>
+        <Text style={styles.soonText}>{comingSoon}</Text>
       </View>
     </View>
   );
 }
 
+const languageOptions: readonly {
+  labelKey:
+    | 'settings.language.system'
+    | 'settings.language.russian'
+    | 'settings.language.english';
+  value: Language;
+}[] = [
+  { labelKey: 'settings.language.system', value: 'system' },
+  { labelKey: 'settings.language.russian', value: 'ru' },
+  { labelKey: 'settings.language.english', value: 'en' },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, updateName, user } = useAuth();
+  const { language, setLanguage, t } = useLanguage();
   const [signingOut, setSigningOut] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [hasSignOutError, setHasSignOutError] = useState(false);
   const [nameEditorVisible, setNameEditorVisible] = useState(false);
+  const [languageSelectorVisible, setLanguageSelectorVisible] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameInputFocused, setNameInputFocused] = useState(false);
-  const [nameErrorMessage, setNameErrorMessage] = useState('');
+  const [hasNameError, setHasNameError] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const metadataName = user?.user_metadata.name;
   const currentName =
@@ -87,7 +111,7 @@ export default function SettingsScreen() {
 
   function openNameEditor() {
     setNameInput(currentName);
-    setNameErrorMessage('');
+    setHasNameError(false);
     setNameEditorVisible(true);
   }
 
@@ -97,17 +121,17 @@ export default function SettingsScreen() {
     }
 
     setNameEditorVisible(false);
-    setNameErrorMessage('');
+    setHasNameError(false);
     setNameInputFocused(false);
   }
 
   async function handleSaveName() {
     setSavingName(true);
-    setNameErrorMessage('');
+    setHasNameError(false);
 
     const { error } = await updateName(nameInput);
     if (error) {
-      setNameErrorMessage("Couldn't save. Try again.");
+      setHasNameError(true);
       setSavingName(false);
       return;
     }
@@ -119,22 +143,28 @@ export default function SettingsScreen() {
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true);
-    setErrorMessage('');
+    setHasSignOutError(false);
 
     const { error } = await signOut();
     if (error) {
-      setErrorMessage("Couldn't sign out. Try again.");
+      setHasSignOutError(true);
       setSigningOut(false);
     }
   }, [signOut]);
 
+  const currentLanguageLabel =
+    languageOptions.find((option) => option.value === language)?.labelKey ??
+    'settings.language.system';
+
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Settings" />
+      <ScreenHeader title={t('settings.title')} />
       <ScrollView contentContainerStyle={styles.content}>
-        <SettingsSection title="Account">
+        <SettingsSection title={t('settings.section.account')}>
           <Pressable
-            accessibilityLabel={`Name, ${currentName || 'Add name'}`}
+            accessibilityLabel={`${t('settings.name.label')}, ${
+              currentName || t('settings.name.add')
+            }`}
             accessibilityRole="button"
             onPress={openNameEditor}
             style={({ pressed }) => [
@@ -142,7 +172,9 @@ export default function SettingsScreen() {
               pressed && styles.rowPressed,
             ]}
           >
-            <Text style={styles.rowLabel}>Name</Text>
+            <Text style={styles.rowLabel}>
+              {t('settings.name.label')}
+            </Text>
             <Text
               numberOfLines={1}
               style={[
@@ -150,7 +182,7 @@ export default function SettingsScreen() {
                 !currentName && styles.placeholderValue,
               ]}
             >
-              {currentName || 'Add name'}
+              {currentName || t('settings.name.add')}
             </Text>
             <Feather
               color={theme.color.icon.secondary}
@@ -162,7 +194,7 @@ export default function SettingsScreen() {
           <View style={styles.separator} />
 
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>Email</Text>
+            <Text style={styles.rowLabel}>{t('settings.email')}</Text>
             <Text numberOfLines={1} style={styles.rowValue}>
               {user?.email ?? ''}
             </Text>
@@ -182,7 +214,9 @@ export default function SettingsScreen() {
             ]}
           >
             <Text style={styles.destructiveLabel}>
-              {signingOut ? 'Signing out…' : 'Sign out'}
+              {signingOut
+                ? t('settings.signingOut')
+                : t('settings.signOut')}
             </Text>
             <Feather
               color={theme.color.action.destructive.fill}
@@ -192,41 +226,68 @@ export default function SettingsScreen() {
           </Pressable>
         </SettingsSection>
 
-        {errorMessage ? (
+        {hasSignOutError ? (
           <Text accessibilityRole="alert" style={styles.errorText}>
-            {errorMessage}
+            {t('settings.signOutError')}
           </Text>
         ) : null}
 
-        <SettingsSection title="Management">
+        <SettingsSection title={t('settings.section.management')}>
           <SettingsRouteRow
-            label="Manage places"
+            label={t('settings.managePlaces')}
             onPress={() => router.push('/(app)/merchants')}
           />
           <View style={styles.separator} />
           <SettingsRouteRow
-            label="Manage categories"
+            label={t('settings.manageCategories')}
             onPress={() => router.push('/(app)/categories')}
           />
           <View style={styles.separator} />
-          <SettingsDisabledRow label="Manage currencies" />
+          <SettingsDisabledRow
+            comingSoon={t('settings.comingSoon')}
+            label={t('settings.manageCurrencies')}
+          />
         </SettingsSection>
 
-        <SettingsSection title="Preferences">
-          <SettingsDisabledRow label="Theme" />
+        <SettingsSection title={t('settings.section.preferences')}>
+          <SettingsDisabledRow
+            comingSoon={t('settings.comingSoon')}
+            label={t('settings.theme')}
+          />
           <View style={styles.separator} />
-          <SettingsDisabledRow label="Language" />
-        </SettingsSection>
-
-        <SettingsSection title="Data">
-          <SettingsDisabledRow label="Export" />
-        </SettingsSection>
-
-        <SettingsSection title="About">
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutText}>
-              Receipt photos aren't stored on our servers.
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: languageSelectorVisible }}
+            onPress={() => setLanguageSelectorVisible(true)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.rowPressed,
+            ]}
+          >
+            <Text style={styles.rowLabel}>
+              {t('settings.language.label')}
             </Text>
+            <Text numberOfLines={1} style={styles.rowValue}>
+              {t(currentLanguageLabel)}
+            </Text>
+            <Feather
+              color={theme.color.icon.secondary}
+              name="chevron-right"
+              size={theme.spacing.lg}
+            />
+          </Pressable>
+        </SettingsSection>
+
+        <SettingsSection title={t('settings.section.data')}>
+          <SettingsDisabledRow
+            comingSoon={t('settings.comingSoon')}
+            label={t('settings.export')}
+          />
+        </SettingsSection>
+
+        <SettingsSection title={t('settings.section.about')}>
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutText}>{t('settings.about.privacy')}</Text>
           </View>
         </SettingsSection>
       </ScrollView>
@@ -239,16 +300,16 @@ export default function SettingsScreen() {
       >
         <View style={styles.modalRoot}>
           <Pressable
-            accessibilityLabel="Close name editor"
+            accessibilityLabel={t('settings.name.close')}
             accessibilityRole="button"
             disabled={savingName}
             onPress={closeNameEditor}
             style={styles.scrim}
           />
           <View accessibilityViewIsModal={true} style={styles.modalPanel}>
-            <Text style={styles.modalTitle}>Edit name</Text>
+            <Text style={styles.modalTitle}>{t('settings.name.edit')}</Text>
             <TextInput
-              accessibilityLabel="Name"
+              accessibilityLabel={t('settings.name.label')}
               autoCapitalize="words"
               autoFocus={true}
               editable={!savingName}
@@ -260,21 +321,21 @@ export default function SettingsScreen() {
                   void handleSaveName();
                 }
               }}
-              placeholder="Name"
+              placeholder={t('settings.name.label')}
               placeholderTextColor={theme.color.field.placeholder}
               returnKeyType="done"
               selectTextOnFocus={true}
               style={[
                 styles.nameInput,
                 nameInputFocused && styles.nameInputFocused,
-                nameErrorMessage && styles.nameInputError,
+                hasNameError && styles.nameInputError,
               ]}
               value={nameInput}
             />
 
-            {nameErrorMessage ? (
+            {hasNameError ? (
               <Text accessibilityRole="alert" style={styles.errorText}>
-                {nameErrorMessage}
+                {t('settings.name.error')}
               </Text>
             ) : null}
 
@@ -289,7 +350,9 @@ export default function SettingsScreen() {
                   (pressed || savingName) && styles.disabled,
                 ]}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>
+                  {t('settings.name.cancel')}
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -303,9 +366,68 @@ export default function SettingsScreen() {
                 ]}
               >
                 <Text style={styles.saveButtonText}>
-                  {savingName ? 'Saving…' : 'Save'}
+                  {savingName
+                    ? t('settings.name.saving')
+                    : t('settings.name.save')}
                 </Text>
               </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setLanguageSelectorVisible(false)}
+        transparent={true}
+        visible={languageSelectorVisible}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel={t('settings.language.close')}
+            accessibilityRole="button"
+            onPress={() => setLanguageSelectorVisible(false)}
+            style={styles.scrim}
+          />
+          <View accessibilityViewIsModal={true} style={styles.modalPanel}>
+            <Text style={styles.modalTitle}>
+              {t('settings.language.title')}
+            </Text>
+            <View style={styles.languageOptions}>
+              {languageOptions.map((option, index) => {
+                const selected = language === option.value;
+
+                return (
+                  <Fragment key={option.value}>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => {
+                        setLanguage(option.value);
+                        setLanguageSelectorVisible(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.languageOption,
+                        pressed && styles.rowPressed,
+                      ]}
+                    >
+                      <Text style={styles.languageOptionLabel}>
+                        {t(option.labelKey)}
+                      </Text>
+                      {selected ? (
+                        <Feather
+                          color={theme.color.icon.action}
+                          name="check"
+                          size={theme.spacing.lg}
+                        />
+                      ) : null}
+                    </Pressable>
+                    {index < languageOptions.length - 1 ? (
+                      <View style={styles.separator} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -368,6 +490,26 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.surface.default,
     borderColor: theme.color.border.default,
     borderRadius: theme.radii.card,
+    borderWidth: theme.sizes.border,
+    overflow: 'hidden',
+  },
+  languageOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    minHeight: theme.sizes.floatingButton,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  languageOptionLabel: {
+    color: theme.color.text.primary,
+    flex: 1,
+    fontSize: theme.fontSizes.body,
+    fontWeight: '600',
+  },
+  languageOptions: {
+    borderColor: theme.color.border.default,
+    borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     overflow: 'hidden',
   },
@@ -449,7 +591,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: theme.color.overlay.scrim,
   },
   section: {
