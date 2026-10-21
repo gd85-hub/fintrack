@@ -18,6 +18,7 @@ import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   deleteExpense,
   deleteReceipt,
@@ -211,10 +212,6 @@ export function purchaseCategoryHint(expenses: readonly Expense[]): string {
   return [...emojis].join(' ');
 }
 
-function purchasePositionLabel(itemCount: number): string {
-  return itemCount === 1 ? '1 позиция' : `${itemCount} позиций`;
-}
-
 type PurchaseRowProps = {
   expanded: boolean;
   onDelete?: () => void;
@@ -236,6 +233,7 @@ function PurchaseRow({
   unit,
   visibleCount,
 }: PurchaseRowProps) {
+  const { t } = useLanguage();
   const displayAmount = purchaseDisplayAmount(unit.expenses, 'RSD');
   const firstExpense = unit.expenses[0];
   const header = resolveHomeRowHeader(unit.expenses);
@@ -246,7 +244,7 @@ function PurchaseRow({
     unit.expenses.length,
   ).expandable;
   const rowExpanded = expandable && expanded;
-  const positionLabel = purchasePositionLabel(unit.expenses.length);
+  const positionLabel = t('home.itemCount', { count: unit.expenses.length });
   const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
   const visibleItems = collapsedItems.slice(0, visibleCount);
   const remaining = collapsedItems.length - visibleItems.length;
@@ -278,12 +276,12 @@ function PurchaseRow({
         <View style={styles.purchaseDetails}>
           <View style={styles.purchaseActions}>
             <Text style={styles.purchaseDetailsTitle}>
-              Позиции чека
+              {t('home.receiptItems')}
             </Text>
             {onEdit && onDelete ? (
               <View style={styles.purchaseActionButtons}>
                 <Pressable
-                  accessibilityLabel="Редактировать всю покупку"
+                  accessibilityLabel={t('home.editPurchaseA11y')}
                   accessibilityRole="button"
                   onPress={onEdit}
                   style={({ pressed }) => [
@@ -292,11 +290,13 @@ function PurchaseRow({
                   ]}
                 >
                   <Text style={styles.editPurchaseText}>
-                    Редактировать покупку
+                    {t('home.editPurchase')}
                   </Text>
                 </Pressable>
                 <Pressable
-                  accessibilityLabel={`Удалить всю покупку из ${unit.expenses.length} трат`}
+                  accessibilityLabel={t('home.deletePurchaseA11y', {
+                    count: unit.expenses.length,
+                  })}
                   accessibilityRole="button"
                   onPress={onDelete}
                   style={({ pressed }) => [
@@ -305,7 +305,7 @@ function PurchaseRow({
                   ]}
                 >
                   <Text style={styles.deletePurchaseText}>
-                    Удалить покупку
+                    {t('home.deletePurchase')}
                   </Text>
                 </Pressable>
               </View>
@@ -324,7 +324,9 @@ function PurchaseRow({
 
             return (
               <Pressable
-                accessibilityLabel={`Открыть позицию ${displayName}`}
+                accessibilityLabel={t('home.openItemA11y', {
+                  name: displayName,
+                })}
                 accessibilityRole="button"
                 key={expense.id}
                 onPress={() => onOpenExpense(expense.id)}
@@ -352,7 +354,9 @@ function PurchaseRow({
 
           {remaining > 0 && onShowMore ? (
             <Pressable
-              accessibilityLabel={`Показать ещё ${Math.min(expensePageSize, remaining)} позиций`}
+              accessibilityLabel={t('home.showMoreItemsA11y', {
+                count: Math.min(expensePageSize, remaining),
+              })}
               accessibilityRole="button"
               onPress={onShowMore}
               style={({ pressed }) => [
@@ -361,7 +365,9 @@ function PurchaseRow({
               ]}
             >
               <Text style={styles.showMoreText}>
-                Показать ещё {Math.min(expensePageSize, remaining)}
+                {t('home.showMore', {
+                  count: Math.min(expensePageSize, remaining),
+                })}
               </Text>
             </Pressable>
           ) : null}
@@ -406,6 +412,7 @@ function monthFromParam(value: string | string[] | undefined) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { t, locale } = useLanguage();
   const params = useLocalSearchParams<{ month?: string | string[] }>();
   const currentMonth = todayLocalISO().slice(0, 7);
   const requestedMonth = monthFromParam(params.month);
@@ -460,9 +467,7 @@ export default function HomeScreen() {
         .catch((error: unknown) => {
           console.error('Unable to load month expenses:', error);
           if (active) {
-            setErrorMessage(
-              'Не удалось загрузить траты. Попробуйте ещё раз.',
-            );
+            setErrorMessage(t('home.errorLoad'));
           }
         })
         .finally(() => {
@@ -519,8 +524,8 @@ export default function HomeScreen() {
     }),
     [expenses],
   );
-  const monthName = formatMonthName(visibleMonth);
-  const monthPrepositional = formatMonthPrepositional(visibleMonth);
+  const monthName = formatMonthName(visibleMonth, locale);
+  const monthPrepositional = formatMonthPrepositional(visibleMonth, locale);
 
   const listHeaderElement = useMemo(
     () => (
@@ -528,7 +533,7 @@ export default function HomeScreen() {
         <View style={styles.balanceGroup}>
           <View style={styles.homeHeader}>
             <Pressable
-              accessibilityLabel="Выбрать месяц"
+              accessibilityLabel={t('home.selectMonth')}
               accessibilityRole="button"
               onPress={() => setMonthPickerVisible(true)}
               style={({ pressed }) => [
@@ -550,7 +555,7 @@ export default function HomeScreen() {
           <View style={styles.heroCard}>
             <View style={styles.hero}>
               <Text style={styles.heroTitle}>
-                Потрачено в {monthPrepositional}
+                {t('home.spentIn', { month: monthPrepositional })}
               </Text>
               <Text
                 adjustsFontSizeToFit
@@ -584,7 +589,9 @@ export default function HomeScreen() {
                 needsAttentionOnly && styles.triageChipTextSelected,
               ]}
             >
-              Требуют внимания: {needsAttentionExpenses.length}
+              {t('home.needsReview', {
+                count: needsAttentionExpenses.length,
+              })}
             </Text>
           </Pressable>
         ) : null}
@@ -596,7 +603,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
               onPress={() => setRetryKey((current) => current + 1)}
             >
-              <Text style={styles.retryText}>Повторить</Text>
+              <Text style={styles.retryText}>{t('home.retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -619,6 +626,7 @@ export default function HomeScreen() {
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
+      t,
     ],
   );
 
@@ -626,13 +634,11 @@ export default function HomeScreen() {
     () =>
       !loading && !errorMessage && sections.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>Пока нет трат за этот месяц</Text>
-          <Text style={styles.emptyHint}>
-            Нажмите «+», чтобы добавить первую трату
-          </Text>
+          <Text style={styles.emptyTitle}>{t('home.emptyTitle')}</Text>
+          <Text style={styles.emptyHint}>{t('home.emptySubtitle')}</Text>
         </View>
       ) : null,
-    [errorMessage, loading, sections.length],
+    [errorMessage, loading, sections.length, t],
   );
 
   const listSections = useMemo(
@@ -718,16 +724,14 @@ export default function HomeScreen() {
       const refreshedExpenses = await listExpensesByMonth(visibleMonth);
       setExpenses(refreshedExpenses);
       if (deletionFailed) {
-        setPurchaseErrorMessage(
-          'Не удалось удалить покупку полностью. Список обновлён.',
-        );
+        setPurchaseErrorMessage(t('home.deleteErrorPartial'));
       }
     } catch (error: unknown) {
       console.error('Unable to refresh expenses after deletion:', error);
       setErrorMessage(
         deletionFailed
-          ? 'Не удалось удалить покупку полностью и обновить список. Попробуйте ещё раз.'
-          : 'Покупка удалена, но не удалось обновить список. Попробуйте ещё раз.',
+          ? t('home.deleteErrorBoth')
+          : t('home.deleteErrorRefresh'),
       );
     } finally {
       setDeletingPurchase(false);
@@ -769,7 +773,7 @@ export default function HomeScreen() {
                 ]}
               >
                 <Text numberOfLines={1} style={styles.dayTitle}>
-                  {formatDayHeader(section.date)}
+                  {formatDayHeader(section.date, locale)}
                 </Text>
                 <Text numberOfLines={1} style={styles.dayTotal}>
                   {formatMoney(section.dayTotal)} RSD
@@ -843,7 +847,9 @@ export default function HomeScreen() {
         onConfirm={() => void handlePurchaseDelete()}
         title={
           pendingPurchaseDelete
-            ? `Удалить всю покупку (${pendingPurchaseDelete.expenseCount} трат)?`
+            ? t('home.confirmDeleteTitle', {
+                count: pendingPurchaseDelete.expenseCount,
+              })
             : ''
         }
         visible={pendingPurchaseDelete !== null}

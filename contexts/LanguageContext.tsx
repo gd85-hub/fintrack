@@ -20,6 +20,7 @@ export type Language = 'system' | ActiveLocale;
 
 type LanguageContextValue = {
   language: Language;
+  locale: ActiveLocale;
   setLanguage: (language: Language) => void;
   t: Translate;
 };
@@ -100,7 +101,9 @@ export function LanguageProvider({ children }: PropsWithChildren) {
   }
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider
+      value={{ language, locale: activeLocale, setLanguage, t }}
+    >
       {children}
     </LanguageContext.Provider>
   );

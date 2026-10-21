@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { formatDayHeader } from '../lib/dates';
+import { useLanguage } from '../contexts/LanguageContext';
+import { formatDayMonth } from '../lib/dates';
 import { formatMoney } from '../lib/money';
 import { theme } from '../lib/theme';
 
@@ -23,7 +24,8 @@ export function ExpenseMiniRow({
   merchantName,
   rawName,
 }: ExpenseMiniRowProps) {
-  const dayAndMonth = formatDayHeader(date).split(',')[0];
+  const { t, locale } = useLanguage();
+  const dayAndMonth = formatDayMonth(date, locale);
   const receiptName = rawName?.trim() ?? '';
 
   return (
@@ -35,7 +37,7 @@ export function ExpenseMiniRow({
         </Text>
         {receiptName && receiptName !== description.trim() ? (
           <Text numberOfLines={2} style={styles.rawName}>
-            В чеке: {receiptName}
+            {t('common.onReceipt', { name: receiptName })}
           </Text>
         ) : null}
         {merchantName ? (

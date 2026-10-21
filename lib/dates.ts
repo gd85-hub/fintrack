@@ -1,3 +1,5 @@
+import type { ActiveLocale } from './i18n';
+
 const MONTHS_NOMINATIVE = [
   'Январь',
   'Февраль',
@@ -51,6 +53,31 @@ const WEEKDAYS = [
   'четверг',
   'пятница',
   'суббота',
+] as const;
+
+const MONTHS_EN = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const WEEKDAYS_EN = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
 ] as const;
 
 export type LocalDateParts = {
@@ -125,7 +152,10 @@ export function monthBounds(yyyyMm: string): {
   };
 }
 
-export function formatDayHeader(dateISO: string): string {
+export function formatDayHeader(
+  dateISO: string,
+  locale: ActiveLocale = 'ru',
+): string {
   const parts = parseLocalISO(dateISO);
 
   if (!parts) {
@@ -133,31 +163,70 @@ export function formatDayHeader(dateISO: string): string {
   }
 
   const date = new Date(parts.year, parts.month - 1, parts.day);
+
+  if (locale === 'en') {
+    return `${WEEKDAYS_EN[date.getDay()]}, ${MONTHS_EN[parts.month - 1]} ${parts.day}`;
+  }
+
   return `${parts.day} ${MONTHS_GENITIVE[parts.month - 1]}, ${WEEKDAYS[date.getDay()]}`;
 }
 
-export function formatLongDate(dateISO: string): string {
+export function formatDayMonth(
+  dateISO: string,
+  locale: ActiveLocale = 'ru',
+): string {
   const parts = parseLocalISO(dateISO);
 
   if (!parts) {
     throw new Error('Date must use a valid YYYY-MM-DD format.');
   }
 
+  if (locale === 'en') {
+    return `${MONTHS_EN[parts.month - 1]} ${parts.day}`;
+  }
+
+  return `${parts.day} ${MONTHS_GENITIVE[parts.month - 1]}`;
+}
+
+export function formatLongDate(
+  dateISO: string,
+  locale: ActiveLocale = 'ru',
+): string {
+  const parts = parseLocalISO(dateISO);
+
+  if (!parts) {
+    throw new Error('Date must use a valid YYYY-MM-DD format.');
+  }
+
+  if (locale === 'en') {
+    return `${MONTHS_EN[parts.month - 1]} ${parts.day}, ${parts.year}`;
+  }
+
   return `${parts.day} ${MONTHS_GENITIVE[parts.month - 1]} ${parts.year}`;
 }
 
-export function formatMonthTitle(yyyyMm: string): string {
+export function formatMonthTitle(
+  yyyyMm: string,
+  locale: ActiveLocale = 'ru',
+): string {
   const bounds = monthBounds(yyyyMm);
   const parts = parseLocalISO(bounds.first);
 
   if (!parts) {
     throw new Error('Month must use YYYY-MM format.');
+  }
+
+  if (locale === 'en') {
+    return `${MONTHS_EN[parts.month - 1]} ${parts.year}`;
   }
 
   return `${MONTHS_NOMINATIVE[parts.month - 1]} ${parts.year}`;
 }
 
-export function formatMonthName(yyyyMm: string): string {
+export function formatMonthName(
+  yyyyMm: string,
+  locale: ActiveLocale = 'ru',
+): string {
   const bounds = monthBounds(yyyyMm);
   const parts = parseLocalISO(bounds.first);
 
@@ -165,10 +234,15 @@ export function formatMonthName(yyyyMm: string): string {
     throw new Error('Month must use YYYY-MM format.');
   }
 
-  return MONTHS_NOMINATIVE[parts.month - 1];
+  return locale === 'en'
+    ? MONTHS_EN[parts.month - 1]
+    : MONTHS_NOMINATIVE[parts.month - 1];
 }
 
-export function formatMonthPrepositional(yyyyMm: string): string {
+export function formatMonthPrepositional(
+  yyyyMm: string,
+  locale: ActiveLocale = 'ru',
+): string {
   const bounds = monthBounds(yyyyMm);
   const parts = parseLocalISO(bounds.first);
 
@@ -176,7 +250,9 @@ export function formatMonthPrepositional(yyyyMm: string): string {
     throw new Error('Month must use YYYY-MM format.');
   }
 
-  return MONTHS_PREPOSITIONAL[parts.month - 1];
+  return locale === 'en'
+    ? MONTHS_EN[parts.month - 1]
+    : MONTHS_PREPOSITIONAL[parts.month - 1];
 }
 
 export function shiftMonth(yyyyMm: string, delta: number): string {

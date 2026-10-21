@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import {
   formatDayHeader,
+  formatDayMonth,
   formatLongDate,
   formatMonthName,
   formatMonthPrepositional,
@@ -42,6 +43,19 @@ describe('local date utilities', () => {
   it('formats nominative and prepositional Russian month names', () => {
     expect(formatMonthName('2026-10')).toBe('Октябрь');
     expect(formatMonthPrepositional('2026-10')).toBe('октябре');
+  });
+
+  it('formats Russian day and month without weekday', () => {
+    expect(formatDayMonth('2026-07-29')).toBe('29 июля');
+  });
+
+  it('formats English day and month titles', () => {
+    expect(formatDayHeader('2026-07-29', 'en')).toBe('Wednesday, July 29');
+    expect(formatDayMonth('2026-07-29', 'en')).toBe('July 29');
+    expect(formatMonthTitle('2026-07', 'en')).toBe('July 2026');
+    expect(formatMonthName('2026-10', 'en')).toBe('October');
+    expect(formatMonthPrepositional('2026-10', 'en')).toBe('October');
+    expect(formatLongDate('2026-07-30', 'en')).toBe('July 30, 2026');
   });
 
   it('moves across year boundaries', () => {

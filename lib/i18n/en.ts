@@ -54,4 +54,49 @@ export const en = {
       privacy: "Receipt photos aren't stored on our servers.",
     },
   },
+  common: {
+    cancel: 'Cancel',
+    delete: 'Delete',
+    deleting: 'Deleting…',
+    onReceipt: 'On receipt: {{name}}',
+  },
+  home: {
+    selectMonth: 'Select month',
+    spentIn: 'Spent in {{month}}',
+    needsReview: 'Needs review: {{count}}',
+    errorLoad: "Couldn't load your expenses. Try again.",
+    retry: 'Retry',
+    emptyTitle: 'No expenses this month',
+    emptySubtitle: 'Tap + to add your first expense',
+    receiptItems: 'Receipt items',
+    editPurchase: 'Edit purchase',
+    editPurchaseA11y: 'Edit entire purchase',
+    deletePurchase: 'Delete purchase',
+    openItemA11y: 'Open item {{name}}',
+    showMore: 'Show {{count}} more',
+    deleteErrorPartial:
+      "Couldn't fully delete the purchase. The list has been updated.",
+    deleteErrorBoth:
+      "Couldn't delete the purchase or update the list. Try again.",
+    deleteErrorRefresh:
+      "Purchase deleted, but the list couldn't update. Try again.",
+    closeMonthPicker: 'Close month picker',
+    selectMonthValue: 'Select {{month}}',
+    itemCount: {
+      one: '1 item',
+      other: '{{count}} items',
+    },
+    showMoreItemsA11y: {
+      one: 'Show {{count}} more item',
+      other: 'Show {{count}} more items',
+    },
+    deletePurchaseA11y: {
+      one: 'Delete entire purchase, {{count}} expense',
+      other: 'Delete entire purchase, {{count}} expenses',
+    },
+    confirmDeleteTitle: {
+      one: 'Delete entire purchase ({{count}} expense)?',
+      other: 'Delete entire purchase ({{count}} expenses)?',
+    },
+  },
 } as const;

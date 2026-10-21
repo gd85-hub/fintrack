@@ -6,6 +6,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../lib/theme';
 
 type ConfirmDialogProps = {
@@ -22,11 +23,13 @@ export function ConfirmDialog({
   visible,
   title,
   confirming,
-  confirmLabel = 'Удалить',
-  confirmingLabel = 'Удаление…',
+  confirmLabel,
+  confirmingLabel,
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
+  const { t } = useLanguage();
+
   return (
     <Modal
       animationType="fade"
@@ -47,7 +50,7 @@ export function ConfirmDialog({
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.cancelText}>Отмена</Text>
+              <Text style={styles.cancelText}>{t('common.cancel')}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -60,7 +63,9 @@ export function ConfirmDialog({
               ]}
             >
               <Text style={styles.dangerText}>
-                {confirming ? confirmingLabel : confirmLabel}
+                {confirming
+                  ? (confirmingLabel ?? t('common.deleting'))
+                  : (confirmLabel ?? t('common.delete'))}
               </Text>
             </Pressable>
           </View>

@@ -54,4 +54,53 @@ export const ru = {
       privacy: 'Фото чеков не сохраняются на наших серверах.',
     },
   },
+  common: {
+    cancel: 'Отмена',
+    delete: 'Удалить',
+    deleting: 'Удаление…',
+    onReceipt: 'В чеке: {{name}}',
+  },
+  home: {
+    selectMonth: 'Выбрать месяц',
+    spentIn: 'Потрачено в {{month}}',
+    needsReview: 'Требуют внимания: {{count}}',
+    errorLoad: 'Не удалось загрузить траты. Попробуйте ещё раз.',
+    retry: 'Повторить',
+    emptyTitle: 'Пока нет трат за этот месяц',
+    emptySubtitle: 'Нажмите «+», чтобы добавить первую трату',
+    receiptItems: 'Позиции чека',
+    editPurchase: 'Редактировать покупку',
+    editPurchaseA11y: 'Редактировать всю покупку',
+    deletePurchase: 'Удалить покупку',
+    openItemA11y: 'Открыть позицию {{name}}',
+    showMore: 'Показать ещё {{count}}',
+    deleteErrorPartial:
+      'Не удалось удалить покупку полностью. Список обновлён.',
+    deleteErrorBoth:
+      'Не удалось удалить покупку полностью и обновить список. Попробуйте ещё раз.',
+    deleteErrorRefresh:
+      'Покупка удалена, но не удалось обновить список. Попробуйте ещё раз.',
+    closeMonthPicker: 'Закрыть выбор месяца',
+    selectMonthValue: 'Выбрать {{month}}',
+    itemCount: {
+      one: '{{count}} позиция',
+      few: '{{count}} позиции',
+      many: '{{count}} позиций',
+    },
+    showMoreItemsA11y: {
+      one: 'Показать ещё {{count}} позицию',
+      few: 'Показать ещё {{count}} позиции',
+      many: 'Показать ещё {{count}} позиций',
+    },
+    deletePurchaseA11y: {
+      one: 'Удалить всю покупку из {{count}} траты',
+      few: 'Удалить всю покупку из {{count}} трат',
+      many: 'Удалить всю покупку из {{count}} трат',
+    },
+    confirmDeleteTitle: {
+      one: 'Удалить всю покупку ({{count}} трата)?',
+      few: 'Удалить всю покупку ({{count}} траты)?',
+      many: 'Удалить всю покупку ({{count}} трат)?',
+    },
+  },
 } as const;

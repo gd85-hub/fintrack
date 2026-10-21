@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import { formatMonthTitle, shiftMonth } from '../lib/dates';
 import { theme } from '../lib/theme';
 
@@ -29,6 +30,7 @@ export function MonthPicker({
   onSelect,
   onClose,
 }: MonthPickerProps) {
+  const { t, locale } = useLanguage();
   const months = useMemo(
     () =>
       Array.from({ length: MONTH_OPTION_COUNT }, (_, index) =>
@@ -51,7 +53,7 @@ export function MonthPicker({
     >
       <View style={styles.overlay}>
         <Pressable
-          accessibilityLabel="Закрыть выбор месяца"
+          accessibilityLabel={t('home.closeMonthPicker')}
           accessibilityRole="button"
           onPress={onClose}
           style={StyleSheet.absoluteFill}
@@ -60,11 +62,13 @@ export function MonthPicker({
           <ScrollView contentContainerStyle={styles.monthList}>
             {months.map((month) => {
               const selected = month === selectedMonth;
-              const label = formatMonthTitle(month);
+              const label = formatMonthTitle(month, locale);
 
               return (
                 <Pressable
-                  accessibilityLabel={`Выбрать ${label}`}
+                  accessibilityLabel={t('home.selectMonthValue', {
+                    month: label,
+                  })}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   key={month}
