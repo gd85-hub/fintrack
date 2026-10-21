@@ -6,8 +6,8 @@ import {
 } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  FlatList,
   Pressable,
-  SectionList,
   StyleSheet,
   Text,
   View,
@@ -371,12 +371,8 @@ function PurchaseRow({
   );
 }
 
-function PurchaseRowSeparator() {
-  return <View style={styles.purchaseRowSeparator} />;
-}
-
-function DaySectionFooter() {
-  return <View style={styles.daySectionGap} />;
+function DayCardSeparator() {
+  return <View style={styles.dayCardGap} />;
 }
 
 function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
@@ -529,7 +525,7 @@ export default function HomeScreen() {
   const listHeaderElement = useMemo(
     () => (
       <View style={styles.listHeader}>
-        <View>
+        <View style={styles.balanceGroup}>
           <View style={styles.homeHeader}>
             <Pressable
               accessibilityLabel="Выбрать месяц"
@@ -551,21 +547,23 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.hero}>
-            <Text style={styles.heroTitle}>
-              Потрачено в {monthPrepositional}
-            </Text>
-            <Text
-              adjustsFontSizeToFit
-              numberOfLines={1}
-              style={styles.heroAmount}
-            >
-              {formatMoney(monthTotals.rsd)}
-              <Text style={styles.heroCurrency}> RSD</Text>
-            </Text>
-            <Text numberOfLines={1} style={styles.heroEquivalents}>
-              {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
-            </Text>
+          <View style={styles.heroCard}>
+            <View style={styles.hero}>
+              <Text style={styles.heroTitle}>
+                Потрачено в {monthPrepositional}
+              </Text>
+              <Text
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                style={styles.heroAmount}
+              >
+                {formatMoney(monthTotals.rsd)}
+                <Text style={styles.heroCurrency}> RSD</Text>
+              </Text>
+              <Text numberOfLines={1} style={styles.heroEquivalents}>
+                {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -749,68 +747,81 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
-      <SectionList<PurchaseUnit, HomeDaySection>
+      <FlatList<HomeDaySection>
         contentContainerStyle={styles.content}
-        ItemSeparatorComponent={PurchaseRowSeparator}
-        keyExtractor={(unit) => unit.key}
+        data={listSections}
+        ItemSeparatorComponent={DayCardSeparator}
+        keyExtractor={(section) => section.date}
         ListEmptyComponent={listEmptyElement}
         ListHeaderComponent={listHeaderElement}
-        renderItem={({ item: unit }) => {
-          const expense = unit.expenses[0];
-
-          if (!expense) {
-            return null;
-          }
-
-          const receiptId = unit.receiptId;
-
-          return (
-            <PurchaseRow
-              expanded={expandedUnitKeys.has(unit.key)}
-              onDelete={() => requestPurchaseDelete(unit)}
-              onEdit={
-                receiptId !== null
-                  ? () =>
-                      router.push(
-                        `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
-                      )
-                  : () => router.push(`/(app)/expense/${expense.id}`)
-              }
-              onOpenExpense={(expenseId) =>
-                router.push(`/(app)/expense/${expenseId}`)
-              }
-              onShowMore={() => showMoreUnit(unit.key)}
-              onToggle={() => toggleUnit(unit.key)}
-              unit={unit}
-              visibleCount={unitVisibleCounts[unit.key] ?? expensePageSize}
-            />
-          );
-        }}
-        renderSectionFooter={DaySectionFooter}
-        renderSectionHeader={({ section }) => {
+        renderItem={({ item: section }) => {
           const collapsed = collapsedDays.has(section.date);
 
           return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: !collapsed }}
-              onPress={() => toggleDay(section.date)}
-              style={({ pressed }) => [
-                styles.dayHeader,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Text numberOfLines={1} style={styles.dayTitle}>
-                {formatDayHeader(section.date)}
-              </Text>
-              <Text numberOfLines={1} style={styles.dayTotal}>
-                {formatMoney(section.dayTotal)} RSD
-              </Text>
-            </Pressable>
+            <View style={styles.dayCard}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: !collapsed }}
+                onPress={() => toggleDay(section.date)}
+                style={({ pressed }) => [
+                  styles.dayHeader,
+                  pressed && styles.rowPressed,
+                ]}
+              >
+                <Text numberOfLines={1} style={styles.dayTitle}>
+                  {formatDayHeader(section.date)}
+                </Text>
+                <Text numberOfLines={1} style={styles.dayTotal}>
+                  {formatMoney(section.dayTotal)} RSD
+                </Text>
+              </Pressable>
+
+              {!collapsed
+                ? section.units.map((unit, index) => {
+                    const expense = unit.expenses[0];
+
+                    if (!expense) {
+                      return null;
+                    }
+
+                    const receiptId = unit.receiptId;
+
+                    return (
+                      <View key={unit.key}>
+                        <PurchaseRow
+                          expanded={expandedUnitKeys.has(unit.key)}
+                          onDelete={() => requestPurchaseDelete(unit)}
+                          onEdit={
+                            receiptId !== null
+                              ? () =>
+                                  router.push(
+                                    `/(app)/receipt/review?receiptId=${encodeURIComponent(receiptId)}`,
+                                  )
+                              : () =>
+                                  router.push(
+                                    `/(app)/expense/${expense.id}`,
+                                  )
+                          }
+                          onOpenExpense={(expenseId) =>
+                            router.push(`/(app)/expense/${expenseId}`)
+                          }
+                          onShowMore={() => showMoreUnit(unit.key)}
+                          onToggle={() => toggleUnit(unit.key)}
+                          unit={unit}
+                          visibleCount={
+                            unitVisibleCounts[unit.key] ?? expensePageSize
+                          }
+                        />
+                        {index < section.units.length - 1 ? (
+                          <View style={styles.purchaseRowSeparator} />
+                        ) : null}
+                      </View>
+                    );
+                  })
+                : null}
+            </View>
           );
         }}
-        sections={listSections}
-        stickySectionHeadersEnabled={true}
         style={styles.list}
       />
 
@@ -842,25 +853,35 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  balanceGroup: {
+    gap: theme.scale.space[2],
+  },
   content: {
     alignSelf: 'center',
     maxWidth: theme.sizes.maxContentWidth,
-    padding: theme.spacing.lg,
     paddingBottom: theme.spacing.listBottom,
+    paddingHorizontal: theme.scale.space[4],
+    paddingTop: theme.spacing.lg,
     width: '100%',
+  },
+  dayCard: {
+    backgroundColor: theme.color.surface.raised,
+    borderColor: theme.color.border.subtle,
+    borderRadius: theme.scale.radius.lg,
+    borderWidth: theme.scale.stroke.hairline,
+    overflow: 'hidden',
+  },
+  dayCardGap: {
+    height: theme.scale.space[4],
   },
   dayHeader: {
     alignItems: 'center',
-    backgroundColor: theme.color.bg.base,
     flexDirection: 'row',
     gap: theme.scale.space[3],
     justifyContent: 'space-between',
     paddingBottom: theme.scale.space[2],
     paddingHorizontal: theme.scale.space[4],
-    paddingTop: theme.scale.space[5],
-  },
-  daySectionGap: {
-    height: theme.spacing.lg,
+    paddingTop: theme.scale.space[4],
   },
   dayTitle: {
     ...theme.type.captionDefault,
@@ -923,8 +944,6 @@ const styles = StyleSheet.create({
   },
   hero: {
     gap: theme.scale.space[1],
-    paddingHorizontal: theme.scale.space[4],
-    paddingTop: theme.scale.space[2],
   },
   heroAmount: {
     ...theme.type.displayHero,
@@ -943,19 +962,25 @@ const styles = StyleSheet.create({
     ...theme.type.captionDefault,
     color: theme.color.text.secondary,
   },
+  heroCard: {
+    backgroundColor: theme.color.surface.raised,
+    borderColor: theme.color.border.subtle,
+    borderRadius: theme.scale.radius.lg,
+    borderWidth: theme.scale.stroke.hairline,
+    padding: theme.scale.space[4],
+  },
   homeHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: theme.scale.space[2],
-    paddingHorizontal: theme.scale.space[4],
     paddingVertical: theme.scale.space[1],
   },
   list: {
     flex: 1,
   },
   listHeader: {
-    gap: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
+    gap: theme.scale.space[4],
+    marginBottom: theme.scale.space[4],
   },
   monthPickerButton: {
     alignItems: 'center',
@@ -1013,7 +1038,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.color.bg.base,
     flex: 1,
   },
   showMoreButton: {
