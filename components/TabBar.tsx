@@ -8,6 +8,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  type ViewStyle,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,12 +33,22 @@ const rightTabs: readonly RouteTab[] = [
   { icon: 'settings', label: 'Settings', routeName: 'settings' },
 ];
 
+const sidebarTabs: readonly RouteTab[] = [...leftTabs, ...rightTabs];
+
+// Fixed web navigation width; the Scale tokens do not cover page-level rails.
+export const SIDEBAR_WIDTH = 240;
+
+const sidebarPosition = Platform.select({
+  default: 'absolute',
+  web: 'fixed',
+}) as ViewStyle['position'];
+
 export function TabBar({ navigation, state }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [addSheetVisible, setAddSheetVisible] = useState(false);
 
-  function renderRouteTab(tab: RouteTab) {
+  function renderRouteTab(tab: RouteTab, placement: 'bottom' | 'sidebar') {
     const routeIndex = state.routes.findIndex(
       (route) => route.name === tab.routeName,
     );
@@ -64,33 +75,55 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
         onLongPress={() => {
           navigation.emit({ target: route.key, type: 'tabLongPress' });
         }}
-        onPress={() => {
-          const event = navigation.emit({
-            canPreventDefault: true,
-            target: route.key,
-            type: 'tabPress',
-          });
-
-          if (!focused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.params);
-          }
-        }}
+        onPress={() => handleRoutePress(routeIndex)}
         style={({ pressed }) => [
-          styles.routeTab,
+          placement === 'sidebar' ? styles.sidebarRouteTab : styles.routeTab,
+          placement === 'sidebar' && focused && styles.sidebarRouteTabActive,
           pressed && styles.routeTabPressed,
         ]}
       >
-        {focused ? <View style={styles.activeIndicator} /> : null}
+        {focused && placement === 'bottom' ? (
+          <View style={styles.activeIndicator} />
+        ) : null}
         <Feather
           color={iconColor}
           name={tab.icon}
-          size={theme.spacing.lg}
+          size={
+            placement === 'sidebar'
+              ? theme.scale.size.iconLg
+              : theme.spacing.lg
+          }
         />
-        <Text style={[styles.routeLabel, { color: textColor }]}>
+        <Text
+          style={[
+            placement === 'sidebar'
+              ? styles.sidebarRouteLabel
+              : styles.routeLabel,
+            { color: textColor },
+          ]}
+        >
           {tab.label}
         </Text>
       </Pressable>
     );
+  }
+
+  function handleRoutePress(routeIndex: number) {
+    const route = state.routes[routeIndex];
+
+    if (!route) {
+      return;
+    }
+
+    const event = navigation.emit({
+      canPreventDefault: true,
+      target: route.key,
+      type: 'tabPress',
+    });
+
+    if (state.index !== routeIndex && !event.defaultPrevented) {
+      navigation.navigate(route.name, route.params);
+    }
   }
 
   function openAddRoute(
@@ -105,39 +138,65 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
 
   return (
     <>
-      <View
-        style={[
-          styles.bar,
-          {
-            paddingBottom: insets.bottom,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          },
-        ]}
-      >
-        {leftTabs.map(renderRouteTab)}
-
-        <View style={styles.addSlot}>
+      {Platform.OS === 'web' ? (
+        <View style={styles.sidebar}>
           <Pressable
-            accessibilityLabel="Add"
+            accessibilityLabel="Добавить"
             accessibilityRole="button"
             accessibilityState={{ expanded: addSheetVisible }}
             onPress={() => setAddSheetVisible(true)}
             style={({ pressed }) => [
-              styles.addButton,
+              styles.sidebarAddButton,
               pressed && styles.addButtonPressed,
             ]}
           >
             <Feather
               color={theme.color.action.primary.icon}
               name="plus"
-              size={theme.spacing.lg}
+              size={theme.scale.size.iconLg}
             />
+            <Text style={styles.sidebarAddLabel}>Добавить</Text>
           </Pressable>
-        </View>
 
-        {rightTabs.map(renderRouteTab)}
-      </View>
+          <View style={styles.sidebarNav}>
+            {sidebarTabs.map((tab) => renderRouteTab(tab, 'sidebar'))}
+          </View>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.bar,
+            {
+              paddingBottom: insets.bottom,
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
+            },
+          ]}
+        >
+          {leftTabs.map((tab) => renderRouteTab(tab, 'bottom'))}
+
+          <View style={styles.addSlot}>
+            <Pressable
+              accessibilityLabel="Add"
+              accessibilityRole="button"
+              accessibilityState={{ expanded: addSheetVisible }}
+              onPress={() => setAddSheetVisible(true)}
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && styles.addButtonPressed,
+              ]}
+            >
+              <Feather
+                color={theme.color.action.primary.icon}
+                name="plus"
+                size={theme.spacing.lg}
+              />
+            </Pressable>
+          </View>
+
+          {rightTabs.map((tab) => renderRouteTab(tab, 'bottom'))}
+        </View>
+      )}
 
       <Modal
         animationType="slide"
@@ -330,5 +389,49 @@ const styles = StyleSheet.create({
     backgroundColor: theme.color.separatorInset,
     height: theme.sizes.border,
     marginHorizontal: theme.spacing.md,
+  },
+  sidebar: {
+    backgroundColor: theme.color.surface.default,
+    borderRightColor: theme.color.border.subtle,
+    borderRightWidth: theme.scale.stroke.hairline,
+    bottom: 0,
+    left: 0,
+    paddingHorizontal: theme.scale.space[3],
+    paddingVertical: theme.scale.space[6],
+    position: sidebarPosition,
+    top: 0,
+    width: SIDEBAR_WIDTH,
+  },
+  sidebarAddButton: {
+    alignItems: 'center',
+    backgroundColor: theme.color.action.primary.fill,
+    borderRadius: theme.scale.radius.md,
+    flexDirection: 'row',
+    gap: theme.scale.space[2],
+    justifyContent: 'center',
+    minHeight: theme.scale.size.touchTarget,
+    paddingHorizontal: theme.scale.space[3],
+  },
+  sidebarAddLabel: {
+    ...theme.type.labelDefault,
+    color: theme.color.action.primary.content,
+  },
+  sidebarNav: {
+    gap: theme.scale.space[2],
+    paddingTop: theme.scale.space[6],
+  },
+  sidebarRouteLabel: {
+    ...theme.type.labelDefault,
+  },
+  sidebarRouteTab: {
+    alignItems: 'center',
+    borderRadius: theme.scale.radius.md,
+    flexDirection: 'row',
+    gap: theme.scale.space[3],
+    minHeight: theme.scale.size.touchTarget,
+    paddingHorizontal: theme.scale.space[3],
+  },
+  sidebarRouteTabActive: {
+    backgroundColor: theme.color.surface.selected,
   },
 });
