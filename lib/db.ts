@@ -303,7 +303,7 @@ export type MonthlyCategoryBreakdown = {
 
 export type MerchantBreakdown = {
   merchantId: string | null;
-  name: string;
+  name: string | null;
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
@@ -1454,7 +1454,7 @@ export async function merchantBreakdownByMonth(
 
     merchants.set(merchantKey, {
       merchantId,
-      name: row.merchant?.name ?? 'Без места',
+      name: row.merchant?.name ?? null,
       totalRsd: amountRsd,
       totalUsd: amountUsd,
       totalEur: amountEur,

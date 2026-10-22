@@ -210,7 +210,7 @@ describe('merchantBreakdownByMonth', () => {
         },
         {
           merchantId: null,
-          name: 'Без места',
+          name: null,
           totalRsd: 5000,
           totalUsd: 45,
           totalEur: 42,

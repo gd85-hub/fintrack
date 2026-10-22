@@ -19,6 +19,7 @@ import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { ShareBar } from '../../components/ShareBar';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   type AnalyticsExpense,
   buildFixedVariableBreakdown,
@@ -71,7 +72,7 @@ type RankedFixedVariableBucket = {
   }>;
   color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
   emoji: string;
-  label: string;
+  labelKey: string;
   share: number;
 };
 
@@ -85,19 +86,19 @@ const fixedVariablePresentation = {
   fixed: {
     color: theme.fixedVariablePalette.fixed,
     emoji: '🔒',
-    label: 'Постоянные',
+    labelKey: 'analytics.fixedLabel',
   },
   variable: {
     color: theme.fixedVariablePalette.variable,
     emoji: '🔁',
-    label: 'Переменные',
+    labelKey: 'analytics.variableLabel',
   },
 } satisfies Record<
   ExpenseCategoryType,
   {
     color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
     emoji: string;
-    label: string;
+    labelKey: string;
   }
 >;
 
@@ -179,6 +180,7 @@ function ExpenseDetails({
   onShowMore,
   visibleCount,
 }: ExpenseDetailsProps) {
+  const { t } = useLanguage();
   const visibleExpenses = expenses.slice(0, visibleCount);
   const remaining = expenses.length - visibleExpenses.length;
 
@@ -198,7 +200,9 @@ function ExpenseDetails({
       ))}
       {remaining > 0 ? (
         <Pressable
-          accessibilityLabel={`Показать ещё ${Math.min(expensePageSize, remaining)} трат`}
+          accessibilityLabel={t('analytics.showMoreA11y', {
+            count: Math.min(expensePageSize, remaining),
+          })}
           accessibilityRole="button"
           onPress={onShowMore}
           style={({ pressed }) => [
@@ -207,7 +211,9 @@ function ExpenseDetails({
           ]}
         >
           <Text style={styles.showMoreText}>
-            Показать ещё {Math.min(expensePageSize, remaining)}
+            {t('home.showMore', {
+              count: Math.min(expensePageSize, remaining),
+            })}
           </Text>
         </Pressable>
       ) : null}
@@ -217,6 +223,7 @@ function ExpenseDetails({
 
 export default function AnalyticsScreen() {
   const router = useRouter();
+  const { t, locale } = useLanguage();
   const {
     currency: displayCurrency,
     setCurrency: setDisplayCurrency,
@@ -276,9 +283,7 @@ export default function AnalyticsScreen() {
         .catch((error: unknown) => {
           console.error('Unable to load category analytics:', error);
           if (active) {
-            setErrorMessage(
-              'Не удалось загрузить аналитику. Попробуйте ещё раз.',
-            );
+            setErrorMessage(t('analytics.loadFailed'));
           }
         })
         .finally(() => {
@@ -454,7 +459,7 @@ export default function AnalyticsScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Вернуться к тратам"
+          accessibilityLabel={t('analytics.backA11y')}
           accessibilityRole="button"
           onPress={openMonthOnHome}
           style={({ pressed }) => [
@@ -464,13 +469,13 @@ export default function AnalyticsScreen() {
         >
           <Text style={styles.backText}>←</Text>
         </Pressable>
-        <Text style={styles.title}>Аналитика</Text>
+        <Text style={styles.title}>{t('nav.analytics')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.monthRow}>
           <Pressable
-            accessibilityLabel="Предыдущий месяц"
+            accessibilityLabel={t('date.prevMonth')}
             accessibilityRole="button"
             onPress={() =>
               setVisibleMonth((month) => shiftMonth(month, -1))
@@ -484,11 +489,11 @@ export default function AnalyticsScreen() {
           </Pressable>
 
           <Text style={styles.monthTitle}>
-            {formatMonthTitle(visibleMonth)}
+            {formatMonthTitle(visibleMonth, locale)}
           </Text>
 
           <Pressable
-            accessibilityLabel="Следующий месяц"
+            accessibilityLabel={t('date.nextMonth')}
             accessibilityRole="button"
             accessibilityState={{ disabled: !canMoveForward }}
             disabled={!canMoveForward}
@@ -506,13 +511,13 @@ export default function AnalyticsScreen() {
         </View>
 
         <CurrencySelector
-          accessibilityLabel="Валюта аналитики"
+          accessibilityLabel={t('analytics.currencyA11y')}
           onChange={setDisplayCurrency}
           value={displayCurrency}
         />
 
         <View style={styles.totalBlock}>
-          <Text style={styles.totalLabel}>Всего за месяц</Text>
+          <Text style={styles.totalLabel}>{t('analytics.monthTotal')}</Text>
           <Text style={styles.monthTotal}>
             {formatMoney(monthTotal)} {displayCurrency}
           </Text>
@@ -525,7 +530,7 @@ export default function AnalyticsScreen() {
               accessibilityRole="button"
               onPress={() => setRetryKey((current) => current + 1)}
             >
-              <Text style={styles.retryText}>Повторить</Text>
+              <Text style={styles.retryText}>{t('home.retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -534,18 +539,18 @@ export default function AnalyticsScreen() {
 
         {!loading && !errorMessage && rankedCategories.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>
-              Нет трат за этот месяц для анализа
-            </Text>
+            <Text style={styles.emptyText}>{t('analytics.empty')}</Text>
           </View>
         ) : null}
 
         {!loading && !errorMessage && rankedCategories.length > 0 ? (
           <View style={styles.analyticsBlocks}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>По категориям</Text>
+              <Text style={styles.sectionTitle}>
+                {t('analytics.byCategory')}
+              </Text>
               <ShareBar
-                accessibilityLabel="Доли трат по категориям"
+                accessibilityLabel={t('analytics.byCategoryA11y')}
                 segments={rankedCategories.map(
                   ({ amount, category, color }) => ({
                     id: category.categoryId,
@@ -570,7 +575,13 @@ export default function AnalyticsScreen() {
                         style={styles.categoryGroup}
                       >
                         <Pressable
-                          accessibilityLabel={`${category.name}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${category.count}`}
+                          accessibilityLabel={t('analytics.sliceA11y', {
+                            name: category.name,
+                            amount: formatMoney(amount),
+                            currency: displayCurrency,
+                            share: formatShare(share),
+                            count: category.count,
+                          })}
                           accessibilityRole="button"
                           accessibilityState={{ expanded }}
                           onPress={() =>
@@ -596,8 +607,10 @@ export default function AnalyticsScreen() {
                               {category.name}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {formatShare(share)} · Операций:{' '}
-                              {category.count}
+                              {t('analytics.shareOps', {
+                                share: formatShare(share),
+                                count: category.count,
+                              })}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
@@ -631,9 +644,11 @@ export default function AnalyticsScreen() {
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>По местам</Text>
+              <Text style={styles.sectionTitle}>
+                {t('analytics.byMerchant')}
+              </Text>
               <ShareBar
-                accessibilityLabel="Доли трат по местам"
+                accessibilityLabel={t('analytics.byMerchantA11y')}
                 segments={rankedMerchants.map(
                   ({ amount, color, merchant }) => ({
                     id: merchant.merchantId ?? unknownMerchantKey,
@@ -660,7 +675,13 @@ export default function AnalyticsScreen() {
                         style={styles.categoryGroup}
                       >
                         <Pressable
-                          accessibilityLabel={`${merchant.name}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${merchant.count}`}
+                          accessibilityLabel={t('analytics.sliceA11y', {
+                            name: merchant.name ?? t('analytics.noPlace'),
+                            amount: formatMoney(amount),
+                            currency: displayCurrency,
+                            share: formatShare(share),
+                            count: merchant.count,
+                          })}
                           accessibilityRole="button"
                           accessibilityState={{ expanded }}
                           onPress={() =>
@@ -682,11 +703,13 @@ export default function AnalyticsScreen() {
                               numberOfLines={1}
                               style={styles.categoryName}
                             >
-                              {merchant.name}
+                              {merchant.name ?? t('analytics.noPlace')}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {formatShare(share)} · Операций:{' '}
-                              {merchant.count}
+                              {t('analytics.shareOps', {
+                                share: formatShare(share),
+                                count: merchant.count,
+                              })}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
@@ -721,10 +744,10 @@ export default function AnalyticsScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                Постоянные и переменные
+                {t('analytics.fixedVariable')}
               </Text>
               <ShareBar
-                accessibilityLabel="Доли постоянных и переменных трат"
+                accessibilityLabel={t('analytics.byTypeA11y')}
                 segments={rankedFixedVariableBuckets.map(
                   ({ amount, bucket, color }) => ({
                     id: bucket.type,
@@ -742,12 +765,13 @@ export default function AnalyticsScreen() {
                     categories,
                     color,
                     emoji,
-                    label,
+                    labelKey,
                     share,
                   }) => {
                     const expanded = expandedExpenseTypes.has(
                       bucket.type,
                     );
+                    const label = t(labelKey);
 
                     return (
                       <View
@@ -755,7 +779,13 @@ export default function AnalyticsScreen() {
                         style={styles.categoryGroup}
                       >
                         <Pressable
-                          accessibilityLabel={`${label}, ${formatMoney(amount)} ${displayCurrency}, ${formatShare(share)}, операций: ${bucket.count}`}
+                          accessibilityLabel={t('analytics.sliceA11y', {
+                            name: label,
+                            amount: formatMoney(amount),
+                            currency: displayCurrency,
+                            share: formatShare(share),
+                            count: bucket.count,
+                          })}
                           accessibilityRole="button"
                           accessibilityState={{ expanded }}
                           onPress={() =>
@@ -781,8 +811,10 @@ export default function AnalyticsScreen() {
                               {label}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {formatShare(share)} · Операций:{' '}
-                              {bucket.count}
+                              {t('analytics.shareOps', {
+                                share: formatShare(share),
+                                count: bucket.count,
+                              })}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
@@ -817,7 +849,9 @@ export default function AnalyticsScreen() {
                                       {category.name}
                                     </Text>
                                     <Text style={styles.merchantMeta}>
-                                      Операций: {category.count}
+                                      {t('analytics.operations', {
+                                        count: category.count,
+                                      })}
                                     </Text>
                                   </View>
                                   <Text style={styles.merchantAmount}>
