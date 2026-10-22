@@ -16,6 +16,7 @@ import { DatePicker } from '../../../components/DatePicker';
 import { LoadingScreen } from '../../../components/LoadingScreen';
 import { MerchantPicker } from '../../../components/MerchantPicker';
 import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySelector';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import {
   getFiscalReceiptForEdit,
@@ -115,6 +116,7 @@ function routeParam(
 }
 
 export default function ReviewReceiptScreen() {
+  const { t, locale } = useLanguage();
   const { draft, clearDraft } = useReceiptDraft();
   const params = useLocalSearchParams<{
     receiptId?: string | string[];
@@ -178,7 +180,7 @@ export default function ReviewReceiptScreen() {
           (category) => category.slug === 'uncategorized',
         );
         if (!uncategorized) {
-          throw new Error('Категория «Не распознано» не найдена.');
+          throw new Error(t('review.uncategorizedMissing'));
         }
         setCategories(loadedCategories);
         setMerchants(loadedMerchants);
@@ -186,7 +188,7 @@ export default function ReviewReceiptScreen() {
 
         if (isEditMode) {
           if (!loadedEditDraft) {
-            throw new Error('Покупка не найдена.');
+            throw new Error(t('review.purchaseNotFound'));
           }
 
           setEditDraft(loadedEditDraft);
@@ -225,7 +227,7 @@ export default function ReviewReceiptScreen() {
         }
 
         if (!draft) {
-          throw new Error('Чек не найден.');
+          throw new Error(t('review.receiptNotFound'));
         }
 
         setEditDraft(null);
@@ -316,7 +318,7 @@ export default function ReviewReceiptScreen() {
           setErrorMessage(
             error instanceof Error && error.message
               ? error.message
-              : 'Не удалось подготовить чек. Попробуйте ещё раз.',
+              : t('review.prepareFailed'),
           );
         }
       })
@@ -364,7 +366,9 @@ export default function ReviewReceiptScreen() {
       <View style={styles.centerState}>
         <Text style={styles.stateTitle}>
           {errorMessage ||
-            (isEditMode ? 'Покупка не найдена' : 'Чек не найден')}
+            (isEditMode
+              ? t('review.purchaseNotFound')
+              : t('review.receiptNotFound'))}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -374,7 +378,7 @@ export default function ReviewReceiptScreen() {
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.primaryButtonText}>На главную</Text>
+          <Text style={styles.primaryButtonText}>{t('review.goHome')}</Text>
         </Pressable>
       </View>
     );
@@ -469,19 +473,19 @@ export default function ReviewReceiptScreen() {
   const saveReview = async (allowEmptyEdit: boolean) => {
     setErrorMessage('');
     if (!includedItems.length && !allowEmptyEdit) {
-      setErrorMessage('Оставьте хотя бы одну позицию чека.');
+      setErrorMessage(t('review.keepOneItem'));
       return;
     }
     if (hasInvalidIncludedAmounts) {
-      setErrorMessage('Исправьте суммы включённых позиций.');
+      setErrorMessage(t('review.fixIncludedAmounts'));
       return;
     }
     if (hasInvalidManualRsdTotal) {
-      setErrorMessage('Введите корректный итог в RSD или оставьте поле пустым.');
+      setErrorMessage(t('review.validTotalOrEmpty'));
       return;
     }
     if (!parseLocalISO(occurredOn)) {
-      setErrorMessage('Выберите корректную дату покупки.');
+      setErrorMessage(t('review.validDate'));
       return;
     }
 
@@ -495,8 +499,8 @@ export default function ReviewReceiptScreen() {
     if (!merchant && includedItems.length > 0) {
       setErrorMessage(
         merchantMode === 'existing'
-          ? 'Выберите существующее место.'
-          : 'Укажите название нового места.',
+          ? t('review.pickExistingPlace')
+          : t('review.enterNewPlaceName'),
       );
       return;
     }
@@ -506,7 +510,7 @@ export default function ReviewReceiptScreen() {
       let deleted = false;
       if (isEditMode) {
         if (!editReceiptId) {
-          throw new Error('Покупка не найдена.');
+          throw new Error(t('review.purchaseNotFound'));
         }
         const result = await updateFiscalReceipt(editReceiptId, {
           merchant,
@@ -516,7 +520,7 @@ export default function ReviewReceiptScreen() {
           manualRsdTotalCents,
           expenses: items.map((item) => {
             if (!item.expenseId) {
-              throw new Error('Позиция покупки не найдена.');
+              throw new Error(t('review.itemNotFound'));
             }
             return {
               id: item.expenseId,
@@ -531,7 +535,7 @@ export default function ReviewReceiptScreen() {
         deleted = result.deleted;
       } else {
         if (!draft || !merchant) {
-          throw new Error('Чек не найден.');
+          throw new Error(t('review.receiptNotFound'));
         }
         await saveFiscalReceipt({
           receipt: { ...draft, currency: receiptCurrency },
@@ -576,8 +580,8 @@ export default function ReviewReceiptScreen() {
         error instanceof Error && error.message
           ? error.message
           : isEditMode
-            ? 'Не удалось сохранить изменения. Попробуйте ещё раз.'
-            : 'Не удалось сохранить чек. Попробуйте ещё раз.',
+            ? t('review.saveChangesFailed')
+            : t('review.saveReceiptFailed'),
       );
     } finally {
       setSaving(false);
@@ -597,7 +601,7 @@ export default function ReviewReceiptScreen() {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           disabled={saving}
           onPress={() => router.back()}
@@ -609,7 +613,7 @@ export default function ReviewReceiptScreen() {
           <Text style={styles.backText}>←</Text>
         </Pressable>
         <Text style={styles.title}>
-          {isEditMode ? 'Редактировать покупку' : 'Проверить чек'}
+          {isEditMode ? t('home.editPurchase') : t('review.checkTitle')}
         </Text>
       </View>
 
@@ -619,7 +623,7 @@ export default function ReviewReceiptScreen() {
       >
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Дата</Text>
+            <Text style={styles.summaryLabel}>{t('common.date')}</Text>
             {isEditMode ? (
               <Pressable
                 accessibilityRole="button"
@@ -631,7 +635,7 @@ export default function ReviewReceiptScreen() {
                 ]}
               >
                 <Text style={styles.dateSelectorText}>
-                  {formatLongDate(occurredOn)}
+                  {formatLongDate(occurredOn, locale)}
                 </Text>
                 <Text style={styles.dateSelectorChevron}>›</Text>
               </Pressable>
@@ -640,7 +644,7 @@ export default function ReviewReceiptScreen() {
             )}
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Итого в чеке</Text>
+            <Text style={styles.summaryLabel}>{t('review.receiptTotal')}</Text>
             <View style={styles.summaryAmount}>
               <Text style={styles.summaryValue}>
                 {formatMoney(receiptTotalCents)}
@@ -654,7 +658,7 @@ export default function ReviewReceiptScreen() {
           </View>
           {receiptPaymentType ? (
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Оплата</Text>
+              <Text style={styles.summaryLabel}>{t('review.payment')}</Text>
               <Text style={styles.summaryValue}>
                 {receiptPaymentType}
               </Text>
@@ -664,17 +668,14 @@ export default function ReviewReceiptScreen() {
 
         {!isEditMode && draft?.confidence === 'low' ? (
           <View accessibilityRole="alert" style={styles.warningCard}>
-            <Text style={styles.warningText}>
-              Распознавание неуверенное. Проверьте чек перед сохранением.
-            </Text>
+            <Text style={styles.warningText}>{t('review.lowConfidence')}</Text>
           </View>
         ) : null}
 
         {totalsMismatch ? (
           <View accessibilityRole="alert" style={styles.warningCard}>
             <Text style={styles.warningText}>
-              Сумма выбранных позиций не совпадает с итогом чека.
-              Проверьте суммы перед сохранением.
+              {t('review.mismatchTitle')} {t('review.mismatchHint')}
             </Text>
           </View>
         ) : null}
@@ -682,10 +683,10 @@ export default function ReviewReceiptScreen() {
         {!isCurrency(receiptCurrency) ? (
           <View style={styles.manualCurrencySection}>
             <View style={styles.manualField}>
-              <Text style={styles.label}>Итого в RSD (вручную)</Text>
+              <Text style={styles.label}>{t('review.manualRsdLabel')}</Text>
               <View style={styles.manualInputRow}>
                 <TextInput
-                  accessibilityLabel="Итого в RSD вручную"
+                  accessibilityLabel={t('review.manualRsdA11y')}
                   editable={!saving}
                   inputMode="decimal"
                   maxLength={20}
@@ -701,28 +702,27 @@ export default function ReviewReceiptScreen() {
                 <Text style={styles.manualCurrency}>RSD</Text>
               </View>
               <Text style={styles.helperText}>
-                Сумма распределится между включёнными позициями пропорционально.
+                {t('review.distributeHint')}
               </Text>
               {hasInvalidManualRsdTotal ? (
                 <Text accessibilityRole="alert" style={styles.itemValidationText}>
-                  Введите сумму больше нуля
+                  {t('review.amountAboveZero')}
                 </Text>
               ) : null}
             </View>
             <View accessibilityRole="alert" style={styles.warningCard}>
               <Text style={styles.warningText}>
-                Для {receiptCurrency} пока нет конвертации. Если итог в RSD
-                оставить пустым, позиции сохранятся как требующие внимания.
+                {t('review.noConversionHint', { currency: receiptCurrency })}
               </Text>
             </View>
           </View>
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Место</Text>
+          <Text style={styles.sectionTitle}>{t('common.place')}</Text>
           {showMerchantLabel ? (
             <Text numberOfLines={2} style={styles.merchantLabel}>
-              В чеке: {receiptMerchantLabel}
+              {t('common.onReceipt', { name: receiptMerchantLabel })}
             </Text>
           ) : null}
           <View style={styles.modeChips}>
@@ -743,7 +743,7 @@ export default function ReviewReceiptScreen() {
                     styles.modeChipTextSelected,
                 ]}
               >
-                Существующее
+                {t('review.placeExistingTab')}
               </Text>
             </Pressable>
             <Pressable
@@ -762,7 +762,7 @@ export default function ReviewReceiptScreen() {
                   merchantMode === 'new' && styles.modeChipTextSelected,
                 ]}
               >
-                Новое
+                {t('review.placeNewTab')}
               </Text>
             </Pressable>
           </View>
@@ -776,12 +776,12 @@ export default function ReviewReceiptScreen() {
             />
           ) : (
             <View style={styles.newMerchant}>
-              <Text style={styles.label}>Название</Text>
+              <Text style={styles.label}>{t('review.newPlaceNameLabel')}</Text>
               <TextInput
                 autoCapitalize="words"
                 maxLength={80}
                 onChangeText={setMerchantName}
-                placeholder="Название места"
+                placeholder={t('review.newPlaceNamePlaceholder')}
                 placeholderTextColor={theme.colors.textMuted}
                 style={styles.input}
                 value={merchantName}
@@ -792,19 +792,22 @@ export default function ReviewReceiptScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Позиции · {includedItems.length} из {items.length}
+            {t('review.itemsCount', {
+              included: includedItems.length,
+              total: items.length,
+            })}
           </Text>
           {categorizing ? (
             <View style={styles.categorizingState}>
               <ActivityIndicator color={theme.colors.accent} size="small" />
               <Text style={styles.categorizingText}>
-                Категоризируем позиции…
+                {t('review.categorizing')}
               </Text>
             </View>
           ) : null}
           <CategoryPicker
             categories={categories}
-            label="Категория для всех"
+            label={t('review.categoryForAll')}
             onChange={applyCategoryToAll}
             value={bulkCategoryId}
           />
@@ -818,7 +821,7 @@ export default function ReviewReceiptScreen() {
               ]}
             >
               <TextInput
-                accessibilityLabel={`Название позиции ${index + 1}`}
+                accessibilityLabel={t('review.itemNameA11y', { n: index + 1 })}
                 autoCapitalize="sentences"
                 editable={!saving}
                 maxLength={240}
@@ -826,7 +829,7 @@ export default function ReviewReceiptScreen() {
                 onChangeText={(description) =>
                   updateItemDescription(index, description)
                 }
-                placeholder="Название позиции"
+                placeholder={t('review.itemNamePlaceholder')}
                 placeholderTextColor={theme.colors.disabled}
                 style={[
                   styles.itemNameInput,
@@ -837,20 +840,24 @@ export default function ReviewReceiptScreen() {
               {item.rawName.trim() &&
               item.rawName.trim() !== item.description.trim() ? (
                 <Text numberOfLines={2} style={styles.itemRawName}>
-                  В чеке: {item.rawName}
+                  {t('common.onReceipt', { name: item.rawName })}
                 </Text>
               ) : null}
               <View style={styles.itemDetailsRow}>
                 <Text style={styles.itemDetails}>
                   {item.quantity !== null && item.unitPriceCents !== null
                     ? `${item.quantity} × ${formatMoney(item.unitPriceCents)} ${receiptCurrency}`
-                    : 'Количество или цена за единицу не указаны'}
-                  {item.vatLabel ? ` · НДС ${item.vatLabel}` : ''}
+                    : t('review.noQtyOrPrice')}
+                  {item.vatLabel
+                    ? ` · ${t('review.vat', { label: item.vatLabel })}`
+                    : ''}
                 </Text>
                 <View style={styles.itemAmountColumn}>
                   <View style={styles.itemAmountEditor}>
                     <TextInput
-                      accessibilityLabel={`Сумма позиции ${index + 1}`}
+                      accessibilityLabel={t('review.itemAmountA11y', {
+                        n: index + 1,
+                      })}
                       editable={!saving}
                       inputMode="decimal"
                       maxLength={20}
@@ -882,7 +889,7 @@ export default function ReviewReceiptScreen() {
                       accessibilityRole="alert"
                       style={styles.itemValidationText}
                     >
-                      Введите сумму больше нуля
+                      {t('review.amountAboveZero')}
                     </Text>
                   ) : null}
                 </View>
@@ -906,7 +913,9 @@ export default function ReviewReceiptScreen() {
                 ]}
               >
                 <Text style={styles.excludeText}>
-                  {item.included ? 'Исключить позицию' : 'Вернуть позицию'}
+                  {item.included
+                    ? t('review.excludeItem')
+                    : t('review.includeItem')}
                 </Text>
               </Pressable>
             </View>
@@ -914,7 +923,7 @@ export default function ReviewReceiptScreen() {
         </View>
 
         <View style={styles.saveSummary}>
-          <Text style={styles.saveSummaryLabel}>Будет сохранено</Text>
+          <Text style={styles.saveSummaryLabel}>{t('review.willBeSaved')}</Text>
           <Text style={styles.saveSummaryTotal}>
             {includedTotal === null
               ? `— ${receiptCurrency}`
@@ -949,7 +958,7 @@ export default function ReviewReceiptScreen() {
             <ActivityIndicator color={theme.colors.white} />
           ) : (
             <Text style={styles.primaryButtonText}>
-              {isEditMode ? 'Сохранить изменения' : 'Сохранить чек'}
+              {isEditMode ? t('review.saveChanges') : t('review.saveReceipt')}
             </Text>
           )}
         </Pressable>
@@ -972,7 +981,7 @@ export default function ReviewReceiptScreen() {
           }
         }}
         onConfirm={() => void saveReview(true)}
-        title="Удалить покупку со всеми позициями?"
+        title={t('review.deleteConfirmTitle')}
         visible={isEditMode && confirmDeleteAll}
       />
     </View>
