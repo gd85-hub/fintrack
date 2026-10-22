@@ -5,23 +5,23 @@ _Обновлено: 2026-10-22 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Идёт **поэкранный i18n**. Готовы фундамент i18n, Settings/навигация, главный экран, вся область чека end-to-end, ручной редактор траты и **управление категориями**. Следующая область — **управление местами (5b)**.
+Идёт **поэкранный i18n**. Готовы фундамент i18n, Settings/навигация, главный экран, вся область чека end-to-end, ручной редактор траты и **оба экрана управления** (категории + места). Остались **auth-экраны и user-facing ошибки в `lib/`**.
 
 ## Только что сделано
 
-- `b417abd` — **i18n: localize categories management screen**.
-  - `app/(app)/categories.tsx`: список, create/edit, merge, type-change, empty/error states и три confirm-сценария переведены на `t()`; `typeLabel` стал locale-aware.
-  - `lib/i18n/{ru,en}.ts`: добавлены `common.edit`, `common.continue` и 41 ключ `cat.*` с паритетом; merge/delete/type-change логика не изменялась.
-- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; Web- и Android-export успешны; в `categories.tsx` нет русских UI-литералов и hardcoded hex.
-- **НЕ проверено:** ручной прогон на Web + Android (роль Глеба): RU/EN create/edit/merge/delete/type-change, особенно три confirm dialog с именами и счётчиками.
+- `c1f6cca` — **i18n: localize merchants (places) management screen**.
+  - `app/(app)/merchants.tsx`: список, rename, collision, merge, delete, empty/error states и confirm-сценарии переведены на `t()`; CRUD/merge-логика не изменялась.
+  - `lib/i18n/{ru,en}.ts`: существующий `merchant.*` расширен на 18 ключей; все 23 ключа namespace имеют RU/EN-паритет.
+- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; Web- и Android-export успешны; в `merchants.tsx` нет русских UI-литералов и hardcoded hex.
+- **НЕ проверено:** ручной прогон на Web + Android (роль Глеба): RU/EN rename/collision/merge/delete, особенно merge и оба delete-confirm с именами и счётчиками.
 
 ## Состояние origin/main
 
-Ветка `main`. Код этого витка — `b417abd`; поверх идёт коммит обновления `HANDOFF.md`. Предыдущая веха — `527a00a`/`52b1cca` (редактор траты). `.env` в gitignore. Перед следующим витком — `git pull`.
+Ветка `main`. Код этого витка — `c1f6cca`; поверх идёт коммит обновления `HANDOFF.md`. Предыдущая веха — `527a6d8`/`b417abd` (управление категориями). `.env` в gitignore. Перед следующим витком — `git pull`.
 
 ## Следующий шаг
 
-**i18n экрана управления местами (5b)** отдельным промптом по `WORKFLOW-DUAL-AI.md` §4. Переиспользовать уже локализованные общие ключи и MerchantPicker, не дублировать копию. Дальше: авторизация, затем строки ошибок в `lib/`. Потом можно менять трек (валютный бэкенд / тема / экспорт).
+**i18n auth-экранов** (sign-in / sign-up) отдельным промптом по `WORKFLOW-DUAL-AI.md` §4; затем отдельно пройти **user-facing строки ошибок в `lib/`** (`authErrors`, `db`, `fx`, `receipts` и родственные модули). После этого поэкранный i18n закрыт.
 
 ## Открытые решения и риски
 
