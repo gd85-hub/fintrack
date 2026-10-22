@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   deleteExpense,
   getExpense,
@@ -54,15 +55,13 @@ type ExpenseFormProps = {
   initialMerchants: Merchant[];
 };
 
-const RATE_ERROR =
-  'Не удалось загрузить курсы валют. Проверьте интернет и попробуйте ещё раз.';
-
 function ExpenseForm({
   initialExpense,
   categories,
   initialMerchants,
 }: ExpenseFormProps) {
   const router = useRouter();
+  const { locale, t } = useLanguage();
   const [amount, setAmount] = useState(
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
   );
@@ -156,7 +155,7 @@ function ExpenseForm({
           if (active) {
             console.error('Unable to build conversion preview:', error);
             setPreview(null);
-            setRateError(RATE_ERROR);
+            setRateError(t('editor.ratesLoadFailed'));
           }
         })
         .finally(() => {
@@ -175,6 +174,7 @@ function ExpenseForm({
     date,
     parsedAmount,
     retryKey,
+    t,
     validAmount,
     validDate,
   ]);
@@ -196,24 +196,22 @@ function ExpenseForm({
 
   async function handleSave() {
     if (!validAmount || parsedAmount === null) {
-      setFormError('Введите сумму больше нуля.');
+      setFormError(t('editor.amountAboveZeroError'));
       return;
     }
 
     if (!categoryId) {
-      setFormError('Выберите категорию.');
+      setFormError(t('editor.selectCategoryError'));
       return;
     }
 
     if (hasInvalidManualRsd) {
-      setFormError(
-        'Введите корректную сумму в RSD или оставьте поле пустым.',
-      );
+      setFormError(t('editor.validRsdOrEmpty'));
       return;
     }
 
     if (!validDate) {
-      setFormError('Выберите корректную дату.');
+      setFormError(t('editor.validDateError'));
       return;
     }
 
@@ -242,8 +240,8 @@ function ExpenseForm({
       console.error('Unable to save expense:', error);
       setFormError(
         error instanceof RateUnavailableError
-          ? RATE_ERROR
-          : 'Не удалось сохранить трату. Попробуйте ещё раз.',
+          ? t('editor.ratesLoadFailed')
+          : t('editor.saveFailed'),
       );
       setSaving(false);
     }
@@ -265,7 +263,7 @@ function ExpenseForm({
       console.error('Unable to delete expense:', error);
       setDeleteVisible(false);
       setDeleting(false);
-      setFormError('Не удалось удалить трату. Попробуйте ещё раз.');
+      setFormError(t('editor.deleteFailed'));
     }
   }
 
@@ -273,7 +271,7 @@ function ExpenseForm({
     <KeyboardAvoidingView style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -284,7 +282,7 @@ function ExpenseForm({
           <Text style={styles.headerButtonText}>‹</Text>
         </Pressable>
         <Text style={styles.title}>
-          {initialExpense ? 'Редактировать трату' : 'Новая трата'}
+          {initialExpense ? t('editor.editTitle') : t('editor.newTitle')}
         </Text>
         <View style={styles.headerButton} />
       </View>
@@ -294,7 +292,7 @@ function ExpenseForm({
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.amountField}>
-          <Text style={styles.label}>Сумма</Text>
+          <Text style={styles.label}>{t('common.amount')}</Text>
           <TextInput
             autoFocus={!initialExpense}
             inputMode="decimal"
@@ -309,10 +307,10 @@ function ExpenseForm({
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Валюта</Text>
+          <Text style={styles.label}>{t('common.currency')}</Text>
           <ReceiptCurrencySelector
             disabled={saving}
-            label="Валюта траты"
+            label={t('editor.currencyLabel')}
             onChange={handleCurrencyChange}
             value={currency}
           />
@@ -320,10 +318,10 @@ function ExpenseForm({
 
         {!automaticCurrency ? (
           <View style={styles.field}>
-            <Text style={styles.label}>Сумма в RSD (вручную)</Text>
+            <Text style={styles.label}>{t('editor.manualRsdLabel')}</Text>
             <View style={styles.manualAmountRow}>
               <TextInput
-                accessibilityLabel="Сумма в RSD вручную"
+                accessibilityLabel={t('editor.manualRsdA11y')}
                 editable={!saving}
                 inputMode="decimal"
                 maxLength={20}
@@ -339,12 +337,10 @@ function ExpenseForm({
               />
               <Text style={styles.manualCurrency}>RSD</Text>
             </View>
-            <Text style={styles.helperText}>
-              Оставьте пустым, если эквивалент пока неизвестен.
-            </Text>
+            <Text style={styles.helperText}>{t('editor.manualRsdHint')}</Text>
             {hasInvalidManualRsd ? (
               <Text accessibilityRole="alert" style={styles.errorText}>
-                Введите сумму больше нуля
+                {t('review.amountAboveZero')}
               </Text>
             ) : null}
           </View>
@@ -364,7 +360,7 @@ function ExpenseForm({
         />
 
         <View style={styles.field}>
-          <Text style={styles.label}>Дата</Text>
+          <Text style={styles.label}>{t('common.date')}</Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => setDatePickerVisible(true)}
@@ -374,18 +370,18 @@ function ExpenseForm({
             ]}
           >
             <Text style={styles.selectorText}>
-              {formatLongDate(date)}
+              {formatLongDate(date, locale)}
             </Text>
             <Text style={styles.selectorChevron}>›</Text>
           </Pressable>
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Описание</Text>
+          <Text style={styles.label}>{t('common.description')}</Text>
           <TextInput
             maxLength={120}
             onChangeText={setDescription}
-            placeholder="Например, ужин"
+            placeholder={t('editor.descriptionPlaceholder')}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
             value={description}
@@ -393,12 +389,12 @@ function ExpenseForm({
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Заметка</Text>
+          <Text style={styles.label}>{t('editor.note')}</Text>
           <TextInput
             maxLength={500}
             multiline
             onChangeText={setNote}
-            placeholder="Необязательно"
+            placeholder={t('common.optional')}
             placeholderTextColor={theme.colors.textMuted}
             style={[styles.input, styles.multilineInput]}
             textAlignVertical="top"
@@ -407,7 +403,7 @@ function ExpenseForm({
         </View>
 
         {previewLoading ? (
-          <Text style={styles.previewMuted}>Загружаем курсы…</Text>
+          <Text style={styles.previewMuted}>{t('editor.loadingRates')}</Text>
         ) : null}
 
         {preview ? (
@@ -424,7 +420,7 @@ function ExpenseForm({
               accessibilityRole="button"
               onPress={() => setRetryKey((current) => current + 1)}
             >
-              <Text style={styles.retryText}>Повторить</Text>
+              <Text style={styles.retryText}>{t('home.retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -443,7 +439,7 @@ function ExpenseForm({
           ]}
         >
           <Text style={styles.saveButtonText}>
-            {saving ? 'Сохранение…' : 'Сохранить'}
+            {saving ? t('common.saving') : t('common.save')}
           </Text>
         </Pressable>
 
@@ -456,7 +452,7 @@ function ExpenseForm({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.deleteButtonText}>Удалить</Text>
+            <Text style={styles.deleteButtonText}>{t('common.delete')}</Text>
           </Pressable>
         ) : null}
       </ScrollView>
@@ -472,7 +468,7 @@ function ExpenseForm({
         confirming={deleting}
         onCancel={() => setDeleteVisible(false)}
         onConfirm={() => void handleDelete()}
-        title="Удалить эту трату?"
+        title={t('editor.deleteConfirmTitle')}
         visible={deleteVisible}
       />
     </KeyboardAvoidingView>
@@ -483,6 +479,7 @@ export function ExpenseEditorScreen({
   expenseId,
 }: ExpenseEditorScreenProps) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -508,7 +505,7 @@ export function ExpenseEditorScreen({
           }
 
           if (expenseId && !loadedExpense) {
-            setErrorMessage('Трата не найдена.');
+            setErrorMessage(t('editor.notFound'));
             return;
           }
 
@@ -520,7 +517,7 @@ export function ExpenseEditorScreen({
       .catch((error: unknown) => {
         console.error('Unable to load expense editor:', error);
         if (active) {
-          setErrorMessage('Не удалось загрузить данные. Попробуйте ещё раз.');
+          setErrorMessage(t('editor.loadFailed'));
         }
       })
       .finally(() => {
@@ -532,7 +529,7 @@ export function ExpenseEditorScreen({
     return () => {
       active = false;
     };
-  }, [expenseId]);
+  }, [expenseId, t]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -550,7 +547,7 @@ export function ExpenseEditorScreen({
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.secondaryActionText}>Назад</Text>
+          <Text style={styles.secondaryActionText}>{t('common.back')}</Text>
         </Pressable>
       </View>
     );
