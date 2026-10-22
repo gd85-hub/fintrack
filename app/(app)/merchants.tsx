@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   deleteMerchant,
   listMerchantsForManagement,
@@ -36,6 +37,7 @@ type PendingAction =
 
 export default function MerchantsScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [merchants, setMerchants] = useState<ManagedMerchant[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -69,9 +71,7 @@ export default function MerchantsScreen() {
         .catch((error: unknown) => {
           console.error('Unable to load merchants:', error);
           if (active) {
-            setErrorMessage(
-              'Не удалось загрузить места. Попробуйте ещё раз.',
-            );
+            setErrorMessage(t('merchant.loadFailed'));
           }
         })
         .finally(() => {
@@ -83,7 +83,7 @@ export default function MerchantsScreen() {
       return () => {
         active = false;
       };
-    }, [refreshKey]),
+    }, [refreshKey, t]),
   );
 
   const displayedMerchants = useMemo(
@@ -160,7 +160,7 @@ export default function MerchantsScreen() {
   async function handleRename(merchant: ManagedMerchant) {
     const trimmedName = renameValue.trim();
     if (!trimmedName) {
-      setRenameError('Укажите название места.');
+      setRenameError(t('merchant.nameRequired'));
       return;
     }
     const collision = findMerchantRenameCollision(
@@ -170,9 +170,7 @@ export default function MerchantsScreen() {
     );
     if (collision) {
       setRenameCollision(collision);
-      setRenameError(
-        `Место «${collision.name}» уже существует. Объедините записи вместо переименования.`,
-      );
+      setRenameError(t('merchant.existsRename', { name: collision.name }));
       return;
     }
 
@@ -187,7 +185,7 @@ export default function MerchantsScreen() {
         );
         setRenameCollision(existing ?? null);
         setRenameError(
-          `Место «${result.merchantName}» уже существует. Объедините записи вместо переименования.`,
+          t('merchant.existsRename', { name: result.merchantName }),
         );
         return;
       }
@@ -195,9 +193,7 @@ export default function MerchantsScreen() {
       refresh();
     } catch (error: unknown) {
       console.error('Unable to rename merchant:', error);
-      setRenameError(
-        'Не удалось переименовать место. Попробуйте ещё раз.',
-      );
+      setRenameError(t('merchant.renameFailed'));
     } finally {
       setSaving(false);
     }
@@ -239,8 +235,8 @@ export default function MerchantsScreen() {
       setPendingAction(null);
       setErrorMessage(
         pendingAction.kind === 'merge'
-          ? 'Не удалось объединить места. Изменения отменены; попробуйте ещё раз.'
-          : 'Не удалось удалить место. Попробуйте ещё раз.',
+          ? t('merchant.mergeFailed')
+          : t('merchant.deleteFailed'),
       );
     } finally {
       setSaving(false);
@@ -249,18 +245,26 @@ export default function MerchantsScreen() {
 
   const confirmationTitle =
     pendingAction?.kind === 'merge'
-      ? `Объединить выбранные места с «${pendingAction.target.name}»? Будет перенесено трат: ${pendingAction.expenseCount}. Дубликаты будут удалены.`
+      ? t('merchant.confirmMerge', {
+          count: pendingAction.expenseCount,
+          target: pendingAction.target.name,
+        })
       : pendingAction?.kind === 'delete'
         ? pendingAction.merchant.usageCount > 0
-          ? `Удалить «${pendingAction.merchant.name}»? Связанные траты (${pendingAction.merchant.usageCount}) останутся без места; чеки и подписки также будут отвязаны. Для дубликата безопаснее выбрать «Объединить».`
-          : `Удалить «${pendingAction.merchant.name}»? Связанных трат нет; чеки и подписки также будут отвязаны.`
+          ? t('merchant.confirmDeleteWithUsage', {
+              count: pendingAction.merchant.usageCount,
+              name: pendingAction.merchant.name,
+            })
+          : t('merchant.confirmDeleteEmpty', {
+              name: pendingAction.merchant.name,
+            })
         : '';
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -270,7 +274,7 @@ export default function MerchantsScreen() {
         >
           <Text style={styles.backText}>‹</Text>
         </Pressable>
-        <Text style={styles.title}>Управление местами</Text>
+        <Text style={styles.title}>{t('merchant.title')}</Text>
         <View style={styles.headerButton} />
       </View>
 
@@ -279,11 +283,11 @@ export default function MerchantsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <TextInput
-          accessibilityLabel="Поиск места"
+          accessibilityLabel={t('merchant.searchA11y')}
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={setQuery}
-          placeholder="Поиск места…"
+          placeholder={t('merchant.searchPlaceholder')}
           placeholderTextColor={theme.colors.textMuted}
           returnKeyType="search"
           style={styles.searchInput}
@@ -298,7 +302,7 @@ export default function MerchantsScreen() {
               onPress={refresh}
               style={({ pressed }) => pressed && styles.pressed}
             >
-              <Text style={styles.retryText}>Повторить</Text>
+              <Text style={styles.retryText}>{t('home.retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -308,12 +312,9 @@ export default function MerchantsScreen() {
         ) : errorMessage && merchants.length === 0 ? null : mergeTarget ? (
           <View style={styles.mergePanel}>
             <Text style={styles.sectionTitle}>
-              Объединить с «{mergeTarget.name}»
+              {t('merchant.mergeWith', { name: mergeTarget.name })}
             </Text>
-            <Text style={styles.hintText}>
-              Выберите один или несколько дубликатов. Все связанные
-              траты, чеки и подписки перейдут к целевому месту.
-            </Text>
+            <Text style={styles.hintText}>{t('merchant.mergeHint')}</Text>
 
             <View style={styles.mergeList}>
               {mergeCandidates.map((merchant) => {
@@ -340,7 +341,9 @@ export default function MerchantsScreen() {
                         {merchant.name}
                       </Text>
                       <Text style={styles.merchantMeta}>
-                        Трат: {merchant.usageCount}
+                        {t('merchant.usage', {
+                          count: merchant.usageCount,
+                        })}
                       </Text>
                     </View>
                   </Pressable>
@@ -349,12 +352,16 @@ export default function MerchantsScreen() {
             </View>
 
             {query.trim() && mergeCandidates.length === 0 ? (
-              <Text style={styles.emptyText}>Ничего не найдено</Text>
+              <Text style={styles.emptyText}>
+                {t('common.nothingFound')}
+              </Text>
             ) : null}
 
             <Text style={styles.mergeSummary}>
-              Выбрано мест: {mergeSourceIds.size} · Будет перенесено трат:{' '}
-              {selectedMergeExpenseCount}
+              {t('merchant.mergeSummary', {
+                moved: selectedMergeExpenseCount,
+                selected: mergeSourceIds.size,
+              })}
             </Text>
             <View style={styles.formActions}>
               <Pressable
@@ -366,7 +373,9 @@ export default function MerchantsScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.secondaryButtonText}>Отмена</Text>
+                <Text style={styles.secondaryButtonText}>
+                  {t('common.cancel')}
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -378,7 +387,9 @@ export default function MerchantsScreen() {
                     styles.disabled,
                 ]}
               >
-                <Text style={styles.primaryButtonText}>Продолжить</Text>
+                <Text style={styles.primaryButtonText}>
+                  {t('common.continue')}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -388,7 +399,9 @@ export default function MerchantsScreen() {
               <View key={merchant.id} style={styles.merchantCard}>
                 {editingId === merchant.id ? (
                   <View style={styles.renameForm}>
-                    <Text style={styles.sectionTitle}>Переименовать</Text>
+                    <Text style={styles.sectionTitle}>
+                      {t('merchant.rename')}
+                    </Text>
                     <TextInput
                       autoCapitalize="sentences"
                       autoFocus
@@ -398,7 +411,7 @@ export default function MerchantsScreen() {
                         setRenameError('');
                         setRenameCollision(null);
                       }}
-                      placeholder="Название места"
+                      placeholder={t('merchant.namePlaceholder')}
                       placeholderTextColor={theme.colors.textMuted}
                       style={styles.renameInput}
                       value={renameValue}
@@ -419,7 +432,9 @@ export default function MerchantsScreen() {
                         ]}
                       >
                         <Text style={styles.mergeSuggestionText}>
-                          Объединить с «{renameCollision.name}»
+                          {t('merchant.mergeWith', {
+                            name: renameCollision.name,
+                          })}
                         </Text>
                       </Pressable>
                     ) : null}
@@ -434,7 +449,7 @@ export default function MerchantsScreen() {
                         ]}
                       >
                         <Text style={styles.secondaryButtonText}>
-                          Отмена
+                          {t('common.cancel')}
                         </Text>
                       </Pressable>
                       <Pressable
@@ -447,7 +462,7 @@ export default function MerchantsScreen() {
                         ]}
                       >
                         <Text style={styles.primaryButtonText}>
-                          {saving ? 'Сохранение…' : 'Сохранить'}
+                          {saving ? t('common.saving') : t('common.save')}
                         </Text>
                       </Pressable>
                     </View>
@@ -459,7 +474,9 @@ export default function MerchantsScreen() {
                         {merchant.name}
                       </Text>
                       <Text style={styles.merchantMeta}>
-                        Трат: {merchant.usageCount}
+                        {t('merchant.usage', {
+                          count: merchant.usageCount,
+                        })}
                       </Text>
                     </View>
                     <View style={styles.cardActions}>
@@ -469,7 +486,7 @@ export default function MerchantsScreen() {
                         style={({ pressed }) => pressed && styles.pressed}
                       >
                         <Text style={styles.actionText}>
-                          Переименовать
+                          {t('merchant.rename')}
                         </Text>
                       </Pressable>
                       <Pressable
@@ -477,7 +494,9 @@ export default function MerchantsScreen() {
                         onPress={() => startMerge(merchant.id)}
                         style={({ pressed }) => pressed && styles.pressed}
                       >
-                        <Text style={styles.actionText}>Объединить</Text>
+                        <Text style={styles.actionText}>
+                          {t('merchant.merge')}
+                        </Text>
                       </Pressable>
                       <Pressable
                         accessibilityRole="button"
@@ -486,7 +505,9 @@ export default function MerchantsScreen() {
                         }
                         style={({ pressed }) => pressed && styles.pressed}
                       >
-                        <Text style={styles.deleteText}>Удалить</Text>
+                        <Text style={styles.deleteText}>
+                          {t('common.delete')}
+                        </Text>
                       </Pressable>
                     </View>
                   </>
@@ -496,7 +517,9 @@ export default function MerchantsScreen() {
 
             {displayedMerchants.length === 0 ? (
               <Text style={styles.emptyText}>
-                {query.trim() ? 'Ничего не найдено' : 'Мест пока нет'}
+                {query.trim()
+                  ? t('common.nothingFound')
+                  : t('merchant.empty')}
               </Text>
             ) : null}
           </View>
@@ -505,13 +528,15 @@ export default function MerchantsScreen() {
 
       <ConfirmDialog
         confirmLabel={
-          pendingAction?.kind === 'merge' ? 'Объединить' : 'Удалить'
+          pendingAction?.kind === 'merge'
+            ? t('merchant.merge')
+            : t('common.delete')
         }
         confirming={saving}
         confirmingLabel={
           pendingAction?.kind === 'merge'
-            ? 'Объединение…'
-            : 'Удаление…'
+            ? t('merchant.merging')
+            : t('common.deleting')
         }
         onCancel={() => {
           if (!saving) {

@@ -203,6 +203,31 @@ export const en = {
     searchA11y: 'Search places',
     searchPlaceholder: 'Search places…',
     addPlace: '+ Add place',
+    title: 'Manage places',
+    loadFailed: "Couldn't load places. Try again.",
+    existsRename:
+      'A place named "{{name}}" already exists. Merge the records instead of renaming.',
+    renameFailed: "Couldn't rename the place. Try again.",
+    mergeFailed:
+      "Couldn't merge the places. Changes were rolled back; try again.",
+    deleteFailed: "Couldn't delete the place. Try again.",
+    confirmMerge:
+      'Merge the selected places into "{{target}}"? {{count}} expenses will be moved. Duplicates will be deleted.',
+    confirmDeleteWithUsage:
+      'Delete "{{name}}"? Its {{count}} linked expenses will be left without a place; receipts and subscriptions will be unlinked too. For a duplicate, Merge is safer.',
+    confirmDeleteEmpty:
+      'Delete "{{name}}"? It has no linked expenses; receipts and subscriptions will be unlinked too.',
+    mergeWith: 'Merge into "{{name}}"',
+    mergeHint:
+      'Pick one or more duplicates. All their linked expenses, receipts, and subscriptions move to the target place.',
+    usage: 'Expenses: {{count}}',
+    mergeSummary:
+      'Selected: {{selected}} · Expenses to move: {{moved}}',
+    rename: 'Rename',
+    namePlaceholder: 'Place name',
+    merge: 'Merge',
+    merging: 'Merging…',
+    empty: 'No places yet',
   },
   currency: {
     receiptLabel: 'Receipt currency',
