@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   commonCurrencies,
   normalizeCurrencyCode,
@@ -27,10 +28,12 @@ function isCommonCurrency(value: string) {
 
 export function ReceiptCurrencySelector({
   disabled = false,
-  label = 'Валюта чека',
+  label,
   onChange,
   value,
 }: ReceiptCurrencySelectorProps) {
+  const { t } = useLanguage();
+  const resolvedLabel = label ?? t('currency.receiptLabel');
   const [visible, setVisible] = useState(false);
   const [customInput, setCustomInput] = useState('');
   const customCurrency = normalizeCurrencyCode(customInput);
@@ -48,7 +51,7 @@ export function ReceiptCurrencySelector({
   return (
     <>
       <Pressable
-        accessibilityLabel={label}
+        accessibilityLabel={resolvedLabel}
         accessibilityRole="button"
         disabled={disabled}
         onPress={open}
@@ -71,12 +74,12 @@ export function ReceiptCurrencySelector({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.header}>
-              <Text style={styles.title}>{label}</Text>
+              <Text style={styles.title}>{resolvedLabel}</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setVisible(false)}
               >
-                <Text style={styles.close}>Закрыть</Text>
+                <Text style={styles.close}>{t('common.close')}</Text>
               </Pressable>
             </View>
 
@@ -102,9 +105,9 @@ export function ReceiptCurrencySelector({
             </View>
 
             <View style={styles.customSection}>
-              <Text style={styles.label}>Другая</Text>
+              <Text style={styles.label}>{t('currency.other')}</Text>
               <TextInput
-                accessibilityLabel="Трёхбуквенный код валюты"
+                accessibilityLabel={t('currency.codeA11y')}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 maxLength={3}
@@ -132,7 +135,7 @@ export function ReceiptCurrencySelector({
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.applyButtonText}>Выбрать</Text>
+                <Text style={styles.applyButtonText}>{t('common.select')}</Text>
               </Pressable>
             </View>
           </View>

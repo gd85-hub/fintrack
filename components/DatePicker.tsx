@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   formatMonthTitle,
   monthBounds,
@@ -24,7 +25,8 @@ type DatePickerProps = {
   onClose: () => void;
 };
 
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+const WEEKDAYS_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+const WEEKDAYS_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 function buildCalendar(month: string): Array<number | null> {
   const { first, last } = monthBounds(month);
@@ -57,9 +59,11 @@ export function DatePicker({
   onChange,
   onClose,
 }: DatePickerProps) {
+  const { t, locale } = useLanguage();
   const [visibleMonth, setVisibleMonth] = useState(value.slice(0, 7));
   const today = todayLocalISO();
   const days = useMemo(() => buildCalendar(visibleMonth), [visibleMonth]);
+  const weekdays = locale === 'en' ? WEEKDAYS_EN : WEEKDAYS_RU;
 
   useEffect(() => {
     if (visible) {
@@ -83,7 +87,7 @@ export function DatePicker({
         <View style={styles.modal}>
           <View style={styles.header}>
             <Pressable
-              accessibilityLabel="Предыдущий месяц"
+              accessibilityLabel={t('date.prevMonth')}
               accessibilityRole="button"
               onPress={() =>
                 setVisibleMonth((month) => shiftMonth(month, -1))
@@ -96,10 +100,10 @@ export function DatePicker({
               <Text style={styles.navigationText}>‹</Text>
             </Pressable>
             <Text style={styles.title}>
-              {formatMonthTitle(visibleMonth)}
+              {formatMonthTitle(visibleMonth, locale)}
             </Text>
             <Pressable
-              accessibilityLabel="Следующий месяц"
+              accessibilityLabel={t('date.nextMonth')}
               accessibilityRole="button"
               onPress={() =>
                 setVisibleMonth((month) => shiftMonth(month, 1))
@@ -114,7 +118,7 @@ export function DatePicker({
           </View>
 
           <View style={styles.week}>
-            {WEEKDAYS.map((weekday) => (
+            {weekdays.map((weekday) => (
               <View key={weekday} style={styles.dayColumn}>
                 <Text style={styles.weekday}>{weekday}</Text>
               </View>
@@ -167,7 +171,7 @@ export function DatePicker({
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.quickActionText}>Вчера</Text>
+              <Text style={styles.quickActionText}>{t('date.yesterday')}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -177,7 +181,7 @@ export function DatePicker({
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.quickActionText}>Сегодня</Text>
+              <Text style={styles.quickActionText}>{t('date.today')}</Text>
             </Pressable>
           </View>
 
@@ -189,7 +193,7 @@ export function DatePicker({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.closeText}>Закрыть</Text>
+            <Text style={styles.closeText}>{t('common.close')}</Text>
           </Pressable>
         </View>
       </View>

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   createMerchant,
   type Merchant,
@@ -31,6 +32,7 @@ export function MerchantPicker({
   onChange,
   onCreated,
 }: MerchantPickerProps) {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -58,7 +60,7 @@ export function MerchantPicker({
   async function handleCreate() {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setErrorMessage('Укажите название места.');
+      setErrorMessage(t('merchant.nameRequired'));
       return;
     }
 
@@ -73,9 +75,7 @@ export function MerchantPicker({
       close();
     } catch (error: unknown) {
       console.error('Unable to create merchant:', error);
-      setErrorMessage(
-        'Не удалось добавить место. Возможно, оно уже существует.',
-      );
+      setErrorMessage(t('merchant.addFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -84,7 +84,7 @@ export function MerchantPicker({
   return (
     <>
       <View style={styles.field}>
-        <Text style={styles.label}>Место</Text>
+        <Text style={styles.label}>{t('common.place')}</Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => setVisible(true)}
@@ -94,7 +94,7 @@ export function MerchantPicker({
           ]}
         >
           <Text style={selected ? styles.value : styles.placeholder}>
-            {selected?.name ?? 'Не указано'}
+            {selected?.name ?? t('common.notSet')}
           </Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
@@ -109,20 +109,20 @@ export function MerchantPicker({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Место</Text>
+              <Text style={styles.modalTitle}>{t('common.place')}</Text>
               <Pressable accessibilityRole="button" onPress={close}>
-                <Text style={styles.close}>Закрыть</Text>
+                <Text style={styles.close}>{t('common.close')}</Text>
               </Pressable>
             </View>
 
             {!adding ? (
               <TextInput
-                accessibilityLabel="Поиск места"
+                accessibilityLabel={t('merchant.searchA11y')}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
                 onChangeText={setQuery}
-                placeholder="Поиск места…"
+                placeholder={t('merchant.searchPlaceholder')}
                 placeholderTextColor={theme.colors.textMuted}
                 returnKeyType="search"
                 style={styles.searchInput}
@@ -140,7 +140,7 @@ export function MerchantPicker({
                     autoCapitalize="sentences"
                     maxLength={80}
                     onChangeText={setName}
-                    placeholder="Название"
+                    placeholder={t('common.name')}
                     placeholderTextColor={theme.colors.textMuted}
                     style={styles.input}
                     value={name}
@@ -163,7 +163,9 @@ export function MerchantPicker({
                         pressed && styles.pressed,
                       ]}
                     >
-                      <Text style={styles.secondaryButtonText}>Отмена</Text>
+                      <Text style={styles.secondaryButtonText}>
+                        {t('common.cancel')}
+                      </Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
@@ -175,7 +177,7 @@ export function MerchantPicker({
                       ]}
                     >
                       <Text style={styles.primaryButtonText}>
-                        {submitting ? 'Добавление…' : 'Добавить'}
+                        {submitting ? t('common.adding') : t('common.add')}
                       </Text>
                     </Pressable>
                   </View>
@@ -191,7 +193,7 @@ export function MerchantPicker({
                       pressed && styles.pressed,
                     ]}
                   >
-                    <Text style={styles.rowText}>Не указано</Text>
+                    <Text style={styles.rowText}>{t('common.notSet')}</Text>
                   </Pressable>
 
                   {displayedMerchants.map((merchant) => (
@@ -213,7 +215,9 @@ export function MerchantPicker({
                   ))}
 
                   {query.trim() && displayedMerchants.length === 0 ? (
-                    <Text style={styles.emptyHint}>Ничего не найдено</Text>
+                    <Text style={styles.emptyHint}>
+                      {t('common.nothingFound')}
+                    </Text>
                   ) : null}
 
                   {allowCreate ? (
@@ -226,7 +230,7 @@ export function MerchantPicker({
                       ]}
                     >
                       <Text style={styles.addRowText}>
-                        + Добавить место
+                        {t('merchant.addPlace')}
                       </Text>
                     </Pressable>
                   ) : null}

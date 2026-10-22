@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import type { Category } from '../lib/db';
 import { theme } from '../lib/theme';
 
@@ -20,10 +21,12 @@ type CategoryPickerProps = {
 
 export function CategoryPicker({
   categories,
-  label = 'Категория',
+  label,
   value,
   onChange,
 }: CategoryPickerProps) {
+  const { t } = useLanguage();
+  const resolvedLabel = label ?? t('common.category');
   const [visible, setVisible] = useState(false);
   const selected = categories.find((category) => category.id === value);
   const groupedCategories = useMemo(() => {
@@ -46,7 +49,7 @@ export function CategoryPicker({
   return (
     <>
       <View style={styles.field}>
-        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.label}>{resolvedLabel}</Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => setVisible(true)}
@@ -58,7 +61,7 @@ export function CategoryPicker({
           <Text style={selected ? styles.value : styles.placeholder}>
             {selected
               ? `${selected.emoji} ${selected.name}`
-              : 'Выберите категорию'}
+              : t('common.selectCategory')}
           </Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
@@ -73,12 +76,12 @@ export function CategoryPicker({
         <View style={styles.overlay}>
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{label}</Text>
+              <Text style={styles.modalTitle}>{resolvedLabel}</Text>
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setVisible(false)}
               >
-                <Text style={styles.close}>Закрыть</Text>
+                <Text style={styles.close}>{t('common.close')}</Text>
               </Pressable>
             </View>
 
