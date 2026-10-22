@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { localizeCategoryName, localizeGroup } from '../lib/catalog';
 import type { Category } from '../lib/db';
 import { theme } from '../lib/theme';
 
@@ -60,7 +61,7 @@ export function CategoryPicker({
         >
           <Text style={selected ? styles.value : styles.placeholder}>
             {selected
-              ? `${selected.emoji} ${selected.name}`
+              ? `${selected.emoji} ${localizeCategoryName(selected.name, t)}`
               : t('common.selectCategory')}
           </Text>
           <Text style={styles.chevron}>›</Text>
@@ -91,7 +92,9 @@ export function CategoryPicker({
             >
               {groupedCategories.map(([group, groupCategories]) => (
                 <View key={group} style={styles.group}>
-                  <Text style={styles.groupTitle}>{group}</Text>
+                  <Text style={styles.groupTitle}>
+                    {localizeGroup(group, t)}
+                  </Text>
                   {groupCategories.map((category) => {
                     const isSelected = category.id === value;
                     return (
@@ -107,7 +110,9 @@ export function CategoryPicker({
                         ]}
                       >
                         <Text style={styles.emoji}>{category.emoji}</Text>
-                        <Text style={styles.rowText}>{category.name}</Text>
+                        <Text style={styles.rowText}>
+                          {localizeCategoryName(category.name, t)}
+                        </Text>
                       </Pressable>
                     );
                   })}

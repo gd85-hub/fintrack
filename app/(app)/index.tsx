@@ -37,6 +37,7 @@ import {
   decideHomeRowPresentation,
   resolveHomeRowHeader,
 } from '../../lib/homeRowPresentation';
+import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme } from '../../lib/theme';
 
@@ -337,7 +338,7 @@ function PurchaseRow({
               >
                 <ExpenseMiniRow
                   amountCents={itemAmount.amountCents}
-                  categoryLabel={`${expense.categoryEmoji} ${expense.categoryName}`.trim()}
+                  categoryLabel={`${expense.categoryEmoji} ${localizeCategoryName(expense.categoryName, t)}`.trim()}
                   currency={itemAmount.currency}
                   date={expense.occurredOn}
                   description={displayName}

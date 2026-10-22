@@ -14,6 +14,7 @@ import { CategoryPicker } from '../../components/CategoryPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { filterAndSortCategories } from '../../lib/categoryManagement';
+import { localizeCategoryName, localizeGroup } from '../../lib/catalog';
 import {
   createCategory,
   deleteCategory,
@@ -603,12 +604,13 @@ export default function CategoriesScreen() {
                       </View>
                       <View style={styles.categoryCopy}>
                         <Text style={styles.categoryName}>
-                          {category.emoji} {category.name}
+                          {category.emoji}{' '}
+                          {localizeCategoryName(category.name, t)}
                         </Text>
                         <Text style={styles.categoryMeta}>
                           {t('cat.groupUsage', {
                             count: category.usageCount,
-                            group: category.group,
+                            group: localizeGroup(category.group, t),
                           })}
                         </Text>
                       </View>
@@ -666,11 +668,13 @@ export default function CategoriesScreen() {
                 <View style={styles.cardHeader}>
                   <Text style={styles.categoryEmoji}>{category.emoji}</Text>
                   <View style={styles.categoryCopy}>
-                    <Text style={styles.categoryName}>{category.name}</Text>
+                    <Text style={styles.categoryName}>
+                      {localizeCategoryName(category.name, t)}
+                    </Text>
                     <Text style={styles.categoryMeta}>
                       {t('cat.groupTypeUsage', {
                         count: category.usageCount,
-                        group: category.group,
+                        group: localizeGroup(category.group, t),
                         type: typeLabel(category.type),
                       })}
                     </Text>

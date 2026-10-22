@@ -39,6 +39,7 @@ import {
   shiftMonth,
   todayLocalISO,
 } from '../../lib/dates';
+import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme } from '../../lib/theme';
 
@@ -192,7 +193,8 @@ function ExpenseDetails({
           currency={currency}
           date={expense.occurredOn}
           description={
-            expense.description.trim() || expense.categoryName
+            expense.description.trim() ||
+            localizeCategoryName(expense.categoryName, t)
           }
           key={expense.id}
           merchantName={expense.merchantName}
@@ -576,7 +578,7 @@ export default function AnalyticsScreen() {
                       >
                         <Pressable
                           accessibilityLabel={t('analytics.sliceA11y', {
-                            name: category.name,
+                            name: localizeCategoryName(category.name, t),
                             amount: formatMoney(amount),
                             currency: displayCurrency,
                             share: formatShare(share),
@@ -604,7 +606,7 @@ export default function AnalyticsScreen() {
                               numberOfLines={1}
                               style={styles.categoryName}
                             >
-                              {category.name}
+                              {localizeCategoryName(category.name, t)}
                             </Text>
                             <Text style={styles.categoryMeta}>
                               {t('analytics.shareOps', {
@@ -846,7 +848,7 @@ export default function AnalyticsScreen() {
                                       numberOfLines={1}
                                       style={styles.merchantName}
                                     >
-                                      {category.name}
+                                      {localizeCategoryName(category.name, t)}
                                     </Text>
                                     <Text style={styles.merchantMeta}>
                                       {t('analytics.operations', {
