@@ -5,19 +5,22 @@ _Обновлено: 2026-10-22 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-**Поэкранный i18n завершён** (в UI на English — ноль русских строк). Сейчас идёт раунд **фиксов перед деплоем**; этот виток — **FIX-1** (навигация «назад» из под-экранов Settings). Следующий шаг после фиксов — **деплой**.
+**Поэкранный i18n завершён** (в UI на English — ноль русских строк). Идёт раунд **фиксов перед деплоем** из `BUGS.md`; этот виток — **FIX-2** (локализация пропущенных поверхностей: BUG-3/4/5). Следующий шаг после фиксов — **деплой**.
 
 ## Только что сделано
 
-- Этот коммит — **FIX-1: back navigation from Settings sub-screens (BUG-1)**.
-  - `app/(app)/categories.tsx` и `app/(app)/merchants.tsx`: в стрелке «назад» `router.back()` → `router.replace('/(app)/settings')`. В таб-стеке `router.back()` падал на корень вкладки (Home), а оба экрана открываются из Settings.
-  - Тронуты только два back-обработчика; строки/логика/лейаут не менялись. Back на `scan.tsx`/`review.tsx` намеренно оставлен — он ведёт к receipt-флоу/Home и корректен.
-- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; `router.back()` в этих двух файлах не осталось.
-- **НЕ проверено:** ручной прогон на Web + Android (роль Глеба): Settings → Управление категориями → «назад» → Settings (не Home); то же для Управления местами; back на скане/ревью — как прежде.
+- Этот коммит — **FIX-2: localize missed components (BUG-3/4/5)**.
+  - `components/ReceiptImageInput.native.tsx` (BUG-3): кнопки камеры/галереи/файла и пять ошибок разрешений/сбоев — на `t()` (namespace `imagePicker`).
+  - `components/ReceiptImageInput.web.tsx` (BUG-3): заголовок, подсказка (drag-drop/Ctrl+V), «Выбрать файлы» и три ветки валидации — на `t()`; `t` добавлен в deps `handleFiles`.
+  - `components/ds/ListRow.tsx` (BUG-4): a11y-строка `'возврат или пополнение'` → `t('common.refundOrTopUp')` (хук в теле компонента, `accessibilityParts` строится в рендере).
+  - `app/(app)/reports.tsx` (BUG-5): заглушка была захардкожена **по-английски** → `nav.reports` + `reports.comingSoon*`.
+  - `lib/i18n/{ru,en}.ts`: namespace'ы `imagePicker` (14) и `reports` (2) + `common.refundOrTopUp`, паритет; переиспользован `nav.reports`.
+- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; паритет ключей ru/en (310/306, расхождения только plural); в четырёх файлах не осталось русских (и захардкоженных английских) литералов.
+- **НЕ проверено:** ручной прогон на Web + Android (роль Глеба): на EN — выбор фото (native camera/gallery-лист и web drag-drop/paste + ошибки валидации) и вкладка Reports читаются по-английски; обратно на RU. ListRow refund/top-up a11y — только через screen reader.
 
 ## Состояние origin/main
 
-Ветка `main`. Этот виток — один коммит (categories + merchants + `HANDOFF.md` + `CHANGELOG.md`) поверх `4675988`. `.env` в gitignore. Перед следующим витком — `git pull`.
+Ветка `main`. Этот виток — один коммит (4 файла + `HANDOFF.md` + `CHANGELOG.md`) поверх `de65390`. `.env` в gitignore. Перед следующим витком — `git pull`. В рабочем дереве у Глеба лежит untracked `BUGS.md` (список багов, источник FIX-серии) — его не коммитим.
 
 ## Следующий шаг
 

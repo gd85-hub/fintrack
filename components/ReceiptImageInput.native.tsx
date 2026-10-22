@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import type { ReceiptImageSource } from '../lib/receiptImage';
 import { maximumReceiptImages } from '../lib/receiptImage';
 import { theme } from '../lib/theme';
@@ -24,11 +25,12 @@ export function ReceiptImageInput({
   onError,
   onSelect,
 }: ReceiptImageInputProps) {
+  const { t } = useLanguage();
   const takePhoto = async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        onError('Разрешите доступ к камере, чтобы сфотографировать чек.');
+        onError(t('imagePicker.cameraPermission'));
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
@@ -39,7 +41,7 @@ export function ReceiptImageInput({
         await onSelect(assetSources(result.assets));
       }
     } catch {
-      onError('Не удалось открыть камеру. Попробуйте ещё раз.');
+      onError(t('imagePicker.cameraFailed'));
     }
   };
 
@@ -48,7 +50,7 @@ export function ReceiptImageInput({
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        onError('Разрешите доступ к галерее, чтобы выбрать чек.');
+        onError(t('imagePicker.galleryPermission'));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -62,7 +64,7 @@ export function ReceiptImageInput({
         await onSelect(assetSources(result.assets));
       }
     } catch {
-      onError('Не удалось открыть галерею. Попробуйте ещё раз.');
+      onError(t('imagePicker.galleryFailed'));
     }
   };
 
@@ -80,7 +82,7 @@ export function ReceiptImageInput({
         await onSelect(assetSources(result.assets));
       }
     } catch {
-      onError('Не удалось открыть выбор файлов. Попробуйте ещё раз.');
+      onError(t('imagePicker.filesFailed'));
     }
   };
 
@@ -95,7 +97,9 @@ export function ReceiptImageInput({
           (pressed || disabled) && styles.disabled,
         ]}
       >
-        <Text style={styles.primaryButtonText}>Сфотографировать</Text>
+        <Text style={styles.primaryButtonText}>
+          {t('imagePicker.takePhoto')}
+        </Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -106,7 +110,9 @@ export function ReceiptImageInput({
           (pressed || disabled) && styles.disabled,
         ]}
       >
-        <Text style={styles.secondaryButtonText}>Выбрать из галереи</Text>
+        <Text style={styles.secondaryButtonText}>
+          {t('imagePicker.pickGallery')}
+        </Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -117,7 +123,9 @@ export function ReceiptImageInput({
           (pressed || disabled) && styles.disabled,
         ]}
       >
-        <Text style={styles.secondaryButtonText}>Выбрать файл</Text>
+        <Text style={styles.secondaryButtonText}>
+          {t('imagePicker.chooseFile')}
+        </Text>
       </Pressable>
     </View>
   );

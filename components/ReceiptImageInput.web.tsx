@@ -8,6 +8,7 @@ import {
 import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import {
   maximumReceiptImages,
   type ReceiptImageSource,
@@ -73,6 +74,7 @@ export function ReceiptImageInput({
   onError,
   onSelect,
 }: ReceiptImageInputProps) {
+  const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
@@ -84,14 +86,14 @@ export function ReceiptImageInput({
       } catch (error: unknown) {
         onError(
           error instanceof Error && error.message === 'bad_count'
-            ? 'Выберите от одного до пяти изображений.'
+            ? t('imagePicker.tooMany')
             : error instanceof Error && error.message === 'bad_type'
-              ? 'Поддерживаются только изображения JPG и PNG.'
-              : 'Не удалось прочитать выбранное изображение.',
+              ? t('imagePicker.onlyJpgPng')
+              : t('imagePicker.readFailed'),
         );
       }
     },
-    [disabled, onError, onSelect],
+    [disabled, onError, onSelect, t],
   );
 
   useFocusEffect(
@@ -156,12 +158,9 @@ export function ReceiptImageInput({
         }}
         tabIndex={disabled ? -1 : 0}
       >
-        <Text style={styles.title}>Выберите фото или скриншоты</Text>
-        <Text style={styles.hint}>
-          До пяти файлов JPG или PNG. Можно перетащить сюда или вставить из
-          буфера (Ctrl+V).
-        </Text>
-        <Text style={styles.action}>Выбрать файлы</Text>
+        <Text style={styles.title}>{t('imagePicker.title')}</Text>
+        <Text style={styles.hint}>{t('imagePicker.hint')}</Text>
+        <Text style={styles.action}>{t('imagePicker.chooseFiles')}</Text>
       </div>
       <input
         accept="image/jpeg,image/png"

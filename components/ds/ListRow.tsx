@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useLanguage } from '../../contexts/LanguageContext';
 import { theme } from '../../lib/theme';
 
 // Fixed glyph size from the List Row DS master; no scale token exists.
@@ -37,13 +38,14 @@ export function ListRow({
   onPress,
   onLongPress,
 }: ListRowProps) {
+  const { t } = useLanguage();
   const [hovered, setHovered] = useState(false);
   const isException = kind === 'exception';
   const visibleIconEmoji = iconEmoji?.trim() ?? '';
   const accessibilityParts = [place.trim(), amount.trim()];
 
   if (isException) {
-    accessibilityParts.push('возврат или пополнение');
+    accessibilityParts.push(t('common.refundOrTopUp'));
   }
 
   const accessibilityLabel = accessibilityParts

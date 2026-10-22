@@ -2,21 +2,24 @@ import Feather from '@expo/vector-icons/Feather';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { theme } from '../../lib/theme';
 
 export default function ReportsScreen() {
+  const { t } = useLanguage();
+
   return (
     <View style={styles.screen}>
-      <ScreenHeader title="Reports" />
+      <ScreenHeader title={t('nav.reports')} />
       <View style={styles.emptyState}>
         <Feather
           color={theme.color.icon.secondary}
           name="bar-chart-2"
           size={theme.spacing.xl}
         />
-        <Text style={styles.title}>Reports coming soon</Text>
+        <Text style={styles.title}>{t('reports.comingSoonTitle')}</Text>
         <Text style={styles.description}>
-          Spending reports and exports will live here.
+          {t('reports.comingSoonBody')}
         </Text>
       </View>
     </View>
