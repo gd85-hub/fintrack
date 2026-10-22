@@ -5,26 +5,23 @@ _Обновлено: 2026-10-22 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-**Поэкранный i18n завершён.** При выбранном English в UI **ноль пользовательских русских строк**. Переведены: фундамент, Settings/навигация, главный экран, вся область чека (скан → ревью → пикеры), редактор траты, управление категориями и местами, авторизация, аналитика и последние строки ошибок в `lib/`. Следующий шаг — **деплой**.
+**Поэкранный i18n завершён** (в UI на English — ноль русских строк). Сейчас идёт раунд **фиксов перед деплоем**; этот виток — **FIX-1** (навигация «назад» из под-экранов Settings). Следующий шаг после фиксов — **деплой**.
 
 ## Только что сделано
 
-- Этот коммит — **i18n: localize remaining lib error strings (image recognition, FX rate error)**.
-  - `lib/receiptImage.ts`: `receiptImageErrorMessage(error, t)` теперь принимает `t` и возвращает ключи `scan.imgErr.*`; оба call-site в `scan.tsx` прокидывают `t` (он уже был в `ImageReceiptFlow`).
-  - `lib/fx.ts`: `RATE_ERROR_MESSAGE` → короткая **техническая** английская строка (`'FX rates unavailable for the requested date.'`); класс/throw/логика не менялись — раньше это сообщение показывалось сырым только на ревью.
-  - `app/(app)/receipt/review.tsx`: импортирован `RateUnavailableError`; в обоих обработчиках ошибок (prepare + save) добавлена первая проверка `error instanceof RateUnavailableError ? t('editor.ratesLoadFailed') : …` — единственная известная русская `.message`-протечка теперь локализована.
-  - `lib/i18n/{ru,en}.ts`: добавлен вложенный `scan.imgErr.*` (4 ключа), паритет; переиспользован `editor.ratesLoadFailed`.
-- **Не трогал** (намеренно, по промпту): защитные `throw new Error(...)` в `lib/db.ts`/`lib/itemCategorization.ts` (экраны валидируют и фронтят локализованными сообщениями), translit-карту и unit-регекспы, FX-математику и парсинг.
-- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; паритет ключей ru/en (293/289, расхождения только plural); в `receiptImage.ts`/`fx.ts` не осталось русских UI-строк (в `fx.ts` остался только английский dev-`console.error`).
-- **НЕ проверено:** ручной прогон на Android (роль Глеба): на EN загрузить плохое/слишком большое и нечитаемое изображение → ошибки по-английски; офлайн-сохранение чека на ревью → локализованное «Couldn't load exchange rates…», не сырое сообщение; обратно на RU.
+- Этот коммит — **FIX-1: back navigation from Settings sub-screens (BUG-1)**.
+  - `app/(app)/categories.tsx` и `app/(app)/merchants.tsx`: в стрелке «назад» `router.back()` → `router.replace('/(app)/settings')`. В таб-стеке `router.back()` падал на корень вкладки (Home), а оба экрана открываются из Settings.
+  - Тронуты только два back-обработчика; строки/логика/лейаут не менялись. Back на `scan.tsx`/`review.tsx` намеренно оставлен — он ведёт к receipt-флоу/Home и корректен.
+- **Проверено:** `npm run typecheck` — чисто; `npm test` — 19 сьютов / 162 теста зелёные; `router.back()` в этих двух файлах не осталось.
+- **НЕ проверено:** ручной прогон на Web + Android (роль Глеба): Settings → Управление категориями → «назад» → Settings (не Home); то же для Управления местами; back на скане/ревью — как прежде.
 
 ## Состояние origin/main
 
-Ветка `main`. Этот виток — один коммит (receiptImage + scan + fx + review + `HANDOFF.md` + `CHANGELOG.md`) поверх `1a63819`. `.env` в gitignore. Перед деплоем — `git pull`.
+Ветка `main`. Этот виток — один коммит (categories + merchants + `HANDOFF.md` + `CHANGELOG.md`) поверх `4675988`. `.env` в gitignore. Перед следующим витком — `git pull`.
 
 ## Следующий шаг
 
-**Деплой** — это веха, выносящая всё (Settings + полный i18n) на реальное устройство:
+Остальные фиксы раунда (если Глеб пришлёт FIX-2 и далее), затем **деплой** — веха, выносящая всё (Settings + полный i18n) на реальное устройство:
 1. Свежая **EAS Android**-сборка (чтобы уехал нативный `expo-localization`) + **веб** (EAS Hosting, output `single`).
 2. После успешного деплоя — по правилу `AGENTS.md` «Project history files»: заштамповать `## [Unreleased]` датой релиза (он станет датированным блоком) и открыть новый пустой `## [Unreleased]` сверху. Это **единственный ручной момент** в ведении CHANGELOG.
 

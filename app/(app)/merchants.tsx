@@ -266,7 +266,7 @@ export default function MerchantsScreen() {
         <Pressable
           accessibilityLabel={t('common.back')}
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(app)/settings')}
           style={({ pressed }) => [
             styles.headerButton,
             pressed && styles.pressed,
