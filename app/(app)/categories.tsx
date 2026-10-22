@@ -12,6 +12,7 @@ import {
 
 import { CategoryPicker } from '../../components/CategoryPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { filterAndSortCategories } from '../../lib/categoryManagement';
 import {
   createCategory,
@@ -54,12 +55,9 @@ const emptyCategoryInput: CategoryInput = {
   type: 'variable',
 };
 
-function typeLabel(type: ExpenseCategoryType) {
-  return type === 'fixed' ? 'Постоянная' : 'Переменная';
-}
-
 export default function CategoriesScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [categories, setCategories] = useState<ManagedCategory[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -74,6 +72,10 @@ export default function CategoriesScreen() {
   const [pendingAction, setPendingAction] =
     useState<PendingAction | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function typeLabel(type: ExpenseCategoryType) {
+    return type === 'fixed' ? t('cat.typeFixed') : t('cat.typeVariable');
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -90,9 +92,7 @@ export default function CategoriesScreen() {
         .catch((error: unknown) => {
           console.error('Unable to load categories:', error);
           if (active) {
-            setErrorMessage(
-              'Не удалось загрузить категории. Попробуйте ещё раз.',
-            );
+            setErrorMessage(t('cat.loadFailed'));
           }
         })
         .finally(() => {
@@ -104,7 +104,7 @@ export default function CategoriesScreen() {
       return () => {
         active = false;
       };
-    }, [refreshKey]),
+    }, [refreshKey, t]),
   );
 
   const displayedCategories = useMemo(
@@ -218,9 +218,7 @@ export default function CategoriesScreen() {
       refresh();
     } catch (error: unknown) {
       console.error('Unable to save category:', error);
-      setEditorError(
-        'Не удалось сохранить категорию. Проверьте поля и попробуйте ещё раз.',
-      );
+      setEditorError(t('cat.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -235,7 +233,7 @@ export default function CategoriesScreen() {
       !editor.input.emoji.trim() ||
       !editor.input.group.trim()
     ) {
-      setEditorError('Заполните название, эмодзи и группу.');
+      setEditorError(t('cat.fillFields'));
       return;
     }
 
@@ -337,10 +335,10 @@ export default function CategoriesScreen() {
       setPendingAction(null);
       setErrorMessage(
         actionKind === 'merge'
-          ? 'Не удалось объединить категории. Изменения отменены; попробуйте ещё раз.'
+          ? t('cat.mergeFailed')
           : actionKind === 'delete'
-            ? 'Не удалось удалить категорию. Изменения отменены; попробуйте ещё раз.'
-            : 'Не удалось изменить тип категории. Попробуйте ещё раз.',
+            ? t('cat.deleteFailed')
+            : t('cat.typeChangeFailed'),
       );
     } finally {
       setSaving(false);
@@ -349,18 +347,29 @@ export default function CategoriesScreen() {
 
   const confirmationTitle =
     pendingAction?.kind === 'merge'
-      ? `Объединить выбранные категории с «${pendingAction.target.name}»? Будет перенесено трат: ${pendingAction.expenseCount}. Выбранные свои категории будут удалены.`
+      ? t('cat.confirmMerge', {
+          count: pendingAction.expenseCount,
+          target: pendingAction.target.name,
+        })
       : pendingAction?.kind === 'delete'
-        ? `Удалить «${pendingAction.category.name}»? ${pendingAction.category.usageCount} трат станут «${uncategorized?.name ?? 'без категории'}». Если это дубликат, лучше выбрать «Объединить».`
+        ? t('cat.confirmDelete', {
+            count: pendingAction.category.usageCount,
+            fallback: uncategorized?.name ?? t('cat.noCategory'),
+            name: pendingAction.category.name,
+          })
         : pendingAction?.kind === 'type-change'
-          ? `Изменить тип «${pendingAction.category.name}» на «${typeLabel(pendingAction.input.type)}»? Это изменит разделение постоянных и переменных трат в аналитике. Затронуто трат: ${pendingAction.category.usageCount}.`
+          ? t('cat.confirmType', {
+              count: pendingAction.category.usageCount,
+              name: pendingAction.category.name,
+              type: typeLabel(pendingAction.input.type),
+            })
           : '';
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -370,7 +379,7 @@ export default function CategoriesScreen() {
         >
           <Text style={styles.backText}>‹</Text>
         </Pressable>
-        <Text style={styles.title}>Управление категориями</Text>
+        <Text style={styles.title}>{t('cat.title')}</Text>
         <View style={styles.headerButton} />
       </View>
 
@@ -387,19 +396,17 @@ export default function CategoriesScreen() {
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>
-              Создать категорию
-            </Text>
+            <Text style={styles.primaryButtonText}>{t('cat.create')}</Text>
           </Pressable>
         ) : null}
 
         {!editor && mergeSourceIds.size === 0 ? (
           <TextInput
-            accessibilityLabel="Поиск категории"
+            accessibilityLabel={t('cat.searchA11y')}
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setQuery}
-            placeholder="Поиск категории…"
+            placeholder={t('cat.searchPlaceholder')}
             placeholderTextColor={theme.colors.textMuted}
             returnKeyType="search"
             style={styles.input}
@@ -415,7 +422,7 @@ export default function CategoriesScreen() {
               onPress={refresh}
               style={({ pressed }) => pressed && styles.pressed}
             >
-              <Text style={styles.actionText}>Повторить</Text>
+              <Text style={styles.actionText}>{t('home.retry')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -426,15 +433,15 @@ export default function CategoriesScreen() {
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>
               {editor.category
-                ? `Изменить «${editor.category.name}»`
-                : 'Новая категория'}
+                ? t('cat.editTitle', { name: editor.category.name })
+                : t('cat.newTitle')}
             </Text>
 
             <View style={styles.fieldRow}>
               <View style={styles.emojiField}>
-                <Text style={styles.label}>Эмодзи</Text>
+                <Text style={styles.label}>{t('cat.emoji')}</Text>
                 <TextInput
-                  accessibilityLabel="Эмодзи категории"
+                  accessibilityLabel={t('cat.emojiA11y')}
                   maxLength={8}
                   onChangeText={(emoji) => updateEditorInput({ emoji })}
                   placeholder="🍬"
@@ -444,13 +451,13 @@ export default function CategoriesScreen() {
                 />
               </View>
               <View style={styles.nameField}>
-                <Text style={styles.label}>Название</Text>
+                <Text style={styles.label}>{t('common.name')}</Text>
                 <TextInput
-                  accessibilityLabel="Название категории"
+                  accessibilityLabel={t('cat.nameA11y')}
                   autoCapitalize="sentences"
                   maxLength={80}
                   onChangeText={(name) => updateEditorInput({ name })}
-                  placeholder="Сладости"
+                  placeholder={t('cat.namePlaceholder')}
                   placeholderTextColor={theme.colors.textMuted}
                   style={styles.input}
                   value={editor.input.name}
@@ -459,13 +466,13 @@ export default function CategoriesScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Группа</Text>
+              <Text style={styles.label}>{t('cat.group')}</Text>
               <TextInput
-                accessibilityLabel="Группа категории"
+                accessibilityLabel={t('cat.groupA11y')}
                 autoCapitalize="sentences"
                 maxLength={80}
                 onChangeText={(group) => updateEditorInput({ group })}
-                placeholder="Еда"
+                placeholder={t('cat.groupPlaceholder')}
                 placeholderTextColor={theme.colors.textMuted}
                 style={styles.input}
                 value={editor.input.group}
@@ -497,7 +504,7 @@ export default function CategoriesScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Тип</Text>
+              <Text style={styles.label}>{t('cat.type')}</Text>
               <View style={styles.typeSelector}>
                 {(['fixed', 'variable'] as const).map((type) => {
                   const selected = editor.input.type === type;
@@ -540,7 +547,9 @@ export default function CategoriesScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.secondaryButtonText}>Отмена</Text>
+                <Text style={styles.secondaryButtonText}>
+                  {t('common.cancel')}
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -552,28 +561,25 @@ export default function CategoriesScreen() {
                 ]}
               >
                 <Text style={styles.primaryButtonText}>
-                  {saving ? 'Сохранение…' : 'Сохранить'}
+                  {saving ? t('common.saving') : t('common.save')}
                 </Text>
               </Pressable>
             </View>
           </View>
         ) : mergeSourceIds.size > 0 ? (
           <View style={styles.panel}>
-            <Text style={styles.sectionTitle}>Объединить категории</Text>
-            <Text style={styles.hintText}>
-              Выберите категорию, которая останется. Системная категория
-              может быть целью, но никогда не удаляется.
-            </Text>
+            <Text style={styles.sectionTitle}>{t('cat.mergeTitle')}</Text>
+            <Text style={styles.hintText}>{t('cat.mergeHint')}</Text>
             <CategoryPicker
               categories={mergeTargetCandidates}
-              label="Целевая категория"
+              label={t('cat.targetLabel')}
               onChange={chooseMergeTarget}
               value={mergeTargetId}
             />
 
             <View style={styles.field}>
               <Text style={styles.label}>
-                Свои категории, которые будут удалены
+                {t('cat.sourcesTitle')}
               </Text>
               <View style={styles.mergeList}>
                 {mergeSourceCandidates.map((category) => {
@@ -600,7 +606,10 @@ export default function CategoriesScreen() {
                           {category.emoji} {category.name}
                         </Text>
                         <Text style={styles.categoryMeta}>
-                          {category.group} · Трат: {category.usageCount}
+                          {t('cat.groupUsage', {
+                            count: category.usageCount,
+                            group: category.group,
+                          })}
                         </Text>
                       </View>
                     </Pressable>
@@ -610,8 +619,10 @@ export default function CategoriesScreen() {
             </View>
 
             <Text style={styles.summaryText}>
-              Выбрано категорий: {mergeSourceIds.size} · Будет
-              перенесено трат: {selectedMergeExpenseCount}
+              {t('cat.mergeSummary', {
+                moved: selectedMergeExpenseCount,
+                selected: mergeSourceIds.size,
+              })}
             </Text>
             <View style={styles.formActions}>
               <Pressable
@@ -623,7 +634,9 @@ export default function CategoriesScreen() {
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={styles.secondaryButtonText}>Отмена</Text>
+                <Text style={styles.secondaryButtonText}>
+                  {t('common.cancel')}
+                </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -640,7 +653,9 @@ export default function CategoriesScreen() {
                     styles.disabled,
                 ]}
               >
-                <Text style={styles.primaryButtonText}>Продолжить</Text>
+                <Text style={styles.primaryButtonText}>
+                  {t('common.continue')}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -653,8 +668,11 @@ export default function CategoriesScreen() {
                   <View style={styles.categoryCopy}>
                     <Text style={styles.categoryName}>{category.name}</Text>
                     <Text style={styles.categoryMeta}>
-                      {category.group} · {typeLabel(category.type)} · Трат:{' '}
-                      {category.usageCount}
+                      {t('cat.groupTypeUsage', {
+                        count: category.usageCount,
+                        group: category.group,
+                        type: typeLabel(category.type),
+                      })}
                     </Text>
                   </View>
                   <View
@@ -671,8 +689,8 @@ export default function CategoriesScreen() {
                       ]}
                     >
                       {category.isOwnedByCurrentUser
-                        ? 'своя'
-                        : 'системная'}
+                        ? t('cat.custom')
+                        : t('cat.system')}
                     </Text>
                   </View>
                 </View>
@@ -684,14 +702,16 @@ export default function CategoriesScreen() {
                       onPress={() => startEdit(category)}
                       style={({ pressed }) => pressed && styles.pressed}
                     >
-                      <Text style={styles.actionText}>Изменить</Text>
+                      <Text style={styles.actionText}>
+                        {t('common.edit')}
+                      </Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => startMerge(category)}
                       style={({ pressed }) => pressed && styles.pressed}
                     >
-                      <Text style={styles.actionText}>Объединить</Text>
+                      <Text style={styles.actionText}>{t('cat.merge')}</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
@@ -700,12 +720,14 @@ export default function CategoriesScreen() {
                       }
                       style={({ pressed }) => pressed && styles.pressed}
                     >
-                      <Text style={styles.deleteText}>Удалить</Text>
+                      <Text style={styles.deleteText}>
+                        {t('common.delete')}
+                      </Text>
                     </Pressable>
                   </View>
                 ) : (
                   <Text style={styles.systemHint}>
-                    Встроенная категория · только чтение
+                    {t('cat.builtinReadonly')}
                   </Text>
                 )}
               </View>
@@ -714,8 +736,8 @@ export default function CategoriesScreen() {
             {displayedCategories.length === 0 ? (
               <Text style={styles.emptyText}>
                 {query.trim()
-                  ? 'Ничего не найдено'
-                  : 'Категорий пока нет'}
+                  ? t('common.nothingFound')
+                  : t('cat.empty')}
               </Text>
             ) : null}
           </View>
@@ -725,18 +747,18 @@ export default function CategoriesScreen() {
       <ConfirmDialog
         confirmLabel={
           pendingAction?.kind === 'merge'
-            ? 'Объединить'
+            ? t('cat.merge')
             : pendingAction?.kind === 'type-change'
-              ? 'Изменить тип'
-              : 'Удалить'
+              ? t('cat.changeType')
+              : t('common.delete')
         }
         confirming={saving}
         confirmingLabel={
           pendingAction?.kind === 'merge'
-            ? 'Объединение…'
+            ? t('cat.merging')
             : pendingAction?.kind === 'type-change'
-              ? 'Изменение…'
-              : 'Удаление…'
+              ? t('cat.changingType')
+              : t('common.deleting')
         }
         onCancel={() => {
           if (!saving) {

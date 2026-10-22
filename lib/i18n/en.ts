@@ -77,6 +77,8 @@ export const en = {
     optional: 'Optional',
     save: 'Save',
     saving: 'Saving…',
+    edit: 'Edit',
+    continue: 'Continue',
   },
   home: {
     selectMonth: 'Select month',
@@ -234,5 +236,56 @@ export const en = {
     deleteConfirmTitle: 'Delete this expense?',
     notFound: 'Expense not found.',
     loadFailed: "Couldn't load the data. Try again.",
+  },
+  cat: {
+    title: 'Manage categories',
+    typeFixed: 'Fixed',
+    typeVariable: 'Variable',
+    loadFailed: "Couldn't load categories. Try again.",
+    saveFailed:
+      "Couldn't save the category. Check the fields and try again.",
+    fillFields: 'Fill in the name, emoji, and group.',
+    mergeFailed:
+      "Couldn't merge the categories. Changes were rolled back; try again.",
+    deleteFailed:
+      "Couldn't delete the category. Changes were rolled back; try again.",
+    typeChangeFailed: "Couldn't change the category type. Try again.",
+    confirmMerge:
+      'Merge the selected categories into "{{target}}"? {{count}} expenses will be moved. The selected custom categories will be deleted.',
+    confirmDelete:
+      'Delete "{{name}}"? {{count}} expenses will become "{{fallback}}". If it\'s a duplicate, Merge is the better choice.',
+    confirmType:
+      'Change the type of "{{name}}" to "{{type}}"? This changes how fixed vs variable expenses split in analytics. {{count}} expenses affected.',
+    noCategory: 'no category',
+    create: 'New category',
+    searchA11y: 'Search categories',
+    searchPlaceholder: 'Search categories…',
+    editTitle: 'Edit "{{name}}"',
+    newTitle: 'New category',
+    emoji: 'Emoji',
+    emojiA11y: 'Category emoji',
+    namePlaceholder: 'Sweets',
+    nameA11y: 'Category name',
+    group: 'Group',
+    groupA11y: 'Category group',
+    groupPlaceholder: 'Food',
+    type: 'Type',
+    mergeTitle: 'Merge categories',
+    mergeHint:
+      'Pick the category to keep. A system category can be the target but is never deleted.',
+    targetLabel: 'Target category',
+    sourcesTitle: 'Custom categories that will be deleted',
+    groupUsage: '{{group}} · Expenses: {{count}}',
+    groupTypeUsage: '{{group}} · {{type}} · Expenses: {{count}}',
+    mergeSummary:
+      'Selected: {{selected}} · Expenses to move: {{moved}}',
+    custom: 'custom',
+    system: 'system',
+    merge: 'Merge',
+    changeType: 'Change type',
+    builtinReadonly: 'Built-in category · read-only',
+    empty: 'No categories yet',
+    merging: 'Merging…',
+    changingType: 'Changing…',
   },
 } as const;
