@@ -149,6 +149,13 @@ export const en = {
       enterLink: 'Enter link',
       starting: 'Starting camera…',
     },
+    imgErr: {
+      badInput: 'Pick 1 to 5 JPG or PNG images up to 5 MB each.',
+      openaiError:
+        "Couldn't recognize the receipt. Check your connection and try again.",
+      parseFailed: "Couldn't read the recognition response.",
+      unreadable: "Couldn't read the receipt items from the image clearly.",
+    },
   },
   review: {
     uncategorizedMissing: 'The "Uncategorized" category wasn\'t found',

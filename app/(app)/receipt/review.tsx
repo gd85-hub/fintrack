@@ -30,6 +30,7 @@ import {
   type Merchant,
 } from '../../../lib/db';
 import { formatLongDate, parseLocalISO } from '../../../lib/dates';
+import { RateUnavailableError } from '../../../lib/fx';
 import {
   centsToInput,
   formatMoney,
@@ -316,9 +317,11 @@ export default function ReviewReceiptScreen() {
         console.error('Unable to prepare receipt review:', error);
         if (active) {
           setErrorMessage(
-            error instanceof Error && error.message
-              ? error.message
-              : t('review.prepareFailed'),
+            error instanceof RateUnavailableError
+              ? t('editor.ratesLoadFailed')
+              : error instanceof Error && error.message
+                ? error.message
+                : t('review.prepareFailed'),
           );
         }
       })
@@ -577,11 +580,13 @@ export default function ReviewReceiptScreen() {
     } catch (error: unknown) {
       console.error('Unable to save receipt review:', error);
       setErrorMessage(
-        error instanceof Error && error.message
-          ? error.message
-          : isEditMode
-            ? t('review.saveChangesFailed')
-            : t('review.saveReceiptFailed'),
+        error instanceof RateUnavailableError
+          ? t('editor.ratesLoadFailed')
+          : error instanceof Error && error.message
+            ? error.message
+            : isEditMode
+              ? t('review.saveChangesFailed')
+              : t('review.saveReceiptFailed'),
       );
     } finally {
       setSaving(false);

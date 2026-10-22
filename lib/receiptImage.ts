@@ -6,6 +6,7 @@ import {
 
 import type { Category, MerchantType } from './db';
 import { parseLocalISO } from './dates';
+import type { Translate } from './i18n';
 import { extractMerchantBrand, type ParsedReceipt } from './receipts';
 import { supabase } from './supabase';
 
@@ -308,15 +309,15 @@ export function receiptFromImageAnalysis(
   };
 }
 
-export function receiptImageErrorMessage(error: ReceiptImageAnalysisError) {
+export function receiptImageErrorMessage(
+  error: ReceiptImageAnalysisError,
+  t: Translate,
+) {
   const messages: Record<ReceiptImageAnalysisError, string> = {
-    bad_input:
-      'Выберите от одного до пяти изображений JPG или PNG размером до 5 МБ.',
-    openai_error:
-      'Не удалось распознать чек. Проверьте соединение и попробуйте ещё раз.',
-    parse_failed: 'Не удалось прочитать ответ распознавания.',
-    unreadable:
-      'На изображении не удалось уверенно прочитать позиции чека.',
+    bad_input: t('scan.imgErr.badInput'),
+    openai_error: t('scan.imgErr.openaiError'),
+    parse_failed: t('scan.imgErr.parseFailed'),
+    unreadable: t('scan.imgErr.unreadable'),
   };
   return messages[error];
 }

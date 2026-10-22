@@ -14,8 +14,7 @@ export type ResolvedRates = {
   eurRsd: number;
 };
 
-const RATE_ERROR_MESSAGE =
-  'Не удалось загрузить курсы валют. Проверьте интернет и попробуйте ещё раз.';
+const RATE_ERROR_MESSAGE = 'FX rates unavailable for the requested date.';
 
 export class RateUnavailableError extends Error {
   constructor() {

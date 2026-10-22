@@ -91,7 +91,7 @@ function ImageReceiptFlow() {
         merchantTypes,
       );
       if (!analysis.ok) {
-        setError(receiptImageErrorMessage(analysis.error));
+        setError(receiptImageErrorMessage(analysis.error, t));
         return;
       }
       const receipt = receiptFromImageAnalysis(analysis);
@@ -104,7 +104,7 @@ function ImageReceiptFlow() {
     } catch (caught: unknown) {
       setError(
         caught instanceof Error && caught.message === 'bad_input'
-          ? receiptImageErrorMessage('bad_input')
+          ? receiptImageErrorMessage('bad_input', t)
           : t('scan.photoFailPrepare'),
       );
     } finally {
