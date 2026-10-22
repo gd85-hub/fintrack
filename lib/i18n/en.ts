@@ -313,4 +313,28 @@ export const en = {
     merging: 'Merging…',
     changingType: 'Changing…',
   },
+  auth: {
+    signInTitle: 'Sign in',
+    signInButton: 'Sign in',
+    signingIn: 'Signing in…',
+    noAccount: 'No account? Sign up',
+    signUpTitle: 'Sign up',
+    signUpButton: 'Sign up',
+    signingUp: 'Signing up…',
+    haveAccount: 'Already have an account? Sign in',
+    password: 'Password',
+    checkEmailTitle: 'Check your email',
+    confirmSent:
+      'We sent a confirmation email to {{email}}. Confirm the address and sign in.',
+    goToSignIn: 'Go to sign in',
+    err: {
+      alreadyRegistered: 'An account with this email already exists.',
+      invalidCredentials: 'Wrong email or password.',
+      emailNotConfirmed: 'Confirm your email with the link we sent.',
+      passwordTooShort: 'Password must be at least 6 characters.',
+      invalidEmail: 'Enter a valid email.',
+      signInFailed: "Couldn't sign in. Try again.",
+      signUpFailed: "Couldn't sign up. Try again.",
+    },
+  },
 } as const;

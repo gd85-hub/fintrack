@@ -322,4 +322,28 @@ export const ru = {
     merging: 'Объединение…',
     changingType: 'Изменение…',
   },
+  auth: {
+    signInTitle: 'Вход',
+    signInButton: 'Войти',
+    signingIn: 'Вход…',
+    noAccount: 'Нет аккаунта? Зарегистрируйтесь',
+    signUpTitle: 'Регистрация',
+    signUpButton: 'Зарегистрироваться',
+    signingUp: 'Регистрация…',
+    haveAccount: 'Уже есть аккаунт? Войдите',
+    password: 'Пароль',
+    checkEmailTitle: 'Проверьте почту',
+    confirmSent:
+      'Мы отправили письмо для подтверждения на {{email}}. Подтвердите адрес и войдите.',
+    goToSignIn: 'Перейти ко входу',
+    err: {
+      alreadyRegistered: 'Пользователь с таким email уже зарегистрирован.',
+      invalidCredentials: 'Неверный email или пароль.',
+      emailNotConfirmed: 'Подтвердите email по ссылке из письма.',
+      passwordTooShort: 'Пароль должен содержать не менее 6 символов.',
+      invalidEmail: 'Введите корректный email.',
+      signInFailed: 'Не удалось войти. Попробуйте ещё раз.',
+      signUpFailed: 'Не удалось зарегистрироваться. Попробуйте ещё раз.',
+    },
+  },
 } as const;

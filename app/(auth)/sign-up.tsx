@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { authErrorInRussian } from '../../lib/authErrors';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { localizedAuthError } from '../../lib/authErrors';
 import { theme } from '../../lib/theme';
 
 export default function SignUpScreen() {
   const { signUp } = useAuth();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -31,7 +33,7 @@ export default function SignUpScreen() {
     );
 
     if (error) {
-      setErrorMessage(authErrorInRussian(error.message, 'sign-up'));
+      setErrorMessage(localizedAuthError(error.message, 'sign-up', t));
     } else if (user && !session) {
       setConfirmationEmail(normalizedEmail);
     }
@@ -43,13 +45,12 @@ export default function SignUpScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.infoCard}>
-          <Text style={styles.title}>Проверьте почту</Text>
+          <Text style={styles.title}>{t('auth.checkEmailTitle')}</Text>
           <Text style={styles.infoText}>
-            Мы отправили письмо для подтверждения на {confirmationEmail}.
-            Подтвердите адрес и войдите.
+            {t('auth.confirmSent', { email: confirmationEmail })}
           </Text>
           <Link href="/(auth)/sign-in" style={styles.link}>
-            Перейти ко входу
+            {t('auth.goToSignIn')}
           </Link>
         </View>
       </View>
@@ -59,7 +60,7 @@ export default function SignUpScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.form}>
-        <Text style={styles.title}>Регистрация</Text>
+        <Text style={styles.title}>{t('auth.signUpTitle')}</Text>
 
         <TextInput
           autoCapitalize="none"
@@ -75,7 +76,7 @@ export default function SignUpScreen() {
           autoCapitalize="none"
           autoComplete="new-password"
           onChangeText={setPassword}
-          placeholder="Пароль"
+          placeholder={t('auth.password')}
           placeholderTextColor={theme.colors.textMuted}
           secureTextEntry
           style={styles.input}
@@ -96,12 +97,12 @@ export default function SignUpScreen() {
           ]}
         >
           <Text style={styles.buttonText}>
-            {submitting ? 'Регистрация…' : 'Зарегистрироваться'}
+            {submitting ? t('auth.signingUp') : t('auth.signUpButton')}
           </Text>
         </Pressable>
 
         <Link href="/(auth)/sign-in" style={styles.link}>
-          Уже есть аккаунт? Войдите
+          {t('auth.haveAccount')}
         </Link>
       </View>
     </View>

@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { authErrorInRussian } from '../../lib/authErrors';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { localizedAuthError } from '../../lib/authErrors';
 import { theme } from '../../lib/theme';
 
 export default function SignInScreen() {
   const { signIn } = useAuth();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -26,7 +28,7 @@ export default function SignInScreen() {
     const { error } = await signIn(email.trim(), password);
 
     if (error) {
-      setErrorMessage(authErrorInRussian(error.message, 'sign-in'));
+      setErrorMessage(localizedAuthError(error.message, 'sign-in', t));
     }
 
     setSubmitting(false);
@@ -35,7 +37,7 @@ export default function SignInScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.form}>
-        <Text style={styles.title}>Вход</Text>
+        <Text style={styles.title}>{t('auth.signInTitle')}</Text>
 
         <TextInput
           autoCapitalize="none"
@@ -51,7 +53,7 @@ export default function SignInScreen() {
           autoCapitalize="none"
           autoComplete="password"
           onChangeText={setPassword}
-          placeholder="Пароль"
+          placeholder={t('auth.password')}
           placeholderTextColor={theme.colors.textMuted}
           secureTextEntry
           style={styles.input}
@@ -72,12 +74,12 @@ export default function SignInScreen() {
           ]}
         >
           <Text style={styles.buttonText}>
-            {submitting ? 'Вход…' : 'Войти'}
+            {submitting ? t('auth.signingIn') : t('auth.signInButton')}
           </Text>
         </Pressable>
 
         <Link href="/(auth)/sign-up" style={styles.link}>
-          Нет аккаунта? Зарегистрируйтесь
+          {t('auth.noAccount')}
         </Link>
       </View>
     </View>
