@@ -96,6 +96,19 @@ No client-side transactions exist. When one action writes several rows (receipt 
 - Build exactly what the task specifies. Each prompt has an "Out of scope" list - respect it.
 - If a requirement seems to need a schema change or new dependency, **stop and explain in your summary** rather than doing it.
 
+## Project history files (update on every task)
+
+Two files in the repo root record project state and evolution. Updating **both** is part of finishing any task — do it in the **same commit** as the work.
+
+### HANDOFF.md — current state (rewritten each task)
+Overwrite it so the next agent (Claude Code or Codex) can continue with no questions. Keep these sections: **Где мы** (one-paragraph current focus), **Только что сделано** (this task's commits + what was verified / not verified), **Состояние origin/main**, **Следующий шаг** (and why), **Открытые решения и риски**, **Не трогать**. It is a delta + pointer — do not duplicate long context that lives in `AGENTS.md` or the project context doc.
+
+### CHANGELOG.md — history (append-only, never rewritten)
+Append **one entry per task** under the top `## [Unreleased]` section, in the right bucket — **Added / Changed / Fixed**. Never edit or delete past entries.
+- An entry states the **user-facing change** (not a diff summary), ends with the commit **hash**, and — when the task carried a decision or rationale — a `— why: …` clause (this is what the case study mines). If the task prompt provides a ready-made changelog line, use it verbatim.
+- **Releases.** `[Unreleased]` holds what's merged but not yet in a shipped build. When the app is deployed (EAS web + Android), stamp `[Unreleased]` with the release date → it becomes a dated release block, and open a fresh empty `[Unreleased]` above it. Only do this when a deploy actually happens, or when the task prompt says to.
+- Keep the file's existing header/rules block and section order; only append.
+
 ## Commands
 
 ```bash
@@ -138,5 +151,7 @@ supabase/
 - no hardcoded colors outside `lib/theme.ts`
 - no secrets committed
 - existing working features (list above) still work
+- `HANDOFF.md` rewritten to the current state
+- `CHANGELOG.md` has a new `[Unreleased]` entry for this task (same commit)
 
 When a task is ambiguous, choose the simplest interpretation that satisfies its Definition of Done and record the decision in the README.
