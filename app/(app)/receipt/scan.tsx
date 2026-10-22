@@ -18,6 +18,7 @@ import {
 
 import { ReceiptCamera } from '../../../components/ReceiptCamera';
 import { ReceiptImageInput } from '../../../components/ReceiptImageInput';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import { listCategories, listMerchantTypes } from '../../../lib/db';
 import {
@@ -43,11 +44,13 @@ export default function ScanReceiptScreen() {
 }
 
 function WebImageReceiptScreen() {
+  const { t } = useLanguage();
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -57,12 +60,10 @@ function WebImageReceiptScreen() {
         >
           <Text style={styles.backText}>←</Text>
         </Pressable>
-        <Text style={styles.title}>Чек из фото</Text>
+        <Text style={styles.title}>{t('scan.photoTitle')}</Text>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.help}>
-          Загрузите фото бумажного чека или скриншот заказа из письма.
-        </Text>
+        <Text style={styles.help}>{t('scan.photoIntro')}</Text>
         <ImageReceiptFlow />
       </ScrollView>
     </View>
@@ -70,6 +71,7 @@ function WebImageReceiptScreen() {
 }
 
 function ImageReceiptFlow() {
+  const { t } = useLanguage();
   const { setDraft } = useReceiptDraft();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,9 +96,7 @@ function ImageReceiptFlow() {
       }
       const receipt = receiptFromImageAnalysis(analysis);
       if (!receipt) {
-        setError(
-          'Не удалось определить дату или валюту чека. Добавьте трату вручную.',
-        );
+        setError(t('scan.photoFailDateCurrency'));
         return;
       }
       setDraft(receipt);
@@ -105,7 +105,7 @@ function ImageReceiptFlow() {
       setError(
         caught instanceof Error && caught.message === 'bad_input'
           ? receiptImageErrorMessage('bad_input')
-          : 'Не удалось подготовить изображения. Попробуйте ещё раз.',
+          : t('scan.photoFailPrepare'),
       );
     } finally {
       setProcessing(false);
@@ -122,15 +122,13 @@ function ImageReceiptFlow() {
       {processing ? (
         <View style={styles.processingCard}>
           <ActivityIndicator color={theme.colors.accent} />
-          <Text style={styles.processingText}>Распознаём чек…</Text>
+          <Text style={styles.processingText}>{t('scan.recognizing')}</Text>
         </View>
       ) : null}
       {error ? (
         <View accessibilityRole="alert" style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.retryText}>
-            Выберите изображение ещё раз или добавьте трату вручную.
-          </Text>
+          <Text style={styles.retryText}>{t('scan.pickAgain')}</Text>
         </View>
       ) : null}
       <Pressable
@@ -142,7 +140,7 @@ function ImageReceiptFlow() {
           pressed && styles.pressed,
         ]}
       >
-        <Text style={styles.linkText}>Добавить вручную</Text>
+        <Text style={styles.linkText}>{t('add.manual')}</Text>
       </Pressable>
     </View>
   );
@@ -154,6 +152,7 @@ function NativeScanReceiptScreen() {
   }>();
   const initialImageMode =
     (Array.isArray(mode) ? mode[0] : mode) === 'image';
+  const { t } = useLanguage();
   const { setDraft } = useReceiptDraft();
   const [isFocused, setIsFocused] = useState(false);
   const [manualMode, setManualMode] = useState(false);
@@ -190,7 +189,7 @@ function NativeScanReceiptScreen() {
       setError(null);
 
       if (!isSupportedReceiptUrl(value)) {
-        setError('Это не ссылка на фискальный чек SUF.');
+        setError(t('scan.notSufLink'));
         return;
       }
 
@@ -240,7 +239,7 @@ function NativeScanReceiptScreen() {
     >
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel="Назад"
+          accessibilityLabel={t('common.back')}
           accessibilityRole="button"
           onPress={() => router.back()}
           style={({ pressed }) => [
@@ -250,7 +249,7 @@ function NativeScanReceiptScreen() {
         >
           <Text style={styles.backText}>←</Text>
         </Pressable>
-        <Text style={styles.title}>Сканировать чек</Text>
+        <Text style={styles.title}>{t('add.scan')}</Text>
       </View>
 
       <ScrollView
@@ -259,9 +258,7 @@ function NativeScanReceiptScreen() {
       >
         {imageMode ? (
           <>
-            <Text style={styles.help}>
-              Сфотографируйте бумажный чек или выберите скриншоты заказа.
-            </Text>
+            <Text style={styles.help}>{t('scan.cameraIntro')}</Text>
             <ImageReceiptFlow />
             <Pressable
               accessibilityRole="button"
@@ -271,12 +268,12 @@ function NativeScanReceiptScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.linkText}>Вернуться к QR-сканеру</Text>
+              <Text style={styles.linkText}>{t('scan.backToQr')}</Text>
             </Pressable>
           </>
         ) : manualMode ? (
           <View style={styles.manualCard}>
-            <Text style={styles.label}>Ссылка из QR-кода</Text>
+            <Text style={styles.label}>{t('scan.qrLinkLabel')}</Text>
             <TextInput
               autoCapitalize="none"
               autoCorrect={false}
@@ -306,9 +303,13 @@ function NativeScanReceiptScreen() {
               ]}
             >
               {processing ? (
-                <Text style={styles.primaryButtonText}>Читаем чек…</Text>
+                <Text style={styles.primaryButtonText}>
+                  {t('scan.loading')}
+                </Text>
               ) : (
-                <Text style={styles.primaryButtonText}>Загрузить чек</Text>
+                <Text style={styles.primaryButtonText}>
+                  {t('scan.loadReceipt')}
+                </Text>
               )}
             </Pressable>
             <Pressable
@@ -319,14 +320,12 @@ function NativeScanReceiptScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.linkText}>Вернуться к камере</Text>
+              <Text style={styles.linkText}>{t('scan.backToCamera')}</Text>
             </Pressable>
           </View>
         ) : (
           <>
-            <Text style={styles.help}>
-              Наведите камеру на QR-код фискального чека
-            </Text>
+            <Text style={styles.help}>{t('scan.pointAtQr')}</Text>
             {isFocused ? (
               <ReceiptCamera
                 active={isFocused && scanArmed && !processing}
@@ -343,7 +342,9 @@ function NativeScanReceiptScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.linkText}>Ввести ссылку вручную</Text>
+              <Text style={styles.linkText}>
+                {t('scan.enterLinkManually')}
+              </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -353,7 +354,7 @@ function NativeScanReceiptScreen() {
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.linkText}>Из фото или скриншота</Text>
+              <Text style={styles.linkText}>{t('scan.fromPhoto')}</Text>
             </Pressable>
           </>
         )}
@@ -370,7 +371,7 @@ function NativeScanReceiptScreen() {
               ]}
             >
               <Text style={styles.retryText}>
-                {manualMode ? 'Попробовать снова' : 'Сканировать ещё раз'}
+                {manualMode ? t('scan.tryAgain') : t('scan.scanAgain')}
               </Text>
             </Pressable>
           </View>
@@ -379,7 +380,7 @@ function NativeScanReceiptScreen() {
         {processing && !manualMode ? (
           <View style={styles.processingCard}>
             <ActivityIndicator color={theme.colors.accent} />
-            <Text style={styles.processingText}>Читаем чек…</Text>
+            <Text style={styles.processingText}>{t('scan.loading')}</Text>
           </View>
         ) : null}
       </ScrollView>

@@ -6,6 +6,7 @@ import {
   useCameraPermissions,
 } from 'expo-camera';
 
+import { useLanguage } from '../contexts/LanguageContext';
 import { theme } from '../lib/theme';
 import { LoadingScreen } from './LoadingScreen';
 
@@ -20,6 +21,7 @@ export function ReceiptCamera({
   onScan,
   onUseManual,
 }: ReceiptCameraProps) {
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
 
@@ -36,9 +38,11 @@ export function ReceiptCamera({
   if (!permission.granted) {
     return (
       <View style={styles.permissionCard}>
-        <Text style={styles.permissionTitle}>Нет доступа к камере</Text>
+        <Text style={styles.permissionTitle}>
+          {t('scan.camera.noAccessTitle')}
+        </Text>
         <Text style={styles.permissionText}>
-          Разрешите доступ в настройках или введите ссылку из чека вручную.
+          {t('scan.camera.noAccessBody')}
         </Text>
         {permission.canAskAgain ? (
           <Pressable
@@ -49,7 +53,9 @@ export function ReceiptCamera({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Разрешить камеру</Text>
+            <Text style={styles.primaryButtonText}>
+              {t('scan.camera.allow')}
+            </Text>
           </Pressable>
         ) : (
           <Pressable
@@ -60,7 +66,9 @@ export function ReceiptCamera({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Открыть настройки</Text>
+            <Text style={styles.primaryButtonText}>
+              {t('scan.camera.openSettings')}
+            </Text>
           </Pressable>
         )}
         <Pressable
@@ -71,7 +79,9 @@ export function ReceiptCamera({
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.secondaryButtonText}>Ввести ссылку</Text>
+          <Text style={styles.secondaryButtonText}>
+            {t('scan.camera.enterLink')}
+          </Text>
         </Pressable>
       </View>
     );
@@ -95,7 +105,9 @@ export function ReceiptCamera({
       />
       {!cameraReady ? (
         <View pointerEvents="none" style={styles.cameraPlaceholder}>
-          <Text style={styles.cameraPlaceholderText}>Запуск камеры…</Text>
+          <Text style={styles.cameraPlaceholderText}>
+            {t('scan.camera.starting')}
+          </Text>
         </View>
       ) : null}
       <View pointerEvents="none" style={styles.marker} />

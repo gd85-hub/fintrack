@@ -59,6 +59,7 @@ export const en = {
     delete: 'Delete',
     deleting: 'Deleting…',
     onReceipt: 'On receipt: {{name}}',
+    back: 'Back',
   },
   home: {
     selectMonth: 'Select month',
@@ -97,6 +98,37 @@ export const en = {
     confirmDeleteTitle: {
       one: 'Delete entire purchase ({{count}} expense)?',
       other: 'Delete entire purchase ({{count}} expenses)?',
+    },
+  },
+  scan: {
+    photoTitle: 'Receipt from photo',
+    photoIntro:
+      'Upload a photo of a paper receipt or an order screenshot from an email.',
+    recognizing: 'Reading the photo…',
+    photoFailDateCurrency:
+      "Couldn't read the receipt's date or currency. Add the expense manually.",
+    photoFailPrepare: "Couldn't prepare the images. Try again.",
+    pickAgain: 'Pick an image again, or add the expense manually.',
+    notSufLink: "This isn't a SUF fiscal-receipt link.",
+    cameraIntro: 'Photograph a paper receipt, or pick order screenshots.',
+    backToQr: 'Back to QR scanner',
+    qrLinkLabel: 'Link from the QR code',
+    loading: 'Reading the receipt…',
+    loadReceipt: 'Load receipt',
+    backToCamera: 'Back to camera',
+    pointAtQr: "Point the camera at the receipt's QR code",
+    enterLinkManually: 'Enter link manually',
+    fromPhoto: 'From a photo or screenshot',
+    tryAgain: 'Try again',
+    scanAgain: 'Scan again',
+    camera: {
+      noAccessTitle: 'No camera access',
+      noAccessBody:
+        'Allow access in settings, or enter the receipt link manually.',
+      allow: 'Allow camera',
+      openSettings: 'Open settings',
+      enterLink: 'Enter link',
+      starting: 'Starting camera…',
     },
   },
 } as const;
