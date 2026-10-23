@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -9,11 +9,12 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import {
   commonCurrencies,
   normalizeCurrencyCode,
 } from '../lib/money';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type ReceiptCurrencySelectorProps = {
   disabled?: boolean;
@@ -33,6 +34,8 @@ export function ReceiptCurrencySelector({
   value,
 }: ReceiptCurrencySelectorProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const resolvedLabel = label ?? t('currency.receiptLabel');
   const [visible, setVisible] = useState(false);
   const [customInput, setCustomInput] = useState('');
@@ -117,7 +120,7 @@ export function ReceiptCurrencySelector({
                   )
                 }
                 placeholder="TMT"
-                placeholderTextColor={theme.colors.textMuted}
+                placeholderTextColor={colors.text.secondary}
                 style={styles.input}
                 value={customInput}
               />
@@ -145,25 +148,25 @@ export function ReceiptCurrencySelector({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   applyButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
   },
   applyButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   chevron: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.title,
   },
   close: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.body,
   },
   customSection: {
@@ -180,17 +183,17 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
     textTransform: 'uppercase',
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -200,7 +203,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   modal: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.surface.overlay,
     borderRadius: theme.radii.modal,
     maxWidth: theme.sizes.maxContentWidth,
     padding: theme.spacing.lg,
@@ -208,7 +211,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: c.overlay.scrim,
     flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.md,
@@ -218,7 +221,7 @@ const styles = StyleSheet.create({
   },
   row: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.chip,
     borderWidth: theme.sizes.border,
     justifyContent: 'center',
@@ -226,17 +229,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
   },
   rowSelected: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   rowText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   selector: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -245,12 +248,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
     fontWeight: '700',
   },
   value: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },

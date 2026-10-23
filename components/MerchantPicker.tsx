@@ -10,12 +10,13 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import {
   createMerchant,
   type Merchant,
 } from '../lib/db';
 import { filterAndSortMerchants } from '../lib/merchantSearch';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type MerchantPickerProps = {
   allowCreate?: boolean;
@@ -33,6 +34,8 @@ export function MerchantPicker({
   onCreated,
 }: MerchantPickerProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [visible, setVisible] = useState(false);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -123,7 +126,7 @@ export function MerchantPicker({
                 autoFocus
                 onChangeText={setQuery}
                 placeholder={t('merchant.searchPlaceholder')}
-                placeholderTextColor={theme.colors.textMuted}
+                placeholderTextColor={colors.text.secondary}
                 returnKeyType="search"
                 style={styles.searchInput}
                 value={query}
@@ -141,7 +144,7 @@ export function MerchantPicker({
                     maxLength={80}
                     onChangeText={setName}
                     placeholder={t('common.name')}
-                    placeholderTextColor={theme.colors.textMuted}
+                    placeholderTextColor={colors.text.secondary}
                     style={styles.input}
                     value={name}
                   />
@@ -244,7 +247,7 @@ export function MerchantPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   addRow: {
     alignItems: 'center',
     borderRadius: theme.radii.button,
@@ -253,16 +256,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   addRowText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   chevron: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.title,
   },
   close: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.body,
   },
   createActions: {
@@ -273,11 +276,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   error: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
   },
   emptyHint: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.md,
@@ -287,16 +290,16 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -305,7 +308,7 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.md,
   },
   modal: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.surface.overlay,
     borderRadius: theme.radii.modal,
     maxHeight: theme.sizes.modalMaxHeight,
     maxWidth: theme.sizes.maxContentWidth,
@@ -319,19 +322,19 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   modalTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
     fontWeight: '700',
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: c.overlay.scrim,
     flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.md,
   },
   placeholder: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },
@@ -340,14 +343,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
@@ -358,17 +361,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   rowSelected: {
-    backgroundColor: theme.colors.accentMuted,
+    backgroundColor: c.action.container,
   },
   rowText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
   },
   searchInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     marginBottom: theme.spacing.sm,
     minHeight: theme.sizes.buttonHeight,
@@ -376,20 +379,20 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
   },
   secondaryButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   selector: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -397,7 +400,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   value: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },

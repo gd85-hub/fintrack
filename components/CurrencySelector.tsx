@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useColors } from '../contexts/ThemeContext';
 import { currencies, type Currency } from '../lib/money';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type CurrencySelectorProps = {
   value: Currency;
@@ -14,6 +16,9 @@ export function CurrencySelector({
   onChange,
   accessibilityLabel,
 }: CurrencySelectorProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
   return (
     <View
       accessibilityLabel={accessibilityLabel}
@@ -46,9 +51,9 @@ export function CurrencySelector({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.button,
     flexDirection: 'row',
     padding: theme.spacing.xxs,
@@ -62,15 +67,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   optionSelected: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
   },
   optionText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   optionTextSelected: {
-    color: theme.colors.text,
+    color: c.text.primary,
   },
   pressed: {
     opacity: theme.opacity.pressed,

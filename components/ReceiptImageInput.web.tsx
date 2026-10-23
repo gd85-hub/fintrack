@@ -3,18 +3,20 @@ import {
   type CSSProperties,
   type DragEvent,
   useCallback,
+  useMemo,
   useRef,
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import {
   maximumReceiptImages,
   type ReceiptImageSource,
 } from '../lib/receiptImage';
 import { imageFilesFromClipboardItems } from '../lib/receiptClipboard.web';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type ReceiptImageInputProps = {
   disabled: boolean;
@@ -75,6 +77,8 @@ export function ReceiptImageInput({
   onSelect,
 }: ReceiptImageInputProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
@@ -154,6 +158,7 @@ export function ReceiptImageInput({
         role="button"
         style={{
           ...dropZoneStyle,
+          borderColor: colors.border.default,
           ...(disabled ? disabledDropZoneStyle : {}),
         }}
         tabIndex={disabled ? -1 : 0}
@@ -177,7 +182,6 @@ export function ReceiptImageInput({
 
 const dropZoneStyle: CSSProperties = {
   alignItems: 'center',
-  borderColor: theme.colors.border,
   borderRadius: theme.radii.card,
   borderStyle: 'dashed',
   borderWidth: theme.sizes.border,
@@ -196,19 +200,19 @@ const disabledDropZoneStyle: CSSProperties = {
 
 const hiddenInputStyle: CSSProperties = { display: 'none' };
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   action: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   hint: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     textAlign: 'center',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
     textAlign: 'center',

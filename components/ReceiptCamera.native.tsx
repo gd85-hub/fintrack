@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CameraView,
@@ -7,7 +7,8 @@ import {
 } from 'expo-camera';
 
 import { useLanguage } from '../contexts/LanguageContext';
-import { theme } from '../lib/theme';
+import { useColors } from '../contexts/ThemeContext';
+import { theme, type Colors } from '../lib/theme';
 import { LoadingScreen } from './LoadingScreen';
 
 type ReceiptCameraProps = {
@@ -22,6 +23,8 @@ export function ReceiptCamera({
   onUseManual,
 }: ReceiptCameraProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
 
@@ -115,14 +118,14 @@ export function ReceiptCamera({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   camera: {
     height: theme.sizes.cameraHeight,
     width: '100%',
   },
   cameraPlaceholder: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     height: theme.sizes.cameraHeight,
     justifyContent: 'center',
     left: 0,
@@ -131,18 +134,18 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   cameraPlaceholderText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   cameraShell: {
-    backgroundColor: theme.colors.text,
+    backgroundColor: c.surface.inverse,
     height: theme.sizes.cameraHeight,
     position: 'relative',
     width: '100%',
   },
   marker: {
     alignSelf: 'center',
-    borderColor: theme.colors.white,
+    borderColor: c.receipt.scanGuide,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.cameraMarkerBorder,
     height: theme.sizes.cameraMarker,
@@ -152,21 +155,21 @@ const styles = StyleSheet.create({
   },
   permissionCard: {
     alignItems: 'stretch',
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: c.surface.default,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     gap: theme.spacing.md,
     padding: theme.spacing.lg,
   },
   permissionText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
     lineHeight: theme.spacing.lg,
     textAlign: 'center',
   },
   permissionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
     textAlign: 'center',
@@ -176,20 +179,20 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: theme.colors.accent,
+    borderColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     justifyContent: 'center',
@@ -197,7 +200,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
   },
   secondaryButtonText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },

@@ -1,10 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import type { ReceiptImageSource } from '../lib/receiptImage';
 import { maximumReceiptImages } from '../lib/receiptImage';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type ReceiptImageInputProps = {
   disabled: boolean;
@@ -26,6 +28,8 @@ export function ReceiptImageInput({
   onSelect,
 }: ReceiptImageInputProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const takePhoto = async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -131,7 +135,7 @@ export function ReceiptImageInput({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   actions: {
     gap: theme.spacing.sm,
   },
@@ -140,20 +144,20 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   secondaryButton: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     justifyContent: 'center',
@@ -161,7 +165,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
   },
   secondaryButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },

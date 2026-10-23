@@ -9,9 +9,10 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import { localizeCategoryName, localizeGroup } from '../lib/catalog';
 import type { Category } from '../lib/db';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type CategoryPickerProps = {
   categories: Category[];
@@ -27,6 +28,8 @@ export function CategoryPicker({
   onChange,
 }: CategoryPickerProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const resolvedLabel = label ?? t('common.category');
   const [visible, setVisible] = useState(false);
   const selected = categories.find((category) => category.id === value);
@@ -126,13 +129,13 @@ export function CategoryPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   chevron: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.title,
   },
   close: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.body,
   },
   emoji: {
@@ -145,13 +148,13 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   groupTitle: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
     fontWeight: '600',
     textTransform: 'uppercase',
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -160,7 +163,7 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.md,
   },
   modal: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.surface.overlay,
     borderRadius: theme.radii.modal,
     maxHeight: theme.sizes.modalMaxHeight,
     maxWidth: theme.sizes.maxContentWidth,
@@ -174,19 +177,19 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   modalTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
     fontWeight: '700',
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: c.overlay.scrim,
     flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.md,
   },
   placeholder: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },
@@ -202,16 +205,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   rowSelected: {
-    backgroundColor: theme.colors.accentMuted,
+    backgroundColor: c.action.container,
   },
   rowText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },
   selector: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -219,7 +222,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   value: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },

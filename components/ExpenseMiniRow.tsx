@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import { formatDayMonth } from '../lib/dates';
 import { formatMoney } from '../lib/money';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type ExpenseMiniRowProps = {
   amountCents: number;
@@ -25,6 +27,8 @@ export function ExpenseMiniRow({
   rawName,
 }: ExpenseMiniRowProps) {
   const { t, locale } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const dayAndMonth = formatDayMonth(date, locale);
   const receiptName = rawName?.trim() ?? '';
 
@@ -58,9 +62,9 @@ export function ExpenseMiniRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   amount: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
     textAlign: 'right',
@@ -70,23 +74,23 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   date: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   description: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
   },
   merchant: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   rawName: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   category: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   row: {

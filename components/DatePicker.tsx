@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import {
   formatMonthTitle,
   monthBounds,
@@ -16,7 +17,7 @@ import {
   todayLocalISO,
   yesterdayLocalISO,
 } from '../lib/dates';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 type DatePickerProps = {
   visible: boolean;
@@ -60,6 +61,8 @@ export function DatePicker({
   onClose,
 }: DatePickerProps) {
   const { t, locale } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [visibleMonth, setVisibleMonth] = useState(value.slice(0, 7));
   const today = todayLocalISO();
   const days = useMemo(() => buildCalendar(visibleMonth), [visibleMonth]);
@@ -201,7 +204,7 @@ export function DatePicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
   },
   closeText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   day: {
@@ -230,7 +233,7 @@ const styles = StyleSheet.create({
     width: theme.sizes.dateColumn,
   },
   dayText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
   },
   grid: {
@@ -244,7 +247,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   modal: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.surface.overlay,
     borderRadius: theme.radii.modal,
     maxWidth: theme.sizes.maxContentWidth,
     padding: theme.spacing.lg,
@@ -257,12 +260,12 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   navigationText: {
-    color: theme.colors.text,
+    color: c.icon.action,
     fontSize: theme.fontSizes.title,
   },
   overlay: {
     alignItems: 'center',
-    backgroundColor: theme.colors.overlay,
+    backgroundColor: c.overlay.scrim,
     flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.md,
@@ -272,38 +275,38 @@ const styles = StyleSheet.create({
   },
   quickAction: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.button,
     flex: 1,
     minHeight: theme.sizes.buttonHeight,
     justifyContent: 'center',
   },
   quickActionText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   selectedDay: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
   },
   selectedDayText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontWeight: '700',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   today: {
-    backgroundColor: theme.colors.accentMuted,
+    backgroundColor: c.action.container,
   },
   week: {
     flexDirection: 'row',
     marginBottom: theme.spacing.xs,
   },
   weekday: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
     fontWeight: '600',
   },
