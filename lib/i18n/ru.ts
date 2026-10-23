@@ -72,6 +72,7 @@ export const ru = {
     category: 'Категория',
     selectCategory: 'Выберите категорию',
     refundOrTopUp: 'возврат или пополнение',
+    total: 'Итого',
     amount: 'Сумма',
     currency: 'Валюта',
     description: 'Описание',
@@ -447,5 +448,13 @@ export const ru = {
       online: 'Онлайн',
       other: 'Прочее',
     },
+  },
+  export: {
+    subtitle: 'Выгрузи траты за месяц в таблицу или PDF.',
+    empty: 'Нет трат за этот месяц для экспорта.',
+    exporting: 'Экспортируем…',
+    failed: 'Не удалось экспортировать. Попробуйте ещё раз.',
+    shareUnavailable: 'Отправка недоступна на этом устройстве.',
+    topCategories: 'Топ категорий',
   },
 } as const;

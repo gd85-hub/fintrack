@@ -72,6 +72,7 @@ export const en = {
     category: 'Category',
     selectCategory: 'Select category',
     refundOrTopUp: 'refund or top-up',
+    total: 'Total',
     amount: 'Amount',
     currency: 'Currency',
     description: 'Description',
@@ -434,5 +435,13 @@ export const en = {
       online: 'Online',
       other: 'Other',
     },
+  },
+  export: {
+    subtitle: "Export this month's expenses to a spreadsheet or PDF.",
+    empty: 'No expenses to export this month.',
+    exporting: 'Exporting…',
+    failed: "Couldn't export. Try again.",
+    shareUnavailable: "Sharing isn't available on this device.",
+    topCategories: 'Top categories',
   },
 } as const;
