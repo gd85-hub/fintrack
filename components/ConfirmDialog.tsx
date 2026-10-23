@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Modal,
   Pressable,
@@ -7,7 +8,8 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
-import { theme } from '../lib/theme';
+import { useColors } from '../contexts/ThemeContext';
+import { theme, type Colors } from '../lib/theme';
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -29,6 +31,8 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
 
   return (
     <Modal
@@ -75,53 +79,54 @@ export function ConfirmDialog({
   );
 }
 
-const styles = StyleSheet.create({
-  actions: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  button: {
-    alignItems: 'center',
-    borderRadius: theme.radii.button,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-  },
-  cancelText: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '600',
-  },
-  dangerButton: {
-    backgroundColor: theme.colors.danger,
-  },
-  dangerText: {
-    color: theme.colors.white,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '600',
-  },
-  dialog: {
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.radii.modal,
-    gap: theme.spacing.lg,
-    maxWidth: theme.sizes.maxContentWidth,
-    padding: theme.spacing.lg,
-    width: theme.sizes.modalWidth,
-  },
-  overlay: {
-    alignItems: 'center',
-    backgroundColor: theme.colors.overlay,
-    flex: 1,
-    justifyContent: 'center',
-    padding: theme.spacing.md,
-  },
-  pressed: {
-    opacity: theme.opacity.pressed,
-  },
-  title: {
-    color: theme.colors.text,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    actions: {
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+    },
+    button: {
+      alignItems: 'center',
+      borderRadius: theme.radii.button,
+      flex: 1,
+      justifyContent: 'center',
+      minHeight: theme.sizes.buttonHeight,
+    },
+    cancelText: {
+      color: c.text.primary,
+      fontSize: theme.fontSizes.button,
+      fontWeight: '600',
+    },
+    dangerButton: {
+      backgroundColor: c.action.destructive.fill,
+    },
+    dangerText: {
+      color: c.action.destructive.content,
+      fontSize: theme.fontSizes.button,
+      fontWeight: '600',
+    },
+    dialog: {
+      backgroundColor: c.surface.overlay,
+      borderRadius: theme.radii.modal,
+      gap: theme.spacing.lg,
+      maxWidth: theme.sizes.maxContentWidth,
+      padding: theme.spacing.lg,
+      width: theme.sizes.modalWidth,
+    },
+    overlay: {
+      alignItems: 'center',
+      backgroundColor: c.overlay.scrim,
+      flex: 1,
+      justifyContent: 'center',
+      padding: theme.spacing.md,
+    },
+    pressed: {
+      opacity: theme.opacity.pressed,
+    },
+    title: {
+      color: c.text.primary,
+      fontSize: theme.fontSizes.body,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+  });

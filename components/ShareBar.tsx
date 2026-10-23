@@ -1,10 +1,12 @@
+import { useMemo } from 'react';
 import {
   type ColorValue,
   StyleSheet,
   View,
 } from 'react-native';
 
-import { theme } from '../lib/theme';
+import { useColors } from '../contexts/ThemeContext';
+import { theme, type Colors } from '../lib/theme';
 
 export type ShareBarSegment = {
   id: string;
@@ -21,6 +23,9 @@ export function ShareBar({
   accessibilityLabel,
   segments,
 }: ShareBarProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
   return (
     <View
       accessibilityLabel={accessibilityLabel}
@@ -43,16 +48,17 @@ export function ShareBar({
   );
 }
 
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.round,
-    flexDirection: 'row',
-    height: theme.spacing.md,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  segment: {
-    flexBasis: 0,
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    bar: {
+      backgroundColor: c.surface.default,
+      borderRadius: theme.radii.round,
+      flexDirection: 'row',
+      height: theme.spacing.md,
+      overflow: 'hidden',
+      width: '100%',
+    },
+    segment: {
+      flexBasis: 0,
+    },
+  });

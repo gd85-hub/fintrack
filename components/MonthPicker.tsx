@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import { formatMonthTitle, shiftMonth } from '../lib/dates';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 
 const MONTH_OPTION_COUNT = 24;
 
@@ -31,6 +32,8 @@ export function MonthPicker({
   onClose,
 }: MonthPickerProps) {
   const { t, locale } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const months = useMemo(
     () =>
       Array.from({ length: MONTH_OPTION_COUNT }, (_, index) =>
@@ -90,7 +93,7 @@ export function MonthPicker({
                   </Text>
                   {selected ? (
                     <Feather
-                      color={theme.color.icon.action}
+                      color={colors.icon.action}
                       name="check"
                       size={theme.scale.size.iconMd}
                     />
@@ -105,44 +108,45 @@ export function MonthPicker({
   );
 }
 
-const styles = StyleSheet.create({
-  monthLabel: {
-    ...theme.type.bodyDefault,
-    color: theme.color.text.secondary,
-    flex: 1,
-  },
-  monthList: {
-    paddingVertical: theme.scale.space[2],
-  },
-  monthRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.scale.space[3],
-    minHeight: theme.scale.size.touchTarget,
-    paddingHorizontal: theme.scale.space[4],
-  },
-  overlay: {
-    alignItems: 'center',
-    backgroundColor: theme.color.overlay.scrim,
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: theme.scale.space[4],
-  },
-  pressedRow: {
-    backgroundColor: theme.color.state.pressed,
-  },
-  selectedLabel: {
-    color: theme.color.text.primary,
-  },
-  selectedRow: {
-    backgroundColor: theme.color.surface.selected,
-  },
-  sheet: {
-    backgroundColor: theme.color.surface.raised,
-    borderRadius: theme.scale.radius.sheet,
-    maxHeight: theme.sizes.modalMaxHeight,
-    maxWidth: theme.sizes.maxContentWidth,
-    overflow: 'hidden',
-    width: theme.sizes.modalWidth,
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    monthLabel: {
+      ...theme.type.bodyDefault,
+      color: c.text.secondary,
+      flex: 1,
+    },
+    monthList: {
+      paddingVertical: theme.scale.space[2],
+    },
+    monthRow: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.scale.space[3],
+      minHeight: theme.scale.size.touchTarget,
+      paddingHorizontal: theme.scale.space[4],
+    },
+    overlay: {
+      alignItems: 'center',
+      backgroundColor: c.overlay.scrim,
+      flex: 1,
+      justifyContent: 'flex-end',
+      padding: theme.scale.space[4],
+    },
+    pressedRow: {
+      backgroundColor: c.state.pressed,
+    },
+    selectedLabel: {
+      color: c.text.primary,
+    },
+    selectedRow: {
+      backgroundColor: c.surface.selected,
+    },
+    sheet: {
+      backgroundColor: c.surface.raised,
+      borderRadius: theme.scale.radius.sheet,
+      maxHeight: theme.sizes.modalMaxHeight,
+      maxWidth: theme.sizes.maxContentWidth,
+      overflow: 'hidden',
+      width: theme.sizes.modalWidth,
+    },
+  });

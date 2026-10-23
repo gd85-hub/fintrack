@@ -1,7 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
-import { type ComponentProps, useState } from 'react';
+import { type ComponentProps, useMemo, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -14,7 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLanguage } from '../contexts/LanguageContext';
-import { theme } from '../lib/theme';
+import { useColors } from '../contexts/ThemeContext';
+import { theme, type Colors } from '../lib/theme';
 
 type FeatherIconName = ComponentProps<typeof Feather>['name'];
 
@@ -52,6 +53,8 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
 
   function renderRouteTab(tab: RouteTab, placement: 'bottom' | 'sidebar') {
@@ -67,11 +70,11 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
     const focused = state.index === routeIndex;
     const label = t(tab.labelKey);
     const iconColor = focused
-      ? theme.color.icon.action
-      : theme.color.icon.secondary;
+      ? colors.icon.action
+      : colors.icon.secondary;
     const textColor = focused
-      ? theme.color.icon.action
-      : theme.color.text.tertiary;
+      ? colors.icon.action
+      : colors.text.tertiary;
 
     return (
       <Pressable
@@ -158,7 +161,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
             ]}
           >
             <Feather
-              color={theme.color.action.primary.icon}
+              color={colors.action.primary.icon}
               name="plus"
               size={theme.scale.size.iconLg}
             />
@@ -196,7 +199,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
               ]}
             >
               <Feather
-                color={theme.color.action.primary.icon}
+                color={colors.action.primary.icon}
                 name="plus"
                 size={theme.spacing.lg}
               />
@@ -244,7 +247,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                     ]}
                   >
                     <Feather
-                      color={theme.color.icon.primary}
+                      color={colors.icon.primary}
                       name="camera"
                       size={theme.spacing.lg}
                     />
@@ -268,7 +271,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                 ]}
               >
                 <Feather
-                  color={theme.color.icon.primary}
+                  color={colors.icon.primary}
                   name="image"
                   size={theme.spacing.lg}
                 />
@@ -288,7 +291,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
                 ]}
               >
                 <Feather
-                  color={theme.color.icon.primary}
+                  color={colors.icon.primary}
                   name="edit-3"
                   size={theme.spacing.lg}
                 />
@@ -304,143 +307,144 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  activeIndicator: {
-    backgroundColor: theme.color.icon.action,
-    borderRadius: theme.radii.round,
-    height: theme.spacing.xxs,
-    position: 'absolute',
-    top: -theme.spacing.xs,
-    width: theme.spacing.lg,
-  },
-  addButton: {
-    alignItems: 'center',
-    backgroundColor: theme.color.action.primary.fill,
-    borderRadius: theme.radii.round,
-    height: theme.sizes.floatingButton,
-    justifyContent: 'center',
-    width: theme.sizes.floatingButton,
-  },
-  addButtonPressed: {
-    backgroundColor: theme.color.action.primary.pressed,
-  },
-  addSlot: {
-    alignItems: 'center',
-    flex: 1,
-    marginTop: -theme.spacing.lg,
-    minHeight: theme.sizes.floatingButton,
-  },
-  bar: {
-    alignItems: 'flex-start',
-    backgroundColor: theme.color.surface.default,
-    borderTopColor: theme.color.border.subtle,
-    borderTopWidth: theme.sizes.border,
-    flexDirection: 'row',
-    paddingTop: theme.spacing.xs,
-  },
-  modalRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  routeLabel: {
-    fontSize: theme.fontSizes.caption,
-    fontWeight: '600',
-  },
-  routeTab: {
-    alignItems: 'center',
-    borderRadius: theme.radii.button,
-    flex: 1,
-    gap: theme.spacing.xxs,
-    justifyContent: 'center',
-    minHeight: theme.sizes.floatingButton,
-    paddingHorizontal: theme.spacing.xxs,
-    position: 'relative',
-  },
-  routeTabPressed: {
-    backgroundColor: theme.color.state.pressed,
-  },
-  scrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: theme.color.overlay.scrim,
-  },
-  sheet: {
-    backgroundColor: theme.color.surface.overlay,
-    borderTopColor: theme.color.border.subtle,
-    borderTopLeftRadius: theme.radii.modal,
-    borderTopRightRadius: theme.radii.modal,
-    borderTopWidth: theme.sizes.border,
-    maxWidth: theme.sizes.maxContentWidth,
-    paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    width: '100%',
-  },
-  sheetAction: {
-    alignItems: 'center',
-    borderRadius: theme.radii.button,
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    minHeight: theme.sizes.floatingButton,
-    paddingHorizontal: theme.spacing.md,
-  },
-  sheetActionLabel: {
-    color: theme.color.text.primary,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '600',
-  },
-  sheetActionPressed: {
-    backgroundColor: theme.color.state.pressed,
-  },
-  sheetFrame: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  sheetSeparator: {
-    backgroundColor: theme.color.separatorInset,
-    height: theme.sizes.border,
-    marginHorizontal: theme.spacing.md,
-  },
-  sidebar: {
-    backgroundColor: theme.color.surface.default,
-    borderRightColor: theme.color.border.subtle,
-    borderRightWidth: theme.scale.stroke.hairline,
-    bottom: 0,
-    left: 0,
-    paddingHorizontal: theme.scale.space[3],
-    paddingVertical: theme.scale.space[6],
-    position: sidebarPosition,
-    top: 0,
-    width: SIDEBAR_WIDTH,
-  },
-  sidebarAddButton: {
-    alignItems: 'center',
-    backgroundColor: theme.color.action.primary.fill,
-    borderRadius: theme.scale.radius.md,
-    flexDirection: 'row',
-    gap: theme.scale.space[2],
-    justifyContent: 'center',
-    minHeight: theme.scale.size.touchTarget,
-    paddingHorizontal: theme.scale.space[3],
-  },
-  sidebarAddLabel: {
-    ...theme.type.labelDefault,
-    color: theme.color.action.primary.content,
-  },
-  sidebarNav: {
-    gap: theme.scale.space[2],
-    paddingTop: theme.scale.space[6],
-  },
-  sidebarRouteLabel: {
-    ...theme.type.labelDefault,
-  },
-  sidebarRouteTab: {
-    alignItems: 'center',
-    borderRadius: theme.scale.radius.md,
-    flexDirection: 'row',
-    gap: theme.scale.space[3],
-    minHeight: theme.scale.size.touchTarget,
-    paddingHorizontal: theme.scale.space[3],
-  },
-  sidebarRouteTabActive: {
-    backgroundColor: theme.color.surface.selected,
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    activeIndicator: {
+      backgroundColor: c.icon.action,
+      borderRadius: theme.radii.round,
+      height: theme.spacing.xxs,
+      position: 'absolute',
+      top: -theme.spacing.xs,
+      width: theme.spacing.lg,
+    },
+    addButton: {
+      alignItems: 'center',
+      backgroundColor: c.action.primary.fill,
+      borderRadius: theme.radii.round,
+      height: theme.sizes.floatingButton,
+      justifyContent: 'center',
+      width: theme.sizes.floatingButton,
+    },
+    addButtonPressed: {
+      backgroundColor: c.action.primary.pressed,
+    },
+    addSlot: {
+      alignItems: 'center',
+      flex: 1,
+      marginTop: -theme.spacing.lg,
+      minHeight: theme.sizes.floatingButton,
+    },
+    bar: {
+      alignItems: 'flex-start',
+      backgroundColor: c.surface.default,
+      borderTopColor: c.border.subtle,
+      borderTopWidth: theme.sizes.border,
+      flexDirection: 'row',
+      paddingTop: theme.spacing.xs,
+    },
+    modalRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    routeLabel: {
+      fontSize: theme.fontSizes.caption,
+      fontWeight: '600',
+    },
+    routeTab: {
+      alignItems: 'center',
+      borderRadius: theme.radii.button,
+      flex: 1,
+      gap: theme.spacing.xxs,
+      justifyContent: 'center',
+      minHeight: theme.sizes.floatingButton,
+      paddingHorizontal: theme.spacing.xxs,
+      position: 'relative',
+    },
+    routeTabPressed: {
+      backgroundColor: c.state.pressed,
+    },
+    scrim: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: c.overlay.scrim,
+    },
+    sheet: {
+      backgroundColor: c.surface.overlay,
+      borderTopColor: c.border.subtle,
+      borderTopLeftRadius: theme.radii.modal,
+      borderTopRightRadius: theme.radii.modal,
+      borderTopWidth: theme.sizes.border,
+      maxWidth: theme.sizes.maxContentWidth,
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.md,
+      width: '100%',
+    },
+    sheetAction: {
+      alignItems: 'center',
+      borderRadius: theme.radii.button,
+      flexDirection: 'row',
+      gap: theme.spacing.sm,
+      minHeight: theme.sizes.floatingButton,
+      paddingHorizontal: theme.spacing.md,
+    },
+    sheetActionLabel: {
+      color: c.text.primary,
+      fontSize: theme.fontSizes.body,
+      fontWeight: '600',
+    },
+    sheetActionPressed: {
+      backgroundColor: c.state.pressed,
+    },
+    sheetFrame: {
+      alignItems: 'center',
+      width: '100%',
+    },
+    sheetSeparator: {
+      backgroundColor: c.separatorInset,
+      height: theme.sizes.border,
+      marginHorizontal: theme.spacing.md,
+    },
+    sidebar: {
+      backgroundColor: c.surface.default,
+      borderRightColor: c.border.subtle,
+      borderRightWidth: theme.scale.stroke.hairline,
+      bottom: 0,
+      left: 0,
+      paddingHorizontal: theme.scale.space[3],
+      paddingVertical: theme.scale.space[6],
+      position: sidebarPosition,
+      top: 0,
+      width: SIDEBAR_WIDTH,
+    },
+    sidebarAddButton: {
+      alignItems: 'center',
+      backgroundColor: c.action.primary.fill,
+      borderRadius: theme.scale.radius.md,
+      flexDirection: 'row',
+      gap: theme.scale.space[2],
+      justifyContent: 'center',
+      minHeight: theme.scale.size.touchTarget,
+      paddingHorizontal: theme.scale.space[3],
+    },
+    sidebarAddLabel: {
+      ...theme.type.labelDefault,
+      color: c.action.primary.content,
+    },
+    sidebarNav: {
+      gap: theme.scale.space[2],
+      paddingTop: theme.scale.space[6],
+    },
+    sidebarRouteLabel: {
+      ...theme.type.labelDefault,
+    },
+    sidebarRouteTab: {
+      alignItems: 'center',
+      borderRadius: theme.scale.radius.md,
+      flexDirection: 'row',
+      gap: theme.scale.space[3],
+      minHeight: theme.scale.size.touchTarget,
+      paddingHorizontal: theme.scale.space[3],
+    },
+    sidebarRouteTabActive: {
+      backgroundColor: c.surface.selected,
+    },
+  });
