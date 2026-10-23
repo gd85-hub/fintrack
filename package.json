@@ -29,7 +29,8 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.2",
     "react-native-url-polyfill": "^4.0.0",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/jest": "29.5.14",
