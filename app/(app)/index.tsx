@@ -19,6 +19,7 @@ import { LoadingScreen } from '../../components/LoadingScreen';
 import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import {
   deleteExpense,
   deleteReceipt,
@@ -39,7 +40,7 @@ import {
 } from '../../lib/homeRowPresentation';
 import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 type ExpenseGroup = {
   date: string;
@@ -235,6 +236,8 @@ function PurchaseRow({
   visibleCount,
 }: PurchaseRowProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const displayAmount = purchaseDisplayAmount(unit.expenses, 'RSD');
   const firstExpense = unit.expenses[0];
   const header = resolveHomeRowHeader(unit.expenses);
@@ -379,6 +382,9 @@ function PurchaseRow({
 }
 
 function DayCardSeparator() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
   return <View style={styles.dayCardGap} />;
 }
 
@@ -414,6 +420,8 @@ function monthFromParam(value: string | string[] | undefined) {
 export default function HomeScreen() {
   const router = useRouter();
   const { t, locale } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const params = useLocalSearchParams<{ month?: string | string[] }>();
   const currentMonth = todayLocalISO().slice(0, 7);
   const requestedMonth = monthFromParam(params.month);
@@ -546,7 +554,7 @@ export default function HomeScreen() {
                 {monthName}
               </Text>
               <Feather
-                color={theme.color.icon.primary}
+                color={colors.icon.primary}
                 name="chevron-down"
                 size={theme.scale.size.iconMd}
               />
@@ -627,6 +635,8 @@ export default function HomeScreen() {
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
+      colors.icon.primary,
+      styles,
       t,
     ],
   );
@@ -639,7 +649,7 @@ export default function HomeScreen() {
           <Text style={styles.emptyHint}>{t('home.emptySubtitle')}</Text>
         </View>
       ) : null,
-    [errorMessage, loading, sections.length, t],
+    [errorMessage, loading, sections.length, styles, t],
   );
 
   const listSections = useMemo(
@@ -859,7 +869,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   balanceGroup: {
     gap: theme.scale.space[2],
   },
@@ -872,8 +882,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   dayCard: {
-    backgroundColor: theme.color.surface.raised,
-    borderColor: theme.color.border.subtle,
+    backgroundColor: c.surface.raised,
+    borderColor: c.border.subtle,
     borderRadius: theme.scale.radius.lg,
     borderWidth: theme.scale.stroke.hairline,
     overflow: 'hidden',
@@ -892,12 +902,12 @@ const styles = StyleSheet.create({
   },
   dayTitle: {
     ...theme.type.captionDefault,
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
     flex: 1,
   },
   dayTotal: {
     ...theme.type.amountSecondary,
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
     fontVariant: [...theme.type.amountSecondary.fontVariant],
     textAlign: 'right',
   },
@@ -906,7 +916,7 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   deletePurchaseText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -915,12 +925,12 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   editPurchaseText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   emptyHint: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     textAlign: 'center',
   },
@@ -930,7 +940,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xxl,
   },
   emptyTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
     textAlign: 'center',
@@ -940,13 +950,13 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
   },
   headerMonth: {
     ...theme.type.titleScreen,
-    color: theme.color.text.primary,
+    color: c.text.primary,
     flexShrink: 1,
   },
   hero: {
@@ -954,24 +964,24 @@ const styles = StyleSheet.create({
   },
   heroAmount: {
     ...theme.type.displayHero,
-    color: theme.color.text.primary,
+    color: c.text.primary,
   },
   heroCurrency: {
     ...theme.type.titleSection,
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
   },
   heroEquivalents: {
     ...theme.type.amountSecondary,
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
     fontVariant: [...theme.type.amountSecondary.fontVariant],
   },
   heroTitle: {
     ...theme.type.captionDefault,
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
   },
   heroCard: {
-    backgroundColor: theme.color.surface.raised,
-    borderColor: theme.color.border.subtle,
+    backgroundColor: c.surface.raised,
+    borderColor: c.border.subtle,
     borderRadius: theme.scale.radius.lg,
     borderWidth: theme.scale.stroke.hairline,
     padding: theme.scale.space[4],
@@ -1012,7 +1022,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   purchaseDetails: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.card,
     marginBottom: theme.spacing.sm,
     marginLeft: theme.spacing.lg,
@@ -1020,16 +1030,16 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xxs,
   },
   purchaseDetailsTitle: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   purchaseItem: {
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
   },
   purchaseRowSeparator: {
-    backgroundColor: theme.color.separatorInset,
+    backgroundColor: c.separatorInset,
     height: theme.scale.stroke.hairline,
     marginLeft: purchaseRowTextOffset,
   },
@@ -1037,15 +1047,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   retryText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   rowPressed: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
   },
   screen: {
-    backgroundColor: theme.color.bg.base,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   showMoreButton: {
@@ -1054,27 +1064,27 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   showMoreText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   triageChip: {
     alignSelf: 'center',
-    borderColor: theme.colors.accent,
+    borderColor: c.action.primary.fill,
     borderRadius: theme.radii.chip,
     borderWidth: theme.sizes.border,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.xs,
   },
   triageChipSelected: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
   },
   triageChipText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   triageChipTextSelected: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
   },
 });

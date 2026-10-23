@@ -1,6 +1,12 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { Fragment, type ReactNode, useCallback, useState } from 'react';
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Modal,
   Pressable,
@@ -17,7 +23,8 @@ import {
   type Language,
   useLanguage,
 } from '../../contexts/LanguageContext';
-import { theme } from '../../lib/theme';
+import { useColors } from '../../contexts/ThemeContext';
+import { theme, type Colors } from '../../lib/theme';
 
 type SettingsRouteRowProps = {
   label: string;
@@ -29,7 +36,15 @@ type SettingsSectionProps = {
   title: string;
 };
 
+function useSettingsStyles() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  return { colors, styles };
+}
+
 function SettingsSection({ children, title }: SettingsSectionProps) {
+  const { styles } = useSettingsStyles();
+
   return (
     <View style={styles.section}>
       <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -41,6 +56,8 @@ function SettingsSection({ children, title }: SettingsSectionProps) {
 }
 
 function SettingsRouteRow({ label, onPress }: SettingsRouteRowProps) {
+  const { colors, styles } = useSettingsStyles();
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -52,7 +69,7 @@ function SettingsRouteRow({ label, onPress }: SettingsRouteRowProps) {
     >
       <Text style={styles.rowLabel}>{label}</Text>
       <Feather
-        color={theme.color.icon.secondary}
+        color={colors.icon.secondary}
         name="chevron-right"
         size={theme.spacing.lg}
       />
@@ -67,6 +84,8 @@ function SettingsDisabledRow({
   comingSoon: string;
   label: string;
 }) {
+  const { styles } = useSettingsStyles();
+
   return (
     <View
       accessibilityRole="button"
@@ -97,6 +116,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, updateName, user } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const { colors, styles } = useSettingsStyles();
   const [signingOut, setSigningOut] = useState(false);
   const [hasSignOutError, setHasSignOutError] = useState(false);
   const [nameEditorVisible, setNameEditorVisible] = useState(false);
@@ -185,7 +205,7 @@ export default function SettingsScreen() {
               {currentName || t('settings.name.add')}
             </Text>
             <Feather
-              color={theme.color.icon.secondary}
+              color={colors.icon.secondary}
               name="chevron-right"
               size={theme.spacing.lg}
             />
@@ -219,7 +239,7 @@ export default function SettingsScreen() {
                 : t('settings.signOut')}
             </Text>
             <Feather
-              color={theme.color.action.destructive.fill}
+              color={colors.action.destructive.fill}
               name="log-out"
               size={theme.spacing.lg}
             />
@@ -271,7 +291,7 @@ export default function SettingsScreen() {
               {t(currentLanguageLabel)}
             </Text>
             <Feather
-              color={theme.color.icon.secondary}
+              color={colors.icon.secondary}
               name="chevron-right"
               size={theme.spacing.lg}
             />
@@ -322,7 +342,7 @@ export default function SettingsScreen() {
                 }
               }}
               placeholder={t('settings.name.label')}
-              placeholderTextColor={theme.color.field.placeholder}
+              placeholderTextColor={colors.field.placeholder}
               returnKeyType="done"
               selectTextOnFocus={true}
               style={[
@@ -416,7 +436,7 @@ export default function SettingsScreen() {
                       </Text>
                       {selected ? (
                         <Feather
-                          color={theme.color.icon.action}
+                          color={colors.icon.action}
                           name="check"
                           size={theme.spacing.lg}
                         />
@@ -436,7 +456,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   aboutRow: {
     justifyContent: 'center',
     minHeight: theme.sizes.floatingButton,
@@ -444,16 +464,16 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
   },
   aboutText: {
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   cancelButton: {
-    backgroundColor: theme.color.action.secondary.fill,
-    borderColor: theme.color.action.secondary.border,
+    backgroundColor: c.action.secondary.fill,
+    borderColor: c.action.secondary.border,
     borderWidth: theme.sizes.border,
   },
   cancelButtonText: {
-    color: theme.color.action.secondary.content,
+    color: c.action.secondary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
@@ -465,30 +485,30 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   destructiveLabel: {
-    color: theme.color.action.destructive.fill,
+    color: c.action.destructive.fill,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   destructiveRowPressed: {
-    backgroundColor: theme.color.status.error.container,
+    backgroundColor: c.status.error.container,
   },
   disabled: {
     opacity: theme.opacity.disabled,
   },
   disabledRowLabel: {
-    color: theme.color.text.disabled,
+    color: c.text.disabled,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   errorText: {
-    color: theme.color.status.error.content,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
   },
   list: {
-    backgroundColor: theme.color.surface.default,
-    borderColor: theme.color.border.default,
+    backgroundColor: c.surface.default,
+    borderColor: c.border.default,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     overflow: 'hidden',
@@ -502,13 +522,13 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xs,
   },
   languageOptionLabel: {
-    color: theme.color.text.primary,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   languageOptions: {
-    borderColor: theme.color.border.default,
+    borderColor: c.border.default,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     overflow: 'hidden',
@@ -526,7 +546,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
   },
   modalPanel: {
-    backgroundColor: theme.color.surface.raised,
+    backgroundColor: c.surface.raised,
     borderRadius: theme.radii.modal,
     gap: theme.spacing.md,
     maxWidth: theme.sizes.maxContentWidth,
@@ -540,28 +560,28 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
   },
   modalTitle: {
-    color: theme.color.text.primary,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   nameInput: {
-    backgroundColor: theme.color.field.fill,
-    borderColor: theme.color.field.border,
+    backgroundColor: c.field.fill,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.color.text.primary,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     height: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
   nameInputError: {
-    borderColor: theme.color.field.borderError,
+    borderColor: c.field.borderError,
   },
   nameInputFocused: {
-    borderColor: theme.color.field.borderFocus,
+    borderColor: c.field.borderFocus,
   },
   placeholderValue: {
-    color: theme.color.text.tertiary,
+    color: c.text.tertiary,
   },
   row: {
     alignItems: 'center',
@@ -572,59 +592,59 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xs,
   },
   rowLabel: {
-    color: theme.color.text.primary,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   rowValue: {
-    color: theme.color.text.secondary,
+    color: c.text.secondary,
     flexShrink: 1,
     fontSize: theme.fontSizes.caption,
     textAlign: 'right',
   },
   rowPressed: {
-    backgroundColor: theme.color.state.pressed,
+    backgroundColor: c.state.pressed,
   },
   screen: {
-    backgroundColor: theme.color.bg.base,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: theme.color.overlay.scrim,
+    backgroundColor: c.overlay.scrim,
   },
   section: {
     gap: theme.spacing.xs,
   },
   sectionTitle: {
-    color: theme.color.text.tertiary,
+    color: c.text.tertiary,
     fontSize: theme.fontSizes.caption,
     fontWeight: '600',
     paddingHorizontal: theme.spacing.xs,
     textTransform: 'uppercase',
   },
   saveButton: {
-    backgroundColor: theme.color.action.primary.fill,
+    backgroundColor: c.action.primary.fill,
   },
   saveButtonText: {
-    color: theme.color.action.primary.content,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   separator: {
-    backgroundColor: theme.color.separatorInset,
+    backgroundColor: c.separatorInset,
     height: theme.sizes.border,
     marginLeft: theme.spacing.md,
   },
   soonTag: {
-    backgroundColor: theme.color.surface.muted,
+    backgroundColor: c.surface.muted,
     borderRadius: theme.radii.chip,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xxs,
   },
   soonText: {
-    color: theme.color.text.tertiary,
+    color: c.text.tertiary,
     fontSize: theme.fontSizes.small,
     fontWeight: '600',
   },

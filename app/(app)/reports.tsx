@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
 import { MonthPicker } from '../../components/MonthPicker';
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import { localizeCategoryName, localizeGroup } from '../../lib/catalog';
 import { formatDayMonth, formatMonthTitle, todayLocalISO } from '../../lib/dates';
 import {
@@ -35,7 +36,7 @@ import {
   deliverText,
   ShareUnavailableError,
 } from '../../lib/exportDelivery';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 type CategoryMeta = { group: string; type: ExpenseCategoryType };
 
@@ -44,6 +45,8 @@ const XLSX_MIME =
 
 export default function ReportsScreen() {
   const { t, locale } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const currentMonth = todayLocalISO().slice(0, 7);
   const [visibleMonth, setVisibleMonth] = useState(currentMonth);
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
@@ -243,13 +246,15 @@ export default function ReportsScreen() {
             {formatMonthTitle(visibleMonth, locale)}
           </Text>
           <Feather
-            color={theme.color.icon.primary}
+            color={colors.icon.primary}
             name="chevron-down"
             size={theme.scale.size.iconMd}
           />
         </Pressable>
 
-        {loading ? <ActivityIndicator color={theme.colors.accent} /> : null}
+        {loading ? (
+          <ActivityIndicator color={colors.action.primary.fill} />
+        ) : null}
 
         {loadError ? (
           <Text accessibilityRole="alert" style={styles.errorText}>
@@ -302,7 +307,10 @@ export default function ReportsScreen() {
 
             {exporting ? (
               <View style={styles.exportingRow}>
-                <ActivityIndicator color={theme.colors.accent} size="small" />
+                <ActivityIndicator
+                  color={colors.action.primary.fill}
+                  size="small"
+                />
                 <Text style={styles.exportingText}>
                   {t('export.exporting')}
                 </Text>
@@ -329,7 +337,7 @@ export default function ReportsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -346,11 +354,11 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.disabled,
   },
   emptyText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.label,
   },
   exportBlock: {
@@ -358,7 +366,7 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     flexGrow: 1,
     justifyContent: 'center',
@@ -367,7 +375,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
   },
   exportButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
@@ -377,7 +385,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   exportingText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   monthButton: {
@@ -388,23 +396,23 @@ const styles = StyleSheet.create({
   },
   monthTitle: {
     ...theme.type.titleScreen,
-    color: theme.color.text.primary,
+    color: c.text.primary,
     flexShrink: 1,
   },
   pressed: {
     opacity: theme.opacity.pressed,
   },
   screen: {
-    backgroundColor: theme.color.bg.base,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   sectionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   subtitle: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
 });
