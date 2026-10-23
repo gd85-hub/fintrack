@@ -352,3 +352,191 @@ export const theme = {
     listBottom: 176,
   },
 } as const;
+
+export const color = theme.color;
+export const lightColor = color;
+
+export type Colors = typeof color;
+export type ColorScheme = 'light' | 'dark';
+
+type ColorShape<T> = {
+  readonly [Key in keyof T]: T[Key] extends string
+    ? string
+    : ColorShape<T[Key]>;
+};
+
+export const darkColor = {
+  bg: {
+    base: '#0e0e0e',
+    sunken: '#070707',
+  },
+  surface: {
+    default: '#171717',
+    raised: '#1f1f1f',
+    muted: '#262626',
+    selected: '#35a7e824',
+    overlay: '#1f1f1f',
+    inverse: '#f2f2f2',
+    border: '#ffffff00',
+  },
+  text: {
+    primary: '#f2f2f2',
+    secondary: '#a8a8a8',
+    tertiary: '#8e8e8e',
+    disabled: '#5c5c5c',
+    inverse: '#0e0e0e',
+    onInverse: '#0e0e0e',
+  },
+  icon: {
+    primary: '#f2f2f2',
+    secondary: '#a8a8a8',
+    action: '#71c2f7',
+    disabled: '#5c5c5c',
+    onMedia: '#ffffff',
+    onInverse: '#0e0e0e',
+  },
+  border: {
+    subtle: '#ffffff17',
+    default: '#ffffff38',
+    strong: '#ffffff57',
+    focus: '#71c2f7',
+    focusContrast: '#0e0e0e',
+    onInverse: '#0f172a3d',
+  },
+  separatorInset: '#ffffff2b',
+  field: {
+    fill: '#262626',
+    border: '#7c848a',
+    borderError: '#fda29b',
+    borderFocus: '#71c2f7',
+    placeholder: '#8e8e8e',
+    supportingError: '#fda29b',
+    disabledFill: '#262626',
+    disabledContent: '#5c5c5c',
+    disabledBorder: '#2b2b2b',
+    readOnlyFill: '#2b2b2b',
+    readOnlyContent: '#a8a8a8',
+  },
+  action: {
+    primary: {
+      fill: '#35a7e8',
+      hover: '#71c2f7',
+      pressed: '#008dcd',
+      content: '#001727',
+      icon: '#001727',
+      focus: '#71c2f7',
+      disabled: '#2b2b2b',
+      disabledContent: '#5c5c5c',
+    },
+    secondary: {
+      fill: '#1f1f1f',
+      hover: '#2b2b2b',
+      pressed: '#262626',
+      content: '#f2f2f2',
+      border: '#7c848a',
+      focus: '#71c2f7',
+      disabledFill: '#262626',
+      disabledContent: '#5c5c5c',
+      disabledBorder: '#2b2b2b',
+    },
+    link: {
+      rest: '#71c2f7',
+      hover: '#a1d8fe',
+      pressed: '#d2ecfe',
+      disabled: '#5c5c5c',
+    },
+    container: '#35a7e829',
+    destructive: {
+      fill: '#f97066',
+      hover: '#fda29b',
+      pressed: '#f04438',
+      content: '#0e0e0e',
+      focus: '#fda29b',
+      disabledFill: '#2b2b2b',
+      disabledContent: '#5c5c5c',
+    },
+  },
+  state: {
+    hover: '#ffffff0d',
+    pressed: '#ffffff17',
+  },
+  selection: {
+    container: '#35a7e84d',
+  },
+  status: {
+    success: {
+      content: '#75e0a7',
+      container: '#053321',
+      border: '#085d3a',
+      icon: '#75e0a7',
+    },
+    warning: {
+      content: '#fec84b',
+      container: '#4e1d09',
+      border: '#93370d',
+      icon: '#fec84b',
+    },
+    error: {
+      content: '#fda29b',
+      container: '#55160c',
+      border: '#912018',
+      icon: '#fda29b',
+    },
+    info: {
+      content: '#71c2f7',
+      container: '#00253b',
+      border: '#005984',
+      icon: '#71c2f7',
+    },
+  },
+  finance: {
+    inflow: {
+      content: '#5fe9d0',
+      container: '#0a2926',
+      border: '#125d56',
+    },
+    overLimit: {
+      content: '#f7b27a',
+      container: '#511c10',
+      border: '#932f19',
+    },
+  },
+  data: {
+    categorical: [
+      '#6172f3',
+      '#088ab2',
+      '#7839ee',
+      '#bc1b06',
+      '#dd2590',
+      '#669f2a',
+    ],
+    sequential: {
+      1: '#006a9c',
+      3: '#52a8dd',
+      5: '#bee4fe',
+    },
+    diverging: {
+      negative: '#f7b27a',
+      neutral: '#2b2b2b',
+      positive: '#5fe9d0',
+    },
+    selection: '#35a7e8',
+    selectionOutline: '#f2f2f2',
+    grid: '#ffffff17',
+    axis: '#ffffff38',
+    label: '#8e8e8e',
+    muted: '#8e8e8e',
+    tooltipFill: '#f2f2f2',
+    tooltipContent: '#0e0e0e',
+    tooltipBorder: '#0f172a3d',
+  },
+  overlay: {
+    scrim: '#000000b8',
+  },
+  content: {
+    onMedia: '#ffffff',
+  },
+  receipt: {
+    scanGuide: '#ffffff',
+  },
+} as const satisfies ColorShape<Colors>;
