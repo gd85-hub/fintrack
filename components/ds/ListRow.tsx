@@ -1,10 +1,11 @@
 import Feather from '@expo/vector-icons/Feather';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useLanguage } from '../../contexts/LanguageContext';
-import { theme } from '../../lib/theme';
+import { useColors } from '../../contexts/ThemeContext';
+import { theme, type Colors } from '../../lib/theme';
 
 // Fixed glyph size from the List Row DS master; no scale token exists.
 const ICON_GLYPH = 18;
@@ -39,6 +40,8 @@ export function ListRow({
   onLongPress,
 }: ListRowProps) {
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [hovered, setHovered] = useState(false);
   const isException = kind === 'exception';
   const visibleIconEmoji = iconEmoji?.trim() ?? '';
@@ -73,7 +76,7 @@ export function ListRow({
       <View style={styles.iconCircle}>
         {isException ? (
           <Feather
-            color={theme.color.icon.secondary}
+            color={colors.icon.secondary}
             name="repeat"
             size={ICON_GLYPH}
           />
@@ -115,7 +118,7 @@ export function ListRow({
 
       {showChevron ? (
         <Feather
-          color={theme.color.icon.secondary}
+          color={colors.icon.secondary}
           name="chevron-right"
           size={theme.scale.size.iconSm}
         />
@@ -124,79 +127,80 @@ export function ListRow({
   );
 }
 
-const styles = StyleSheet.create({
-  amount: {
-    ...theme.type.amountRow,
-    color: theme.color.text.primary,
-    fontVariant: [...theme.type.amountRow.fontVariant],
-    textAlign: 'right',
-  },
-  amountBlock: {
-    alignItems: 'flex-end',
-    gap: theme.scale.stroke.hairline,
-  },
-  category: {
-    ...theme.type.captionDefault,
-    color: theme.color.text.secondary,
-  },
-  equivalent: {
-    ...theme.type.amountSecondary,
-    color: theme.color.text.secondary,
-    fontVariant: [...theme.type.amountSecondary.fontVariant],
-    textAlign: 'right',
-  },
-  exceptionAmount: {
-    ...theme.type.amountRowException,
-    color: theme.color.finance.inflow.content,
-    fontVariant: [...theme.type.amountRowException.fontVariant],
-    textAlign: 'right',
-  },
-  hovered: {
-    backgroundColor: theme.color.state.hover,
-  },
-  iconCircle: {
-    alignItems: 'center',
-    backgroundColor: theme.color.surface.muted,
-    borderRadius: theme.scale.radius.pill,
-    height: theme.scale.size.iconCircle,
-    justifyContent: 'center',
-    width: theme.scale.size.iconCircle,
-  },
-  iconEmoji: {
-    fontSize: ICON_GLYPH,
-    textAlign: 'center',
-  },
-  place: {
-    ...theme.type.bodyStrong,
-    color: theme.color.text.primary,
-  },
-  pressed: {
-    backgroundColor: theme.color.state.pressed,
-  },
-  row: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    gap: theme.scale.space[3],
-    height: theme.scale.size.rowHeight,
-    paddingHorizontal: theme.scale.space[3],
-    position: 'relative',
-  },
-  selected: {
-    backgroundColor: theme.color.surface.selected,
-  },
-  selectedMarker: {
-    backgroundColor: theme.color.action.primary.fill,
-    borderRadius: theme.scale.radius.pill,
-    height: theme.scale.size.touchTarget,
-    left: 0,
-    position: 'absolute',
-    top:
-      (theme.scale.size.rowHeight - theme.scale.size.touchTarget) / 2,
-    width: MARKER_WIDTH,
-  },
-  textBlock: {
-    flex: 1,
-    gap: theme.scale.stroke.hairline,
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    amount: {
+      ...theme.type.amountRow,
+      color: c.text.primary,
+      fontVariant: [...theme.type.amountRow.fontVariant],
+      textAlign: 'right',
+    },
+    amountBlock: {
+      alignItems: 'flex-end',
+      gap: theme.scale.stroke.hairline,
+    },
+    category: {
+      ...theme.type.captionDefault,
+      color: c.text.secondary,
+    },
+    equivalent: {
+      ...theme.type.amountSecondary,
+      color: c.text.secondary,
+      fontVariant: [...theme.type.amountSecondary.fontVariant],
+      textAlign: 'right',
+    },
+    exceptionAmount: {
+      ...theme.type.amountRowException,
+      color: c.finance.inflow.content,
+      fontVariant: [...theme.type.amountRowException.fontVariant],
+      textAlign: 'right',
+    },
+    hovered: {
+      backgroundColor: c.state.hover,
+    },
+    iconCircle: {
+      alignItems: 'center',
+      backgroundColor: c.surface.muted,
+      borderRadius: theme.scale.radius.pill,
+      height: theme.scale.size.iconCircle,
+      justifyContent: 'center',
+      width: theme.scale.size.iconCircle,
+    },
+    iconEmoji: {
+      fontSize: ICON_GLYPH,
+      textAlign: 'center',
+    },
+    place: {
+      ...theme.type.bodyStrong,
+      color: c.text.primary,
+    },
+    pressed: {
+      backgroundColor: c.state.pressed,
+    },
+    row: {
+      alignItems: 'center',
+      alignSelf: 'stretch',
+      flexDirection: 'row',
+      gap: theme.scale.space[3],
+      height: theme.scale.size.rowHeight,
+      paddingHorizontal: theme.scale.space[3],
+      position: 'relative',
+    },
+    selected: {
+      backgroundColor: c.surface.selected,
+    },
+    selectedMarker: {
+      backgroundColor: c.action.primary.fill,
+      borderRadius: theme.scale.radius.pill,
+      height: theme.scale.size.touchTarget,
+      left: 0,
+      position: 'absolute',
+      top:
+        (theme.scale.size.rowHeight - theme.scale.size.touchTarget) / 2,
+      width: MARKER_WIDTH,
+    },
+    textBlock: {
+      flex: 1,
+      gap: theme.scale.stroke.hairline,
+    },
+  });

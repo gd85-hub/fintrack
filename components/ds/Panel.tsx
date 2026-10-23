@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { theme } from '../../lib/theme';
+import { useColors } from '../../contexts/ThemeContext';
+import { theme, type Colors } from '../../lib/theme';
 
 export type PanelProps = {
   title: string;
@@ -19,6 +21,8 @@ export function Panel({
   equivalent2,
   showSecondCurrency = true,
 }: PanelProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const visibleCurrencyCode = currencyCode?.trim() ?? '';
   const visibleEquivalent1 = equivalent1?.trim() ?? '';
   const visibleEquivalent2 =
@@ -69,38 +73,39 @@ export function Panel({
   );
 }
 
-const styles = StyleSheet.create({
-  amount: {
-    ...theme.type.displayHeroSmall,
-    color: theme.color.text.primary,
-  },
-  currencyCode: {
-    color: theme.color.text.tertiary,
-  },
-  equivalent: {
-    ...theme.type.amountSecondary,
-    color: theme.color.text.secondary,
-    fontVariant: [...theme.type.amountSecondary.fontVariant],
-  },
-  equivalents: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.scale.space[2],
-  },
-  panel: {
-    alignSelf: 'stretch',
-    backgroundColor: theme.color.surface.raised,
-    borderRadius: theme.scale.radius.lg,
-    gap: theme.scale.space[1],
-    padding: theme.scale.space[4],
-  },
-  separator: {
-    ...theme.type.amountSecondary,
-    color: theme.color.text.tertiary,
-    fontVariant: [...theme.type.amountSecondary.fontVariant],
-  },
-  title: {
-    ...theme.type.captionDefault,
-    color: theme.color.text.secondary,
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    amount: {
+      ...theme.type.displayHeroSmall,
+      color: c.text.primary,
+    },
+    currencyCode: {
+      color: c.text.tertiary,
+    },
+    equivalent: {
+      ...theme.type.amountSecondary,
+      color: c.text.secondary,
+      fontVariant: [...theme.type.amountSecondary.fontVariant],
+    },
+    equivalents: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: theme.scale.space[2],
+    },
+    panel: {
+      alignSelf: 'stretch',
+      backgroundColor: c.surface.raised,
+      borderRadius: theme.scale.radius.lg,
+      gap: theme.scale.space[1],
+      padding: theme.scale.space[4],
+    },
+    separator: {
+      ...theme.type.amountSecondary,
+      color: c.text.tertiary,
+      fontVariant: [...theme.type.amountSecondary.fontVariant],
+    },
+    title: {
+      ...theme.type.captionDefault,
+      color: c.text.secondary,
+    },
+  });

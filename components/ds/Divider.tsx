@@ -1,12 +1,17 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { theme } from '../../lib/theme';
+import { useColors } from '../../contexts/ThemeContext';
+import { theme, type Colors } from '../../lib/theme';
 
 export type DividerProps = {
   variant?: 'full' | 'inset';
 };
 
 export function Divider({ variant = 'full' }: DividerProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
   return (
     <View
       accessibilityElementsHidden={true}
@@ -16,14 +21,15 @@ export function Divider({ variant = 'full' }: DividerProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  divider: {
-    alignSelf: 'stretch',
-    backgroundColor: theme.color.border.subtle,
-    height: theme.scale.stroke.hairline,
-  },
-  inset: {
-    backgroundColor: theme.color.separatorInset,
-    marginLeft: theme.scale.space[4],
-  },
-});
+const makeStyles = (c: Colors) =>
+  StyleSheet.create({
+    divider: {
+      alignSelf: 'stretch',
+      backgroundColor: c.border.subtle,
+      height: theme.scale.stroke.hairline,
+    },
+    inset: {
+      backgroundColor: c.separatorInset,
+      marginLeft: theme.scale.space[4],
+    },
+  });

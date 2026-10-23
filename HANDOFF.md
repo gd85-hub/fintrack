@@ -5,30 +5,30 @@ _Обновлено: 2026-10-23 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Трек **тёмной темы** начат с THEME-1: в код перенесены светлая и тёмная семантические палитры из Figma DS, добавлены персистентный `ThemeProvider` и хуки темы. Внешний вид приложения пока намеренно не изменился: экраны и компоненты ещё используют статический светлый `theme.color`/legacy-токены, селектор темы в Settings не раскрыт.
+Трек **тёмной темы** дошёл до THEME-2: фундамент палитр и `ThemeProvider` уже в `main`, а базовые DS-компоненты теперь получают семантические цвета через `useColors()` и реагируют на активную схему. Миграция пока частичная: общие компоненты и экраны остаются на статическом `theme.color`/legacy `theme.colors`, поэтому селектор темы в Settings намеренно скрыт.
 
 ## Только что сделано
 
-- Этот коммит — **THEME-1: dark-theme foundation**.
-  - `lib/theme.ts`: существующий `theme.color` сохранён как светлая палитра и экспортирован через `color`/`lightColor`; добавлен `darkColor` с точной структурой и значениями из Figma, `Colors` и `ColorScheme`. Рекурсивная compile-time проверка структуры не использует `any`.
-  - Новый `contexts/ThemeContext.tsx`: выбор `system | light | dark` хранится в AsyncStorage (`theme`), системная схема отслеживается через `useColorScheme`; наружу отданы `ThemeProvider`, `useColors()` и `useTheme()`.
-  - `app/_layout.tsx`: дерево приложения обёрнуто в `ThemeProvider`; ни один экран и Settings не мигрировали.
-  - `CHANGELOG.md`: добавлена запись THEME-1 в `[Unreleased] → Added`.
-- **Проверено:** `npm run typecheck` — чисто; `npm test` — 20 сьютов / 165 тестов зелёные; Web export успешен; Android Metro export успешен с `--no-bytecode`; `darkColor` проходит структурную проверку против светлой палитры; `useColors` пока не потребляется UI.
-- **НЕ проверено / внешний блокер:** обычный Android export с Hermes не завершился — Windows Application Control блокирует запуск локального `node_modules/hermes-compiler/.../hermesc.exe` (`spawn UNKNOWN`). На устройстве визуальный прогон не выполнялся. У Глеба остаётся untracked `BUGS.md`, он не изменён и не коммитится.
+- Этот коммит — **THEME-2: DS components on dynamic colors**.
+  - `ListRow`, `Panel`, `DayHeader`, `Divider`: статические `theme.color.*` заменены на `useColors()` и мемоизированные `makeStyles(c)`; inline-цвета иконок в `ListRow` тоже читаются из активной палитры.
+  - Типографика, размеры, интервалы, layout, поведение и accessibility компонентов не менялись.
+  - `CHANGELOG.md`: добавлена запись THEME-2 в `[Unreleased] → Changed`.
+- **Проверено:** `npm run typecheck` — чисто; `npm test` — 20 сьютов / 165 тестов зелёные; `theme.color.*` отсутствует во всём `components/ds/`; Web export и Android Metro export с `--no-bytecode` успешны; механический UI-аудит изменённых компонентов не нашёл замечаний.
+- **НЕ проверено:** ручной визуальный прогон на физическом Android-устройстве. У Глеба остаётся untracked `BUGS.md`, он не изменён и не коммитится.
 
 ## Состояние origin/main
 
-Ветка `main`. Этот виток — один коммит THEME-1 поверх `3ec4930`; в него входят три кодовых файла, `HANDOFF.md` и одна append-only запись `CHANGELOG.md`. `.env` не затронут. Перед следующим витком — `git pull`.
+Ветка `main`. Этот виток — один коммит THEME-2 поверх `360ec22`; в него входят четыре DS-компонента, `HANDOFF.md` и одна append-only запись `CHANGELOG.md`. `.env` не затронут. Перед следующим витком — `git pull`.
 
 ## Следующий шаг
 
-**THEME-2:** мигрировать DS-компоненты и общие компоненты с `theme.color.*`/legacy `theme.colors.*` на `useColors()`, переводя legacy-роли в семантические токены по мере миграции. Settings-селектор темы пока не раскрывать: он появляется только в финальном migration-витке, когда не останется светлых островов.
+**THEME-3:** мигрировать общие компоненты (пикеры, `TabBar`, диалоги и другие shared surfaces) на `useColors()`. Для потребителей legacy `theme.colors.*` сначала применить согласованную mapping-таблицу legacy → semantic; не подбирать роли самостоятельно. Settings-селектор темы раскрыть только в финальном migration-витке, когда не останется светлых островов.
 
 ## Открытые решения и риски
 
 - Пять dark chart-ролей из промпта помечены как derived (`data.selection`, `data.label`, `data.muted`, `data.tooltipContent` и связанный chart-токен); при доступе к Figma их можно сверить отдельной values-only правкой.
-- `theme.color` и legacy `theme.colors` намеренно остаются светлыми до миграции потребителей. Частичная подмена глобального объекта создаст полутёмный интерфейс — не делать.
+- `theme.color` и legacy `theme.colors` намеренно остаются светлыми до миграции всех потребителей. При системной тёмной схеме четыре DS-компонента уже тёмные, а окружающие немигрированные поверхности ещё светлые — это ожидаемое промежуточное состояние.
+- `Colors = typeof lightColor` сохраняет literal-типы светлой палитры; `darkColor` отдельно проверяется через `satisfies ColorShape<Colors>`. В DS-фабриках нужен локальный безопасный cast результата `useColors()` к `Colors`, пока публичный тип палитры не будет расширен без изменения runtime-значений.
 - Windows Application Control блокирует локальный `hermesc.exe`; полноценный Hermes export/EAS Android и ручной device-run нужно повторить в разрешённой среде. JS Android bundle собирается.
 - История проекта: `CHANGELOG.md` append-only; `HANDOFF.md` переписывается каждый виток — оба тем же коммитом.
 - Экспорт использует нативные `expo-print`/`expo-sharing`/`expo-file-system`; свежий Android-билд всё ещё обязателен перед релизом.
