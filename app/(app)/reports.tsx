@@ -152,25 +152,26 @@ export default function ReportsScreen() {
     };
   }
 
-  function buildMeta(rows: readonly ExportRow[]): ExportMeta {
-    const byCategory = new Map<string, number>();
-    for (const row of rows) {
-      byCategory.set(
-        row.category,
-        (byCategory.get(row.category) ?? 0) + row.amountRsd,
-      );
-    }
-    const topCategories = [...byCategory.entries()]
-      .map(([label, amountRsd]) => ({ label, amountRsd }))
-      .sort((left, right) => right.amountRsd - left.amountRsd)
-      .slice(0, 5);
-
+  function buildMeta(_rows: readonly ExportRow[]): ExportMeta {
+    const generatedDate = new Date().toLocaleDateString(
+      locale.startsWith('ru') ? 'ru-RU' : 'en-GB',
+    );
     return {
       title: 'Fintrack',
       periodLabel: formatMonthTitle(visibleMonth, locale),
       totalsLabel: t('common.total'),
-      summaryTitle: t('export.topCategories'),
-      topCategories,
+      pdf: {
+        report: t('export.pdf.report'),
+        generated: `${t('export.pdf.generated')} ${generatedDate}`,
+        totalSpending: t('export.pdf.totalSpending'),
+        count: t('export.pdf.count'),
+        average: t('export.pdf.average'),
+        activeDays: t('export.pdf.activeDays'),
+        largest: t('export.pdf.largest'),
+        categories: t('export.pdf.categories'),
+        details: t('export.pdf.details'),
+        other: t('export.pdf.other'),
+      },
     };
   }
 

@@ -448,5 +448,17 @@ export const en = {
     failed: "Couldn't export. Try again.",
     shareUnavailable: "Sharing isn't available on this device.",
     topCategories: 'Top categories',
+    pdf: {
+      report: 'Expense report',
+      generated: 'Generated',
+      totalSpending: 'Total spending',
+      count: 'Transactions',
+      average: 'Average',
+      activeDays: 'Spending days',
+      largest: 'Largest expense',
+      categories: 'Spending by category',
+      details: 'Details',
+      other: 'Other',
+    },
   },
 } as const;

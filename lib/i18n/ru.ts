@@ -461,5 +461,17 @@ export const ru = {
     failed: 'Не удалось экспортировать. Попробуйте ещё раз.',
     shareUnavailable: 'Отправка недоступна на этом устройстве.',
     topCategories: 'Топ категорий',
+    pdf: {
+      report: 'Отчёт о расходах',
+      generated: 'Сформирован',
+      totalSpending: 'Расходы за период',
+      count: 'Операций',
+      average: 'Средний чек',
+      activeDays: 'Дней с тратами',
+      largest: 'Крупнейшая трата',
+      categories: 'Структура расходов',
+      details: 'Детализация',
+      other: 'Прочее',
+    },
   },
 } as const;
