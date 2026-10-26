@@ -12,6 +12,7 @@ import {
 
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import {
   deleteMerchant,
   listMerchantsForManagement,
@@ -21,7 +22,7 @@ import {
 } from '../../lib/db';
 import { findMerchantRenameCollision } from '../../lib/merchantManagement';
 import { filterAndSortMerchants } from '../../lib/merchantSearch';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 type PendingAction =
   | {
@@ -38,6 +39,8 @@ type PendingAction =
 export default function MerchantsScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [merchants, setMerchants] = useState<ManagedMerchant[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -288,7 +291,7 @@ export default function MerchantsScreen() {
           autoCorrect={false}
           onChangeText={setQuery}
           placeholder={t('merchant.searchPlaceholder')}
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={colors.text.secondary}
           returnKeyType="search"
           style={styles.searchInput}
           value={query}
@@ -308,7 +311,7 @@ export default function MerchantsScreen() {
         ) : null}
 
         {loading ? (
-          <ActivityIndicator color={theme.colors.accent} />
+          <ActivityIndicator color={colors.action.primary.fill} />
         ) : errorMessage && merchants.length === 0 ? null : mergeTarget ? (
           <View style={styles.mergePanel}>
             <Text style={styles.sectionTitle}>
@@ -412,7 +415,7 @@ export default function MerchantsScreen() {
                         setRenameCollision(null);
                       }}
                       placeholder={t('merchant.namePlaceholder')}
-                      placeholderTextColor={theme.colors.textMuted}
+                      placeholderTextColor={colors.text.secondary}
                       style={styles.renameInput}
                       value={renameValue}
                     />
@@ -551,14 +554,14 @@ export default function MerchantsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   actionText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   backText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
   },
   cardActions: {
@@ -568,7 +571,7 @@ const styles = StyleSheet.create({
   },
   checkbox: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     height: theme.sizes.iconButton,
@@ -576,7 +579,7 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   checkboxText: {
-    color: theme.colors.accent,
+    color: c.icon.action,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
@@ -589,7 +592,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   deleteText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -597,7 +600,7 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.disabled,
   },
   emptyText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     paddingVertical: theme.spacing.xl,
     textAlign: 'center',
@@ -607,7 +610,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
   },
   formActions: {
@@ -616,7 +619,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     paddingHorizontal: theme.spacing.sm,
@@ -629,14 +632,14 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   hintText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
   },
   list: {
     gap: theme.spacing.sm,
   },
   merchantCard: {
-    borderColor: theme.colors.border,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     gap: theme.spacing.md,
@@ -647,11 +650,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   merchantMeta: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   merchantName: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
@@ -663,7 +666,7 @@ const styles = StyleSheet.create({
   },
   mergeRow: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -671,12 +674,12 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
   },
   mergeRowSelected: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   mergeSuggestion: {
     alignItems: 'center',
-    borderColor: theme.colors.accent,
+    borderColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     justifyContent: 'center',
@@ -684,12 +687,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   mergeSuggestionText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   mergeSummary: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -698,7 +701,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
@@ -706,7 +709,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
@@ -714,35 +717,35 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   renameInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   retryText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   searchInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
@@ -750,17 +753,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   secondaryButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   sectionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',

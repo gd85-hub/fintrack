@@ -13,6 +13,7 @@ import {
 import { CategoryPicker } from '../../components/CategoryPicker';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import { filterAndSortCategories } from '../../lib/categoryManagement';
 import { localizeCategoryName, localizeGroup } from '../../lib/catalog';
 import {
@@ -25,7 +26,7 @@ import {
   mergeCategories,
   updateCategory,
 } from '../../lib/db';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 type EditorState = {
   category: ManagedCategory | null;
@@ -59,6 +60,8 @@ const emptyCategoryInput: CategoryInput = {
 export default function CategoriesScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [categories, setCategories] = useState<ManagedCategory[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -408,7 +411,7 @@ export default function CategoriesScreen() {
             autoCorrect={false}
             onChangeText={setQuery}
             placeholder={t('cat.searchPlaceholder')}
-            placeholderTextColor={theme.colors.textMuted}
+            placeholderTextColor={colors.text.secondary}
             returnKeyType="search"
             style={styles.input}
             value={query}
@@ -429,7 +432,7 @@ export default function CategoriesScreen() {
         ) : null}
 
         {loading ? (
-          <ActivityIndicator color={theme.colors.accent} />
+          <ActivityIndicator color={colors.action.primary.fill} />
         ) : errorMessage && categories.length === 0 ? null : editor ? (
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>
@@ -446,7 +449,7 @@ export default function CategoriesScreen() {
                   maxLength={8}
                   onChangeText={(emoji) => updateEditorInput({ emoji })}
                   placeholder="🍬"
-                  placeholderTextColor={theme.colors.textMuted}
+                  placeholderTextColor={colors.text.secondary}
                   style={styles.input}
                   value={editor.input.emoji}
                 />
@@ -459,7 +462,7 @@ export default function CategoriesScreen() {
                   maxLength={80}
                   onChangeText={(name) => updateEditorInput({ name })}
                   placeholder={t('cat.namePlaceholder')}
-                  placeholderTextColor={theme.colors.textMuted}
+                  placeholderTextColor={colors.text.secondary}
                   style={styles.input}
                   value={editor.input.name}
                 />
@@ -474,7 +477,7 @@ export default function CategoriesScreen() {
                 maxLength={80}
                 onChangeText={(group) => updateEditorInput({ group })}
                 placeholder={t('cat.groupPlaceholder')}
-                placeholderTextColor={theme.colors.textMuted}
+                placeholderTextColor={colors.text.secondary}
                 style={styles.input}
                 value={editor.input.group}
               />
@@ -777,14 +780,14 @@ export default function CategoriesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   actionText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   backText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
   },
   cardActions: {
@@ -798,7 +801,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   categoryCard: {
-    borderColor: theme.colors.border,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     gap: theme.spacing.md,
@@ -812,17 +815,17 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSizes.title,
   },
   categoryMeta: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   categoryName: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   checkbox: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     height: theme.sizes.iconButton,
@@ -830,13 +833,13 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   checkboxText: {
-    color: theme.colors.accent,
+    color: c.icon.action,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   chip: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: c.surface.default,
+    borderColor: c.border.default,
     borderRadius: theme.radii.chip,
     borderWidth: theme.sizes.border,
     paddingHorizontal: theme.spacing.sm,
@@ -848,15 +851,15 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   chipSelected: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   chipText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.caption,
   },
   chipTextSelected: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontWeight: '600',
   },
   content: {
@@ -868,7 +871,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   deleteText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -880,7 +883,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   emptyText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     paddingVertical: theme.spacing.xl,
     textAlign: 'center',
@@ -890,7 +893,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
   },
   field: {
@@ -906,7 +909,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     paddingHorizontal: theme.spacing.sm,
@@ -919,20 +922,20 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   hintText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -940,15 +943,15 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   marker: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: c.surface.default,
+    borderColor: c.border.default,
     borderRadius: theme.radii.chip,
     borderWidth: theme.sizes.border,
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: theme.spacing.xxs,
   },
   markerText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
     fontWeight: '600',
   },
@@ -957,7 +960,7 @@ const styles = StyleSheet.create({
   },
   mergeRow: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.border.default,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -965,19 +968,19 @@ const styles = StyleSheet.create({
     padding: theme.spacing.sm,
   },
   mergeRowSelected: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   nameField: {
     flex: 3,
     gap: theme.spacing.xs,
   },
   ownMarker: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   ownMarkerText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
   },
   panel: {
     gap: theme.spacing.md,
@@ -987,7 +990,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
@@ -995,17 +998,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.button,
     flex: 1,
     justifyContent: 'center',
@@ -1013,26 +1016,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   secondaryButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   sectionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   summaryText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   systemHint: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
@@ -1040,8 +1043,8 @@ const styles = StyleSheet.create({
   },
   typeButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: c.surface.default,
+    borderColor: c.border.default,
     borderRadius: theme.radii.button,
     borderWidth: theme.sizes.border,
     flex: 1,
@@ -1050,16 +1053,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.xs,
   },
   typeButtonSelected: {
-    backgroundColor: theme.colors.accentMuted,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   typeButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   typeButtonTextSelected: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
   },
   typeSelector: {
     flexDirection: 'row',
