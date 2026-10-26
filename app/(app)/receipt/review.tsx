@@ -18,6 +18,7 @@ import { MerchantPicker } from '../../../components/MerchantPicker';
 import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySelector';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
+import { useColors } from '../../../contexts/ThemeContext';
 import {
   getFiscalReceiptForEdit,
   listCategories,
@@ -45,7 +46,7 @@ import {
   findMatchingMerchant,
   parsedReceiptDate,
 } from '../../../lib/receipts';
-import { theme } from '../../../lib/theme';
+import { theme, type Colors } from '../../../lib/theme';
 
 type MerchantMode = 'existing' | 'new';
 
@@ -119,6 +120,8 @@ function routeParam(
 export default function ReviewReceiptScreen() {
   const { t, locale } = useLanguage();
   const { draft, clearDraft } = useReceiptDraft();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const params = useLocalSearchParams<{
     receiptId?: string | string[];
   }>();
@@ -678,8 +681,8 @@ export default function ReviewReceiptScreen() {
         ) : null}
 
         {totalsMismatch ? (
-          <View accessibilityRole="alert" style={styles.warningCard}>
-            <Text style={styles.warningText}>
+          <View accessibilityRole="alert" style={styles.mismatchCard}>
+            <Text style={styles.mismatchText}>
               {t('review.mismatchTitle')} {t('review.mismatchHint')}
             </Text>
           </View>
@@ -697,7 +700,7 @@ export default function ReviewReceiptScreen() {
                   maxLength={20}
                   onChangeText={setManualRsdInput}
                   placeholder="0,00"
-                  placeholderTextColor={theme.colors.textMuted}
+                  placeholderTextColor={colors.field.placeholder}
                   style={[
                     styles.manualInput,
                     hasInvalidManualRsdTotal && styles.itemAmountInputInvalid,
@@ -787,7 +790,7 @@ export default function ReviewReceiptScreen() {
                 maxLength={80}
                 onChangeText={setMerchantName}
                 placeholder={t('review.newPlaceNamePlaceholder')}
-                placeholderTextColor={theme.colors.textMuted}
+                placeholderTextColor={colors.field.placeholder}
                 style={styles.input}
                 value={merchantName}
               />
@@ -804,7 +807,10 @@ export default function ReviewReceiptScreen() {
           </Text>
           {categorizing ? (
             <View style={styles.categorizingState}>
-              <ActivityIndicator color={theme.colors.accent} size="small" />
+              <ActivityIndicator
+                color={colors.action.primary.fill}
+                size="small"
+              />
               <Text style={styles.categorizingText}>
                 {t('review.categorizing')}
               </Text>
@@ -835,7 +841,7 @@ export default function ReviewReceiptScreen() {
                   updateItemDescription(index, description)
                 }
                 placeholder={t('review.itemNamePlaceholder')}
-                placeholderTextColor={theme.colors.disabled}
+                placeholderTextColor={colors.field.placeholder}
                 style={[
                   styles.itemNameInput,
                   !item.included && styles.excludedText,
@@ -870,7 +876,7 @@ export default function ReviewReceiptScreen() {
                         updateItemAmount(index, amountInput)
                       }
                       placeholder="0,00"
-                      placeholderTextColor={theme.colors.disabled}
+                      placeholderTextColor={colors.field.placeholder}
                       selectTextOnFocus
                       style={[
                         styles.itemAmountInput,
@@ -960,7 +966,7 @@ export default function ReviewReceiptScreen() {
           ]}
         >
           {saving ? (
-            <ActivityIndicator color={theme.colors.white} />
+            <ActivityIndicator color={colors.action.primary.content} />
           ) : (
             <Text style={styles.primaryButtonText}>
               {isEditMode ? t('review.saveChanges') : t('review.saveReceipt')}
@@ -993,7 +999,7 @@ export default function ReviewReceiptScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   backButton: {
     alignItems: 'center',
     height: theme.sizes.iconButton,
@@ -1001,12 +1007,12 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   backText: {
-    color: theme.colors.text,
+    color: c.icon.primary,
     fontSize: theme.fontSizes.title,
   },
   centerState: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
     gap: theme.spacing.lg,
     justifyContent: 'center',
@@ -1018,7 +1024,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   categorizingText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   content: {
@@ -1031,7 +1037,7 @@ const styles = StyleSheet.create({
   },
   dateSelector: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -1040,11 +1046,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   dateSelectorChevron: {
-    color: theme.colors.textMuted,
+    color: c.icon.secondary,
     fontSize: theme.fontSizes.title,
   },
   dateSelectorText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
@@ -1052,7 +1058,7 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.disabled,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
   },
@@ -1062,17 +1068,17 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   excludeText: {
-    color: theme.colors.danger,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   excludedText: {
-    color: theme.colors.textMuted,
+    color: c.text.disabled,
     textDecorationLine: 'line-through',
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -1080,14 +1086,14 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xs,
   },
   helperText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
@@ -1103,10 +1109,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   itemAmountInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
@@ -1115,26 +1121,27 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   itemAmountInputInvalid: {
-    borderColor: theme.colors.danger,
+    borderColor: c.field.borderError,
   },
   itemCard: {
-    borderColor: theme.colors.border,
+    backgroundColor: c.surface.raised,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.card,
     borderWidth: theme.sizes.border,
     gap: theme.spacing.md,
     padding: theme.spacing.md,
   },
   itemCardExcluded: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.raised,
     opacity: theme.opacity.disabled,
   },
   itemCurrency: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   itemDetails: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     flex: 1,
     fontSize: theme.fontSizes.caption,
   },
@@ -1144,36 +1151,36 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   itemNameInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   itemRawName: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   itemValidationText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
     marginTop: theme.spacing.xxs,
     textAlign: 'right',
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   merchantLabel: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   manualCurrency: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
@@ -1184,10 +1191,10 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   manualInput: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
@@ -1198,23 +1205,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: theme.spacing.sm,
   },
+  mismatchCard: {
+    backgroundColor: c.status.error.container,
+    borderRadius: theme.radii.card,
+    padding: theme.spacing.md,
+  },
+  mismatchText: {
+    color: c.status.error.content,
+    fontSize: theme.fontSizes.body,
+  },
   modeChip: {
-    borderColor: theme.colors.border,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.chip,
     borderWidth: theme.sizes.border,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.xs,
   },
   modeChipSelected: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.accent,
+    backgroundColor: c.action.container,
+    borderColor: c.icon.action,
   },
   modeChipText: {
-    color: theme.colors.text,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
   },
   modeChipTextSelected: {
-    color: theme.colors.white,
+    color: c.icon.action,
   },
   modeChips: {
     flexDirection: 'row',
@@ -1230,7 +1246,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
@@ -1238,7 +1254,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
@@ -1248,33 +1264,34 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   saveSummaryLabel: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   saveSummaryTotal: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   section: {
     gap: theme.spacing.md,
   },
   sectionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   stateTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   summaryCard: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.raised,
+    borderColor: c.border.subtle,
     borderRadius: theme.radii.card,
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
@@ -1285,7 +1302,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   summaryLabel: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
   },
   summaryRow: {
@@ -1295,23 +1312,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   summaryValue: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
   warningCard: {
-    backgroundColor: theme.colors.accentMuted,
+    backgroundColor: c.status.warning.container,
     borderRadius: theme.radii.card,
     padding: theme.spacing.md,
   },
   warningText: {
-    color: theme.colors.text,
+    color: c.status.warning.content,
     fontSize: theme.fontSizes.body,
   },
 });

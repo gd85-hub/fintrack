@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
+import { useColors } from '../contexts/ThemeContext';
 import {
   deleteExpense,
   getExpense,
@@ -37,7 +38,7 @@ import {
   isCurrency,
   parseAmountInput,
 } from '../lib/money';
-import { theme } from '../lib/theme';
+import { theme, type Colors } from '../lib/theme';
 import { CategoryPicker } from './CategoryPicker';
 import { ConfirmDialog } from './ConfirmDialog';
 import { DatePicker } from './DatePicker';
@@ -55,6 +56,12 @@ type ExpenseFormProps = {
   initialMerchants: Merchant[];
 };
 
+function useExpenseEditorTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  return { colors, styles };
+}
+
 function ExpenseForm({
   initialExpense,
   categories,
@@ -62,6 +69,7 @@ function ExpenseForm({
 }: ExpenseFormProps) {
   const router = useRouter();
   const { locale, t } = useLanguage();
+  const { colors, styles } = useExpenseEditorTheme();
   const [amount, setAmount] = useState(
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
   );
@@ -299,7 +307,7 @@ function ExpenseForm({
             maxLength={20}
             onChangeText={setAmount}
             placeholder="0,00"
-            placeholderTextColor={theme.colors.disabled}
+            placeholderTextColor={colors.field.placeholder}
             selectTextOnFocus
             style={styles.amountInput}
             value={amount}
@@ -327,7 +335,7 @@ function ExpenseForm({
                 maxLength={20}
                 onChangeText={setManualRsdInput}
                 placeholder="0,00"
-                placeholderTextColor={theme.colors.textMuted}
+                placeholderTextColor={colors.field.placeholder}
                 style={[
                   styles.input,
                   styles.manualAmountInput,
@@ -382,7 +390,7 @@ function ExpenseForm({
             maxLength={120}
             onChangeText={setDescription}
             placeholder={t('editor.descriptionPlaceholder')}
-            placeholderTextColor={theme.colors.textMuted}
+            placeholderTextColor={colors.field.placeholder}
             style={styles.input}
             value={description}
           />
@@ -395,7 +403,7 @@ function ExpenseForm({
             multiline
             onChangeText={setNote}
             placeholder={t('common.optional')}
-            placeholderTextColor={theme.colors.textMuted}
+            placeholderTextColor={colors.field.placeholder}
             style={[styles.input, styles.multilineInput]}
             textAlignVertical="top"
             value={note}
@@ -480,6 +488,7 @@ export function ExpenseEditorScreen({
 }: ExpenseEditorScreenProps) {
   const router = useRouter();
   const { t } = useLanguage();
+  const { styles } = useExpenseEditorTheme();
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -562,13 +571,13 @@ export function ExpenseEditorScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   amountField: {
     alignItems: 'center',
     gap: theme.spacing.xs,
   },
   amountInput: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.amount,
     fontWeight: '700',
     textAlign: 'center',
@@ -576,7 +585,7 @@ const styles = StyleSheet.create({
   },
   centered: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
     gap: theme.spacing.md,
     justifyContent: 'center',
@@ -592,13 +601,13 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.dangerMuted,
+    backgroundColor: c.status.error.container,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
   },
   deleteButtonText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
@@ -606,7 +615,7 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.disabled,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
   },
   field: {
@@ -614,7 +623,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     paddingHorizontal: theme.spacing.sm,
@@ -627,31 +636,31 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   headerButtonText: {
-    color: theme.colors.text,
+    color: c.icon.primary,
     fontSize: theme.fontSizes.title,
   },
   helperText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   inlineError: {
     gap: theme.spacing.xs,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
   },
   invalidInput: {
-    borderColor: theme.colors.danger,
+    borderColor: c.field.borderError,
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -664,7 +673,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
   },
   manualCurrency: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
@@ -675,52 +684,52 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.pressed,
   },
   preview: {
-    color: theme.colors.text,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
     textAlign: 'center',
   },
   previewMuted: {
-    color: theme.colors.textMuted,
+    color: c.text.tertiary,
     fontSize: theme.fontSizes.label,
     textAlign: 'center',
   },
   retryText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   saveButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
   },
   saveButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   secondaryAction: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.action.secondary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.lg,
   },
   secondaryActionText: {
-    color: theme.colors.text,
+    color: c.action.secondary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   selector: {
     alignItems: 'center',
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
     flexDirection: 'row',
@@ -728,16 +737,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   selectorChevron: {
-    color: theme.colors.textMuted,
+    color: c.icon.secondary,
     fontSize: theme.fontSizes.title,
   },
   selectorText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
