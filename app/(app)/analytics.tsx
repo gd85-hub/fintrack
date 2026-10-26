@@ -20,6 +20,7 @@ import { LoadingScreen } from '../../components/LoadingScreen';
 import { ShareBar } from '../../components/ShareBar';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import {
   type AnalyticsExpense,
   buildFixedVariableBreakdown,
@@ -41,25 +42,21 @@ import {
 } from '../../lib/dates';
 import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 const expensePageSize = 10;
 const unknownMerchantKey = 'unknown';
 
-type PaletteColor =
-  | (typeof theme.categoryPalette)[number]
-  | typeof theme.colors.disabled;
-
 type RankedCategory = {
   amount: number;
   category: CategoryBreakdown;
-  color: PaletteColor;
+  color: string;
   share: number;
 };
 
 type RankedMerchant = {
   amount: number;
-  color: PaletteColor;
+  color: string;
   merchant: MerchantBreakdown;
   share: number;
 };
@@ -71,7 +68,7 @@ type RankedFixedVariableBucket = {
     amount: number;
     category: FixedVariableCategoryBreakdown;
   }>;
-  color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
+  color: string;
   emoji: string;
   labelKey: string;
   share: number;
@@ -85,19 +82,16 @@ type CurrencyTotals = {
 
 const fixedVariablePresentation = {
   fixed: {
-    color: theme.fixedVariablePalette.fixed,
     emoji: '🔒',
     labelKey: 'analytics.fixedLabel',
   },
   variable: {
-    color: theme.fixedVariablePalette.variable,
     emoji: '🔁',
     labelKey: 'analytics.variableLabel',
   },
 } satisfies Record<
   ExpenseCategoryType,
   {
-    color: (typeof theme.fixedVariablePalette)[ExpenseCategoryType];
     emoji: string;
     labelKey: string;
   }
@@ -115,16 +109,20 @@ function amountForCurrency(value: CurrencyTotals, currency: Currency) {
   return value.totalRsd;
 }
 
-function colorForKey(key: string | null) {
+function colorForKey(
+  key: string | null,
+  categorical: readonly string[],
+  muted: string,
+) {
   if (key === null) {
-    return theme.colors.disabled;
+    return muted;
   }
 
   let hash = 0;
   for (const character of key) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-  return theme.categoryPalette[hash % theme.categoryPalette.length];
+  return categorical[hash % categorical.length] ?? muted;
 }
 
 function formatShare(share: number) {
@@ -154,7 +152,14 @@ type ExpenseDetailsProps = {
   visibleCount: number;
 };
 
+function useAnalyticsTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  return { colors, styles };
+}
+
 function DrilldownPanel({ children }: { children: ReactNode }) {
+  const { styles } = useAnalyticsTheme();
   const items = Children.toArray(children);
 
   return (
@@ -182,6 +187,7 @@ function ExpenseDetails({
   visibleCount,
 }: ExpenseDetailsProps) {
   const { t } = useLanguage();
+  const { styles } = useAnalyticsTheme();
   const visibleExpenses = expenses.slice(0, visibleCount);
   const remaining = expenses.length - visibleExpenses.length;
 
@@ -226,6 +232,7 @@ function ExpenseDetails({
 export default function AnalyticsScreen() {
   const router = useRouter();
   const { t, locale } = useLanguage();
+  const { colors, styles } = useAnalyticsTheme();
   const {
     currency: displayCurrency,
     setCurrency: setDisplayCurrency,
@@ -312,7 +319,11 @@ export default function AnalyticsScreen() {
       .map((category) => ({
         amount: amountForCurrency(category, displayCurrency),
         category,
-        color: colorForKey(category.categoryId),
+        color: colorForKey(
+          category.categoryId,
+          colors.data.categorical,
+          colors.data.muted,
+        ),
       }))
       .filter(({ amount }) => amount > 0)
       .sort((left, right) => right.amount - left.amount)
@@ -320,7 +331,7 @@ export default function AnalyticsScreen() {
         ...category,
         share: (category.amount / monthTotal) * 100,
       }));
-  }, [breakdown, displayCurrency, monthTotal]);
+  }, [breakdown, colors.data, displayCurrency, monthTotal]);
   const merchantTotal = merchantBreakdown
     ? amountForCurrency(merchantBreakdown, displayCurrency)
     : 0;
@@ -332,7 +343,11 @@ export default function AnalyticsScreen() {
     return merchantBreakdown.merchants
       .map((merchant) => ({
         amount: amountForCurrency(merchant, displayCurrency),
-        color: colorForKey(merchant.merchantId),
+        color: colorForKey(
+          merchant.merchantId,
+          colors.data.categorical,
+          colors.data.muted,
+        ),
         merchant,
       }))
       .filter(({ amount }) => amount > 0)
@@ -341,7 +356,7 @@ export default function AnalyticsScreen() {
         ...merchant,
         share: (merchant.amount / merchantTotal) * 100,
       }));
-  }, [displayCurrency, merchantBreakdown, merchantTotal]);
+  }, [colors.data, displayCurrency, merchantBreakdown, merchantTotal]);
   const fixedVariableBreakdown = useMemo(
     () => buildFixedVariableBreakdown(analyticsExpenses),
     [analyticsExpenses],
@@ -357,10 +372,15 @@ export default function AnalyticsScreen() {
       fixedVariableBreakdown.buckets.map((bucket) => {
         const presentation = fixedVariablePresentation[bucket.type];
         const amount = amountForCurrency(bucket, displayCurrency);
+        const color =
+          bucket.type === 'fixed'
+            ? colors.data.categorical[2]
+            : colors.data.selection;
 
         return {
           amount,
           bucket,
+          color,
           categories: bucket.categories
             .map((category) => ({
               amount: amountForCurrency(category, displayCurrency),
@@ -374,7 +394,7 @@ export default function AnalyticsScreen() {
               : 0,
         };
       }),
-    [displayCurrency, fixedVariableBreakdown, fixedVariableTotal],
+    [colors.data, displayCurrency, fixedVariableBreakdown, fixedVariableTotal],
   );
   const { expensesByCategory, expensesByMerchant } = useMemo(() => {
     const categoryBuckets = new Map<string, AnalyticsExpense[]>();
@@ -878,7 +898,7 @@ export default function AnalyticsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   analyticsBlocks: {
     gap: theme.spacing.lg,
   },
@@ -889,11 +909,11 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   backText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
   },
   categoryAmount: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
     textAlign: 'right',
@@ -903,7 +923,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   categoryGroup: {
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
   },
   categoryList: {
@@ -915,11 +935,11 @@ const styles = StyleSheet.create({
     width: theme.sizes.categoryMarker,
   },
   categoryMeta: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
   categoryName: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '600',
   },
@@ -949,7 +969,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xxl,
   },
   emptyText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
   },
@@ -958,16 +978,16 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
     textAlign: 'center',
   },
   drilldownItemDivider: {
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
   },
   drilldownPanel: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.card,
     marginBottom: theme.spacing.sm,
     marginLeft: theme.spacing.lg,
@@ -975,7 +995,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xxs,
   },
   expandIcon: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
     width: theme.spacing.md,
@@ -985,7 +1005,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -999,7 +1019,7 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   monthButtonText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
   },
   monthRow: {
@@ -1008,14 +1028,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   monthTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
     textAlign: 'center',
   },
   merchantAmount: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
     textAlign: 'right',
@@ -1025,11 +1045,11 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xxs,
   },
   merchantMeta: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.small,
   },
   merchantName: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
   },
   merchantRow: {
@@ -1039,7 +1059,7 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   monthTotal: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.monthTotal,
     fontWeight: '700',
     textAlign: 'center',
@@ -1048,22 +1068,22 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.pressed,
   },
   retryText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   rowPressed: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   section: {
     gap: theme.spacing.md,
   },
   sectionTitle: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
   },
@@ -1073,12 +1093,12 @@ const styles = StyleSheet.create({
     minHeight: theme.sizes.iconButton,
   },
   showMoreText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
@@ -1088,7 +1108,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.xs,
   },
   totalLabel: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.label,
   },
 });

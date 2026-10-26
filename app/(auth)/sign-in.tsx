@@ -1,5 +1,5 @@
 import { Link } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -10,12 +10,15 @@ import {
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useColors } from '../../contexts/ThemeContext';
 import { localizedAuthError } from '../../lib/authErrors';
-import { theme } from '../../lib/theme';
+import { theme, type Colors } from '../../lib/theme';
 
 export default function SignInScreen() {
   const { signIn } = useAuth();
   const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -45,7 +48,7 @@ export default function SignInScreen() {
           inputMode="email"
           onChangeText={setEmail}
           placeholder="Email"
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={colors.field.placeholder}
           style={styles.input}
           value={email}
         />
@@ -54,7 +57,7 @@ export default function SignInScreen() {
           autoComplete="password"
           onChangeText={setPassword}
           placeholder={t('auth.password')}
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={colors.field.placeholder}
           secureTextEntry
           style={styles.input}
           value={password}
@@ -86,10 +89,10 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   button: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
@@ -99,19 +102,19 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.pressed,
   },
   buttonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
   container: {
     alignItems: 'center',
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
     justifyContent: 'center',
     padding: theme.spacing.lg,
   },
   error: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.label,
   },
   form: {
@@ -120,21 +123,21 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
   },
   link: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.label,
     textAlign: 'center',
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
     fontWeight: '700',
     marginBottom: theme.spacing.xs,

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,6 +20,7 @@ import { ReceiptCamera } from '../../../components/ReceiptCamera';
 import { ReceiptImageInput } from '../../../components/ReceiptImageInput';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
+import { useColors } from '../../../contexts/ThemeContext';
 import { listCategories, listMerchantTypes } from '../../../lib/db';
 import {
   analyzeReceiptImages,
@@ -33,7 +34,13 @@ import {
   isSupportedReceiptUrl,
   receiptParseErrorMessage,
 } from '../../../lib/receipts';
-import { theme } from '../../../lib/theme';
+import { theme, type Colors } from '../../../lib/theme';
+
+function useScanTheme() {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  return { colors, styles };
+}
 
 export default function ScanReceiptScreen() {
   if (Platform.OS === 'web') {
@@ -45,6 +52,7 @@ export default function ScanReceiptScreen() {
 
 function WebImageReceiptScreen() {
   const { t } = useLanguage();
+  const { styles } = useScanTheme();
 
   return (
     <View style={styles.screen}>
@@ -73,6 +81,7 @@ function WebImageReceiptScreen() {
 function ImageReceiptFlow() {
   const { t } = useLanguage();
   const { setDraft } = useReceiptDraft();
+  const { colors, styles } = useScanTheme();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,7 +130,7 @@ function ImageReceiptFlow() {
       />
       {processing ? (
         <View style={styles.processingCard}>
-          <ActivityIndicator color={theme.colors.accent} />
+          <ActivityIndicator color={colors.action.primary.fill} />
           <Text style={styles.processingText}>{t('scan.recognizing')}</Text>
         </View>
       ) : null}
@@ -154,6 +163,7 @@ function NativeScanReceiptScreen() {
     (Array.isArray(mode) ? mode[0] : mode) === 'image';
   const { t } = useLanguage();
   const { setDraft } = useReceiptDraft();
+  const { colors, styles } = useScanTheme();
   const [isFocused, setIsFocused] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [imageMode, setImageMode] = useState(initialImageMode);
@@ -287,7 +297,7 @@ function NativeScanReceiptScreen() {
               }}
               onSubmitEditing={() => void handleReceiptUrl(manualUrl)}
               placeholder="https://suf.purs.gov.rs/v/?vl=…"
-              placeholderTextColor={theme.colors.textMuted}
+              placeholderTextColor={colors.field.placeholder}
               returnKeyType="go"
               style={styles.input}
               value={manualUrl}
@@ -379,7 +389,7 @@ function NativeScanReceiptScreen() {
 
         {processing && !manualMode ? (
           <View style={styles.processingCard}>
-            <ActivityIndicator color={theme.colors.accent} />
+            <ActivityIndicator color={colors.action.primary.fill} />
             <Text style={styles.processingText}>{t('scan.loading')}</Text>
           </View>
         ) : null}
@@ -388,7 +398,7 @@ function NativeScanReceiptScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Colors) => StyleSheet.create({
   backButton: {
     alignItems: 'center',
     height: theme.sizes.iconButton,
@@ -396,7 +406,7 @@ const styles = StyleSheet.create({
     width: theme.sizes.iconButton,
   },
   backText: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.title,
   },
   content: {
@@ -411,18 +421,18 @@ const styles = StyleSheet.create({
     opacity: theme.opacity.disabled,
   },
   errorCard: {
-    backgroundColor: theme.colors.dangerMuted,
+    backgroundColor: c.status.error.container,
     borderRadius: theme.radii.card,
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
   },
   errorText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.body,
   },
   header: {
     alignItems: 'center',
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
     flexDirection: 'row',
     gap: theme.spacing.sm,
@@ -430,7 +440,7 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.xs,
   },
   help: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
   },
@@ -438,16 +448,16 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   input: {
-    borderColor: theme.colors.border,
+    borderColor: c.field.border,
     borderRadius: theme.radii.input,
     borderWidth: theme.sizes.border,
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
   label: {
-    color: theme.colors.text,
+    color: c.text.primary,
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
@@ -458,7 +468,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.md,
   },
   linkText: {
-    color: theme.colors.accent,
+    color: c.action.link.rest,
     fontSize: theme.fontSizes.button,
     fontWeight: '600',
   },
@@ -470,27 +480,27 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accent,
+    backgroundColor: c.action.primary.fill,
     borderRadius: theme.radii.button,
     justifyContent: 'center',
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.md,
   },
   primaryButtonText: {
-    color: theme.colors.white,
+    color: c.action.primary.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   processingCard: {
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: c.surface.default,
     borderRadius: theme.radii.card,
     flexDirection: 'row',
     gap: theme.spacing.sm,
     padding: theme.spacing.md,
   },
   processingText: {
-    color: theme.colors.textMuted,
+    color: c.text.secondary,
     fontSize: theme.fontSizes.body,
   },
   retryButton: {
@@ -499,16 +509,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   retryText: {
-    color: theme.colors.danger,
+    color: c.status.error.content,
     fontSize: theme.fontSizes.button,
     fontWeight: '700',
   },
   screen: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: c.bg.base,
     flex: 1,
   },
   title: {
-    color: theme.colors.text,
+    color: c.text.primary,
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
