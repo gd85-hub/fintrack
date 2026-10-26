@@ -23,7 +23,11 @@ import {
   type Language,
   useLanguage,
 } from '../../contexts/LanguageContext';
-import { useColors } from '../../contexts/ThemeContext';
+import {
+  type ThemePreference,
+  useColors,
+  useTheme,
+} from '../../contexts/ThemeContext';
 import { theme, type Colors } from '../../lib/theme';
 
 type SettingsRouteRowProps = {
@@ -112,15 +116,29 @@ const languageOptions: readonly {
   { labelKey: 'settings.language.english', value: 'en' },
 ];
 
+const themeOptions: readonly {
+  labelKey:
+    | 'settings.themeSystem'
+    | 'settings.themeLight'
+    | 'settings.themeDark';
+  value: ThemePreference;
+}[] = [
+  { labelKey: 'settings.themeSystem', value: 'system' },
+  { labelKey: 'settings.themeLight', value: 'light' },
+  { labelKey: 'settings.themeDark', value: 'dark' },
+];
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut, updateName, user } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const { theme: themePreference, setTheme } = useTheme();
   const { colors, styles } = useSettingsStyles();
   const [signingOut, setSigningOut] = useState(false);
   const [hasSignOutError, setHasSignOutError] = useState(false);
   const [nameEditorVisible, setNameEditorVisible] = useState(false);
   const [languageSelectorVisible, setLanguageSelectorVisible] = useState(false);
+  const [themeSelectorVisible, setThemeSelectorVisible] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameInputFocused, setNameInputFocused] = useState(false);
   const [hasNameError, setHasNameError] = useState(false);
@@ -175,6 +193,9 @@ export default function SettingsScreen() {
   const currentLanguageLabel =
     languageOptions.find((option) => option.value === language)?.labelKey ??
     'settings.language.system';
+  const currentThemeLabel =
+    themeOptions.find((option) => option.value === themePreference)?.labelKey ??
+    'settings.themeSystem';
 
   return (
     <View style={styles.screen}>
@@ -270,10 +291,25 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t('settings.section.preferences')}>
-          <SettingsDisabledRow
-            comingSoon={t('settings.comingSoon')}
-            label={t('settings.theme')}
-          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: themeSelectorVisible }}
+            onPress={() => setThemeSelectorVisible(true)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.rowPressed,
+            ]}
+          >
+            <Text style={styles.rowLabel}>{t('settings.theme')}</Text>
+            <Text numberOfLines={1} style={styles.rowValue}>
+              {t(currentThemeLabel)}
+            </Text>
+            <Feather
+              color={colors.icon.secondary}
+              name="chevron-right"
+              size={theme.spacing.lg}
+            />
+          </Pressable>
           <View style={styles.separator} />
           <Pressable
             accessibilityRole="button"
@@ -391,6 +427,61 @@ export default function SettingsScreen() {
                     : t('settings.name.save')}
                 </Text>
               </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setThemeSelectorVisible(false)}
+        transparent={true}
+        visible={themeSelectorVisible}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel={t('settings.themeClose')}
+            accessibilityRole="button"
+            onPress={() => setThemeSelectorVisible(false)}
+            style={styles.scrim}
+          />
+          <View accessibilityViewIsModal={true} style={styles.modalPanel}>
+            <Text style={styles.modalTitle}>{t('settings.themeTitle')}</Text>
+            <View style={styles.languageOptions}>
+              {themeOptions.map((option, index) => {
+                const selected = themePreference === option.value;
+
+                return (
+                  <Fragment key={option.value}>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => {
+                        setTheme(option.value);
+                        setThemeSelectorVisible(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.languageOption,
+                        pressed && styles.rowPressed,
+                      ]}
+                    >
+                      <Text style={styles.languageOptionLabel}>
+                        {t(option.labelKey)}
+                      </Text>
+                      {selected ? (
+                        <Feather
+                          color={colors.icon.action}
+                          name="check"
+                          size={theme.spacing.lg}
+                        />
+                      ) : null}
+                    </Pressable>
+                    {index < themeOptions.length - 1 ? (
+                      <View style={styles.separator} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
             </View>
           </View>
         </View>

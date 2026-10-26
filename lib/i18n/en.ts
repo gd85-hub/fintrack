@@ -40,6 +40,11 @@ export const en = {
     manageCategories: 'Manage categories',
     manageCurrencies: 'Manage currencies',
     theme: 'Theme',
+    themeTitle: 'Appearance',
+    themeClose: 'Close theme selector',
+    themeSystem: 'System',
+    themeLight: 'Light',
+    themeDark: 'Dark',
     language: {
       label: 'Language',
       title: 'Choose language',

@@ -40,6 +40,11 @@ export const ru = {
     manageCategories: 'Управление категориями',
     manageCurrencies: 'Управление валютами',
     theme: 'Тема',
+    themeTitle: 'Тема оформления',
+    themeClose: 'Закрыть выбор темы',
+    themeSystem: 'Системная',
+    themeLight: 'Светлая',
+    themeDark: 'Тёмная',
     language: {
       label: 'Язык',
       title: 'Выберите язык',
