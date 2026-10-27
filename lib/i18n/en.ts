@@ -254,6 +254,18 @@ export const en = {
     yesterday: 'Yesterday',
     today: 'Today',
   },
+  period: {
+    title: 'Period',
+    thisMonth: 'This month',
+    lastMonth: 'Last month',
+    last3Months: 'Last 3 months',
+    thisYear: 'This year',
+    custom: 'Custom',
+    from: 'From',
+    to: 'To',
+    apply: 'Apply',
+    close: 'Close period picker',
+  },
   editor: {
     ratesLoadFailed:
       "Couldn't load exchange rates. Check your connection and try again.",

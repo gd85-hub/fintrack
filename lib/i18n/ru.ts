@@ -263,6 +263,18 @@ export const ru = {
     yesterday: 'Вчера',
     today: 'Сегодня',
   },
+  period: {
+    title: 'Период',
+    thisMonth: 'Этот месяц',
+    lastMonth: 'Прошлый месяц',
+    last3Months: 'Последние 3 месяца',
+    thisYear: 'Этот год',
+    custom: 'Свой период',
+    from: 'С',
+    to: 'По',
+    apply: 'Применить',
+    close: 'Закрыть выбор периода',
+  },
   editor: {
     ratesLoadFailed:
       'Не удалось загрузить курсы валют. Проверьте интернет и попробуйте ещё раз.',

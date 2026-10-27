@@ -1,3 +1,4 @@
+import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Children,
@@ -17,6 +18,7 @@ import {
 import { CurrencySelector } from '../../components/CurrencySelector';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
+import { PeriodSelector } from '../../components/PeriodSelector';
 import { ShareBar } from '../../components/ShareBar';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -24,24 +26,24 @@ import { useColors } from '../../contexts/ThemeContext';
 import {
   type AnalyticsExpense,
   buildFixedVariableBreakdown,
-  categoryBreakdownByMonth,
+  categoryBreakdownByRange,
   type CategoryBreakdown,
   type ExpenseCategoryType,
   type FixedVariableBucketBreakdown,
   type FixedVariableCategoryBreakdown,
   type MerchantBreakdown,
-  merchantBreakdownByMonth,
-  listExpensesForAnalytics,
+  merchantBreakdownByRange,
+  listExpensesForRange,
   type MonthlyCategoryBreakdown,
   type MonthlyMerchantBreakdown,
 } from '../../lib/db';
-import {
-  formatMonthTitle,
-  shiftMonth,
-  todayLocalISO,
-} from '../../lib/dates';
 import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
+import {
+  type Period,
+  periodLabel,
+  resolvePeriod,
+} from '../../lib/period';
 import { theme, type Colors } from '../../lib/theme';
 
 const expensePageSize = 10;
@@ -237,8 +239,9 @@ export default function AnalyticsScreen() {
     currency: displayCurrency,
     setCurrency: setDisplayCurrency,
   } = useDisplayCurrency();
-  const currentMonth = todayLocalISO().slice(0, 7);
-  const [visibleMonth, setVisibleMonth] = useState(currentMonth);
+  const [period, setPeriod] = useState<Period>({ kind: 'thisMonth' });
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const { fromISO, toISO } = useMemo(() => resolvePeriod(period), [period]);
   const [breakdown, setBreakdown] =
     useState<MonthlyCategoryBreakdown | null>(null);
   const [merchantBreakdown, setMerchantBreakdown] =
@@ -272,9 +275,9 @@ export default function AnalyticsScreen() {
       setErrorMessage('');
 
       void Promise.all([
-        categoryBreakdownByMonth(visibleMonth),
-        merchantBreakdownByMonth(visibleMonth),
-        listExpensesForAnalytics(visibleMonth),
+        categoryBreakdownByRange(fromISO, toISO),
+        merchantBreakdownByRange(fromISO, toISO),
+        listExpensesForRange(fromISO, toISO),
       ])
         .then(
           ([
@@ -304,7 +307,7 @@ export default function AnalyticsScreen() {
       return () => {
         active = false;
       };
-    }, [retryKey, visibleMonth]),
+    }, [fromISO, retryKey, toISO]),
   );
 
   const monthTotal = breakdown
@@ -417,12 +420,14 @@ export default function AnalyticsScreen() {
       expensesByMerchant: merchantBuckets,
     };
   }, [analyticsExpenses]);
-  const canMoveForward = visibleMonth < currentMonth;
-
   function openMonthOnHome() {
+    if (period.kind !== 'thisMonth' && period.kind !== 'lastMonth') {
+      return;
+    }
+
     router.replace({
       pathname: '/(app)',
-      params: { month: visibleMonth },
+      params: { month: fromISO.slice(0, 7) },
     });
   }
 
@@ -480,57 +485,41 @@ export default function AnalyticsScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable
-          accessibilityLabel={t('analytics.backA11y')}
-          accessibilityRole="button"
-          onPress={openMonthOnHome}
-          style={({ pressed }) => [
-            styles.backButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.backText}>←</Text>
-        </Pressable>
+        {period.kind === 'thisMonth' || period.kind === 'lastMonth' ? (
+          <Pressable
+            accessibilityLabel={t('analytics.backA11y')}
+            accessibilityRole="button"
+            onPress={openMonthOnHome}
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.backText}>←</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.title}>{t('nav.analytics')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.monthRow}>
-          <Pressable
-            accessibilityLabel={t('date.prevMonth')}
-            accessibilityRole="button"
-            onPress={() =>
-              setVisibleMonth((month) => shiftMonth(month, -1))
-            }
-            style={({ pressed }) => [
-              styles.monthButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.monthButtonText}>‹</Text>
-          </Pressable>
-
-          <Text style={styles.monthTitle}>
-            {formatMonthTitle(visibleMonth, locale)}
+        <Pressable
+          accessibilityLabel={t('period.title')}
+          accessibilityRole="button"
+          onPress={() => setSheetVisible(true)}
+          style={({ pressed }) => [
+            styles.periodButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text numberOfLines={1} style={styles.periodTitle}>
+            {periodLabel(period, locale, t)}
           </Text>
-
-          <Pressable
-            accessibilityLabel={t('date.nextMonth')}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !canMoveForward }}
-            disabled={!canMoveForward}
-            onPress={() =>
-              setVisibleMonth((month) => shiftMonth(month, 1))
-            }
-            style={({ pressed }) => [
-              styles.monthButton,
-              !canMoveForward && styles.disabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.monthButtonText}>›</Text>
-          </Pressable>
-        </View>
+          <Feather
+            color={colors.icon.primary}
+            name="chevron-down"
+            size={theme.scale.size.iconMd}
+          />
+        </Pressable>
 
         <CurrencySelector
           accessibilityLabel={t('analytics.currencyA11y')}
@@ -894,6 +883,16 @@ export default function AnalyticsScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      <PeriodSelector
+        onClose={() => setSheetVisible(false)}
+        onSelect={(selectedPeriod) => {
+          setPeriod(selectedPeriod);
+          setSheetVisible(false);
+        }}
+        period={period}
+        visible={sheetVisible}
+      />
     </View>
   );
 }
@@ -958,9 +957,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     paddingBottom: theme.spacing.xxl,
     width: '100%',
   },
-  disabled: {
-    opacity: theme.opacity.disabled,
-  },
   emoji: {
     fontSize: theme.fontSizes.body,
   },
@@ -1012,27 +1008,16 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },
-  monthButton: {
-    alignItems: 'center',
-    height: theme.sizes.iconButton,
-    justifyContent: 'center',
-    width: theme.sizes.iconButton,
-  },
-  monthButtonText: {
-    color: c.text.primary,
-    fontSize: theme.fontSizes.title,
-  },
-  monthRow: {
+  periodButton: {
     alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: theme.scale.space[2],
+    paddingVertical: theme.scale.space[1],
   },
-  monthTitle: {
+  periodTitle: {
+    ...theme.type.titleScreen,
     color: c.text.primary,
-    flex: 1,
-    fontSize: theme.fontSizes.body,
-    fontWeight: '700',
-    textAlign: 'center',
+    flexShrink: 1,
   },
   merchantAmount: {
     color: c.text.primary,
