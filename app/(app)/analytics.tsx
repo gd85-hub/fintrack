@@ -47,7 +47,7 @@ import {
 import { theme, type Colors } from '../../lib/theme';
 
 const expensePageSize = 10;
-const topBreakdownCount = 7;
+const topBreakdownCount = 6;
 const unknownMerchantKey = 'unknown';
 
 type AnalyticsTab = 'categories' | 'merchants' | 'fixedVariable';

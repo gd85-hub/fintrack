@@ -150,16 +150,13 @@ export const theme = {
       },
     },
     data: {
-      // Eight validated categorical hues (distinct under CVD), light & dark stepped.
       categorical: [
-        '#2a78d6',
-        '#eb6834',
-        '#1baf7a',
-        '#eda100',
-        '#e87ba4',
-        '#008300',
-        '#6250d6',
-        '#e34948',
+        '#444ce7',
+        '#0e7090',
+        '#5720b7',
+        '#97180c',
+        '#9e165f',
+        '#4f7a21',
       ],
       sequential: {
         1: '#bee4fe',
@@ -504,16 +501,13 @@ export const darkColor = {
     },
   },
   data: {
-    // Eight validated categorical hues (distinct under CVD), light & dark stepped.
     categorical: [
-      '#3987e5',
-      '#d95926',
-      '#199e70',
-      '#c98500',
-      '#d55181',
-      '#008300',
-      '#9085e9',
-      '#e66767',
+      '#6172f3',
+      '#088ab2',
+      '#7839ee',
+      '#bc1b06',
+      '#dd2590',
+      '#669f2a',
     ],
     sequential: {
       1: '#006a9c',
