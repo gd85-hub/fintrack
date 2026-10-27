@@ -47,7 +47,10 @@ import {
 import { theme, type Colors } from '../../lib/theme';
 
 const expensePageSize = 10;
+const topBreakdownCount = 7;
 const unknownMerchantKey = 'unknown';
+
+type AnalyticsTab = 'categories' | 'merchants' | 'fixedVariable';
 
 type RankedCategory = {
   amount: number;
@@ -82,6 +85,15 @@ type CurrencyTotals = {
   totalEur: number;
 };
 
+const analyticsTabs = [
+  { labelKey: 'analytics.tabCategories', value: 'categories' },
+  { labelKey: 'analytics.tabMerchants', value: 'merchants' },
+  { labelKey: 'analytics.tabFixedVariable', value: 'fixedVariable' },
+] as const satisfies readonly {
+  labelKey: string;
+  value: AnalyticsTab;
+}[];
+
 const fixedVariablePresentation = {
   fixed: {
     emoji: '🔒',
@@ -109,22 +121,6 @@ function amountForCurrency(value: CurrencyTotals, currency: Currency) {
   }
 
   return value.totalRsd;
-}
-
-function colorForKey(
-  key: string | null,
-  categorical: readonly string[],
-  muted: string,
-) {
-  if (key === null) {
-    return muted;
-  }
-
-  let hash = 0;
-  for (const character of key) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  }
-  return categorical[hash % categorical.length] ?? muted;
 }
 
 function formatShare(share: number) {
@@ -158,6 +154,48 @@ function useAnalyticsTheme() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   return { colors, styles };
+}
+
+type TypeTabsProps = {
+  value: AnalyticsTab;
+  onChange: (value: AnalyticsTab) => void;
+};
+
+function TypeTabs({ value, onChange }: TypeTabsProps) {
+  const { t } = useLanguage();
+  const { styles } = useAnalyticsTheme();
+
+  return (
+    <View accessibilityRole="radiogroup" style={styles.typeTabs}>
+      {analyticsTabs.map((tab) => {
+        const selected = tab.value === value;
+
+        return (
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            key={tab.value}
+            onPress={() => onChange(tab.value)}
+            style={({ pressed }) => [
+              styles.typeTab,
+              selected && styles.typeTabSelected,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.typeTabText,
+                selected && styles.typeTabTextSelected,
+              ]}
+            >
+              {t(tab.labelKey)}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 }
 
 function DrilldownPanel({ children }: { children: ReactNode }) {
@@ -241,6 +279,10 @@ export default function AnalyticsScreen() {
   } = useDisplayCurrency();
   const [period, setPeriod] = useState<Period>({ kind: 'thisMonth' });
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [activeTab, setActiveTab] =
+    useState<AnalyticsTab>('categories');
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllMerchants, setShowAllMerchants] = useState(false);
   const { fromISO, toISO } = useMemo(() => resolvePeriod(period), [period]);
   const [breakdown, setBreakdown] =
     useState<MonthlyCategoryBreakdown | null>(null);
@@ -322,16 +364,15 @@ export default function AnalyticsScreen() {
       .map((category) => ({
         amount: amountForCurrency(category, displayCurrency),
         category,
-        color: colorForKey(
-          category.categoryId,
-          colors.data.categorical,
-          colors.data.muted,
-        ),
       }))
       .filter(({ amount }) => amount > 0)
       .sort((left, right) => right.amount - left.amount)
-      .map((category) => ({
+      .map((category, index) => ({
         ...category,
+        color:
+          index < topBreakdownCount
+            ? colors.data.categorical[index] ?? colors.data.muted
+            : colors.data.muted,
         share: (category.amount / monthTotal) * 100,
       }));
   }, [breakdown, colors.data, displayCurrency, monthTotal]);
@@ -346,17 +387,16 @@ export default function AnalyticsScreen() {
     return merchantBreakdown.merchants
       .map((merchant) => ({
         amount: amountForCurrency(merchant, displayCurrency),
-        color: colorForKey(
-          merchant.merchantId,
-          colors.data.categorical,
-          colors.data.muted,
-        ),
         merchant,
       }))
       .filter(({ amount }) => amount > 0)
       .sort((left, right) => right.amount - left.amount)
-      .map((merchant) => ({
+      .map((merchant, index) => ({
         ...merchant,
+        color:
+          index < topBreakdownCount
+            ? colors.data.categorical[index] ?? colors.data.muted
+            : colors.data.muted,
         share: (merchant.amount / merchantTotal) * 100,
       }));
   }, [colors.data, displayCurrency, merchantBreakdown, merchantTotal]);
@@ -420,6 +460,108 @@ export default function AnalyticsScreen() {
       expensesByMerchant: merchantBuckets,
     };
   }, [analyticsExpenses]);
+  const topCategories = useMemo(
+    () => rankedCategories.slice(0, topBreakdownCount),
+    [rankedCategories],
+  );
+  const topMerchants = useMemo(
+    () => rankedMerchants.slice(0, topBreakdownCount),
+    [rankedMerchants],
+  );
+  const otherCategories = useMemo(() => {
+    const remainder = rankedCategories.slice(topBreakdownCount);
+
+    if (remainder.length === 0) {
+      return null;
+    }
+
+    return remainder.reduce(
+      (summary, row) => ({
+        amount: summary.amount + row.amount,
+        count: summary.count + row.category.count,
+        share: summary.share + row.share,
+      }),
+      { amount: 0, count: 0, share: 0 },
+    );
+  }, [rankedCategories]);
+  const otherMerchants = useMemo(() => {
+    const remainder = rankedMerchants.slice(topBreakdownCount);
+
+    if (remainder.length === 0) {
+      return null;
+    }
+
+    return remainder.reduce(
+      (summary, row) => ({
+        amount: summary.amount + row.amount,
+        count: summary.count + row.merchant.count,
+        share: summary.share + row.share,
+      }),
+      { amount: 0, count: 0, share: 0 },
+    );
+  }, [rankedMerchants]);
+  const categoryShareSegments = useMemo(
+    () => [
+      ...topCategories.map(({ amount, category, color }) => ({
+        id: category.categoryId,
+        amount,
+        color,
+      })),
+      ...(otherCategories
+        ? [
+            {
+              id: 'category-other',
+              amount: otherCategories.amount,
+              color: colors.data.muted,
+            },
+          ]
+        : []),
+    ],
+    [colors.data.muted, otherCategories, topCategories],
+  );
+  const merchantShareSegments = useMemo(
+    () => [
+      ...topMerchants.map(({ amount, color, merchant }) => ({
+        id: merchant.merchantId ?? unknownMerchantKey,
+        amount,
+        color,
+      })),
+      ...(otherMerchants
+        ? [
+            {
+              id: 'merchant-other',
+              amount: otherMerchants.amount,
+              color: colors.data.muted,
+            },
+          ]
+        : []),
+    ],
+    [colors.data.muted, otherMerchants, topMerchants],
+  );
+  const visibleCategories = showAllCategories
+    ? rankedCategories
+    : topCategories;
+  const visibleMerchants = showAllMerchants
+    ? rankedMerchants
+    : topMerchants;
+
+  function handleTabChange(tab: AnalyticsTab) {
+    if (tab === activeTab) {
+      return;
+    }
+
+    setActiveTab(tab);
+    setShowAllCategories(false);
+    setShowAllMerchants(false);
+  }
+
+  function handlePeriodSelect(selectedPeriod: Period) {
+    setPeriod(selectedPeriod);
+    setShowAllCategories(false);
+    setShowAllMerchants(false);
+    setSheetVisible(false);
+  }
+
   function openMonthOnHome() {
     if (period.kind !== 'thisMonth' && period.kind !== 'lastMonth') {
       return;
@@ -555,24 +697,22 @@ export default function AnalyticsScreen() {
         ) : null}
 
         {!loading && !errorMessage && rankedCategories.length > 0 ? (
-          <View style={styles.analyticsBlocks}>
-            <View style={styles.section}>
+          <>
+            <TypeTabs onChange={handleTabChange} value={activeTab} />
+
+            <View style={styles.analyticsBlocks}>
+              {activeTab === 'categories' ? (
+                <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {t('analytics.byCategory')}
               </Text>
               <ShareBar
                 accessibilityLabel={t('analytics.byCategoryA11y')}
-                segments={rankedCategories.map(
-                  ({ amount, category, color }) => ({
-                    id: category.categoryId,
-                    amount,
-                    color,
-                  }),
-                )}
+                segments={categoryShareSegments}
               />
 
               <View style={styles.categoryList}>
-                {rankedCategories.map(
+                {visibleCategories.map(
                   ({ amount, category, color, share }) => {
                     const visibleCount =
                       categoryVisibleCounts[category.categoryId];
@@ -651,26 +791,83 @@ export default function AnalyticsScreen() {
                     );
                   },
                 )}
+                {!showAllCategories && otherCategories ? (
+                  <View
+                    accessible
+                    accessibilityLabel={t('analytics.sliceA11y', {
+                      name: t('analytics.otherCategories'),
+                      amount: formatMoney(otherCategories.amount),
+                      currency: displayCurrency,
+                      share: formatShare(otherCategories.share),
+                      count: otherCategories.count,
+                    })}
+                    style={styles.categoryGroup}
+                  >
+                    <View style={styles.categoryRow}>
+                      <View
+                        style={[
+                          styles.categoryMarker,
+                          { backgroundColor: colors.data.muted },
+                        ]}
+                      />
+                      <View style={styles.otherEmojiSpacer} />
+                      <View style={styles.categoryCopy}>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.categoryName}
+                        >
+                          {t('analytics.otherCategories')}
+                        </Text>
+                        <Text style={styles.categoryMeta}>
+                          {t('analytics.shareOps', {
+                            share: formatShare(otherCategories.share),
+                            count: otherCategories.count,
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={styles.categoryAmount}>
+                        {formatMoney(otherCategories.amount)}{' '}
+                        {displayCurrency}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                {otherCategories ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      setShowAllCategories((current) => !current)
+                    }
+                    style={({ pressed }) => [
+                      styles.showMoreButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.showMoreText}>
+                      {t(
+                        showAllCategories
+                          ? 'analytics.collapse'
+                          : 'analytics.showAll',
+                      )}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-            </View>
+                </View>
+              ) : null}
 
-            <View style={styles.section}>
+              {activeTab === 'merchants' ? (
+                <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {t('analytics.byMerchant')}
               </Text>
               <ShareBar
                 accessibilityLabel={t('analytics.byMerchantA11y')}
-                segments={rankedMerchants.map(
-                  ({ amount, color, merchant }) => ({
-                    id: merchant.merchantId ?? unknownMerchantKey,
-                    amount,
-                    color,
-                  }),
-                )}
+                segments={merchantShareSegments}
               />
 
               <View style={styles.categoryList}>
-                {rankedMerchants.map(
+                {visibleMerchants.map(
                   ({ amount, color, merchant, share }) => {
                     const merchantKey =
                       merchant.merchantId ?? unknownMerchantKey;
@@ -750,10 +947,72 @@ export default function AnalyticsScreen() {
                     );
                   },
                 )}
+                {!showAllMerchants && otherMerchants ? (
+                  <View
+                    accessible
+                    accessibilityLabel={t('analytics.sliceA11y', {
+                      name: t('analytics.otherCategories'),
+                      amount: formatMoney(otherMerchants.amount),
+                      currency: displayCurrency,
+                      share: formatShare(otherMerchants.share),
+                      count: otherMerchants.count,
+                    })}
+                    style={styles.categoryGroup}
+                  >
+                    <View style={styles.categoryRow}>
+                      <View
+                        style={[
+                          styles.categoryMarker,
+                          { backgroundColor: colors.data.muted },
+                        ]}
+                      />
+                      <View style={styles.categoryCopy}>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.categoryName}
+                        >
+                          {t('analytics.otherCategories')}
+                        </Text>
+                        <Text style={styles.categoryMeta}>
+                          {t('analytics.shareOps', {
+                            share: formatShare(otherMerchants.share),
+                            count: otherMerchants.count,
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={styles.categoryAmount}>
+                        {formatMoney(otherMerchants.amount)}{' '}
+                        {displayCurrency}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+                {otherMerchants ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      setShowAllMerchants((current) => !current)
+                    }
+                    style={({ pressed }) => [
+                      styles.showMoreButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.showMoreText}>
+                      {t(
+                        showAllMerchants
+                          ? 'analytics.collapse'
+                          : 'analytics.showAll',
+                      )}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-            </View>
+                </View>
+              ) : null}
 
-            <View style={styles.section}>
+              {activeTab === 'fixedVariable' ? (
+                <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 {t('analytics.fixedVariable')}
               </Text>
@@ -879,17 +1138,16 @@ export default function AnalyticsScreen() {
                   },
                 )}
               </View>
+                </View>
+              ) : null}
             </View>
-          </View>
+          </>
         ) : null}
       </ScrollView>
 
       <PeriodSelector
         onClose={() => setSheetVisible(false)}
-        onSelect={(selectedPeriod) => {
-          setPeriod(selectedPeriod);
-          setSheetVisible(false);
-        }}
+        onSelect={handlePeriodSelect}
         period={period}
         visible={sheetVisible}
       />
@@ -1049,6 +1307,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  otherEmojiSpacer: {
+    width: theme.scale.size.iconSm,
+  },
   pressed: {
     opacity: theme.opacity.pressed,
   },
@@ -1095,5 +1356,31 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   totalLabel: {
     color: c.text.secondary,
     fontSize: theme.fontSizes.label,
+  },
+  typeTab: {
+    alignItems: 'center',
+    borderRadius: theme.scale.radius.xs,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: theme.scale.size.iconButton,
+    paddingHorizontal: theme.scale.space[2],
+  },
+  typeTabSelected: {
+    backgroundColor: c.bg.base,
+  },
+  typeTabText: {
+    ...theme.type.captionDefault,
+    color: c.text.secondary,
+    textAlign: 'center',
+  },
+  typeTabTextSelected: {
+    color: c.text.primary,
+    fontFamily: theme.type.labelDefault.fontFamily,
+  },
+  typeTabs: {
+    backgroundColor: c.surface.default,
+    borderRadius: theme.scale.radius.sm,
+    flexDirection: 'row',
+    padding: theme.scale.space[1],
   },
 });

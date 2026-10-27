@@ -376,6 +376,12 @@ export const ru = {
   },
   analytics: {
     currencyA11y: 'Валюта аналитики',
+    tabCategories: 'Категории',
+    tabMerchants: 'Места',
+    tabFixedVariable: 'Пост./Перем.',
+    otherCategories: 'Прочее',
+    showAll: 'Показать все',
+    collapse: 'Свернуть',
     monthTotal: 'Всего за месяц',
     empty: 'Нет трат за этот месяц для анализа',
     loadFailed: 'Не удалось загрузить аналитику. Попробуйте ещё раз.',

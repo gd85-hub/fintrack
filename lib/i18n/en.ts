@@ -365,6 +365,12 @@ export const en = {
   },
   analytics: {
     currencyA11y: 'Analytics currency',
+    tabCategories: 'Categories',
+    tabMerchants: 'Places',
+    tabFixedVariable: 'Fixed/variable',
+    otherCategories: 'Other',
+    showAll: 'Show all',
+    collapse: 'Collapse',
     monthTotal: 'Month total',
     empty: 'No expenses to analyze this month',
     loadFailed: "Couldn't load analytics. Try again.",
