@@ -54,17 +54,17 @@ type AnalyticsExpenseQueryRow = {
 };
 
 
-export async function categoryBreakdownByMonth(
-  yyyyMm: string,
+async function categoryBreakdownBetween(
+  firstISO: string,
+  lastISO: string,
 ): Promise<MonthlyCategoryBreakdown> {
-  const { first, last } = monthBounds(yyyyMm);
   const { data, error } = await supabase
     .from('expenses')
     .select(
       'category_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group)',
     )
-    .gte('occurred_on', first)
-    .lte('occurred_on', last);
+    .gte('occurred_on', firstISO)
+    .lte('occurred_on', lastISO);
 
   if (error) {
     throw error;
@@ -111,17 +111,32 @@ export async function categoryBreakdownByMonth(
     totalEur,
   };
 }
-export async function merchantBreakdownByMonth(
+
+export async function categoryBreakdownByMonth(
   yyyyMm: string,
-): Promise<MonthlyMerchantBreakdown> {
+): Promise<MonthlyCategoryBreakdown> {
   const { first, last } = monthBounds(yyyyMm);
+  return categoryBreakdownBetween(first, last);
+}
+
+export async function categoryBreakdownByRange(
+  fromISO: string,
+  toISO: string,
+): Promise<MonthlyCategoryBreakdown> {
+  return categoryBreakdownBetween(fromISO, toISO);
+}
+
+async function merchantBreakdownBetween(
+  firstISO: string,
+  lastISO: string,
+): Promise<MonthlyMerchantBreakdown> {
   const { data, error } = await supabase
     .from('expenses')
     .select(
       'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name)',
     )
-    .gte('occurred_on', first)
-    .lte('occurred_on', last);
+    .gte('occurred_on', firstISO)
+    .lte('occurred_on', lastISO);
 
   if (error) {
     throw error;
@@ -167,6 +182,20 @@ export async function merchantBreakdownByMonth(
     totalUsd,
     totalEur,
   };
+}
+
+export async function merchantBreakdownByMonth(
+  yyyyMm: string,
+): Promise<MonthlyMerchantBreakdown> {
+  const { first, last } = monthBounds(yyyyMm);
+  return merchantBreakdownBetween(first, last);
+}
+
+export async function merchantBreakdownByRange(
+  fromISO: string,
+  toISO: string,
+): Promise<MonthlyMerchantBreakdown> {
+  return merchantBreakdownBetween(fromISO, toISO);
 }
 
 export function buildFixedVariableBreakdown(
@@ -247,17 +276,17 @@ export function buildFixedVariableBreakdown(
   };
 }
 
-export async function listExpensesForAnalytics(
-  yyyyMm: string,
+async function listExpensesBetween(
+  firstISO: string,
+  lastISO: string,
 ): Promise<AnalyticsExpense[]> {
-  const { first, last } = monthBounds(yyyyMm);
   const { data, error } = await supabase
     .from('expenses')
     .select(
       'id,occurred_on,created_at,description,category_id,merchant_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,type),merchant:merchants!expenses_merchant_id_fkey(name)',
     )
-    .gte('occurred_on', first)
-    .lte('occurred_on', last)
+    .gte('occurred_on', firstISO)
+    .lte('occurred_on', lastISO)
     .order('occurred_on', { ascending: false })
     .order('created_at', { ascending: false });
 
@@ -280,4 +309,18 @@ export async function listExpensesForAnalytics(
     amountUsd: decimalToCents(row.amount_usd),
     amountEur: decimalToCents(row.amount_eur),
   }));
+}
+
+export async function listExpensesForAnalytics(
+  yyyyMm: string,
+): Promise<AnalyticsExpense[]> {
+  const { first, last } = monthBounds(yyyyMm);
+  return listExpensesBetween(first, last);
+}
+
+export async function listExpensesForRange(
+  fromISO: string,
+  toISO: string,
+): Promise<AnalyticsExpense[]> {
+  return listExpensesBetween(fromISO, toISO);
 }

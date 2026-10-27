@@ -10,8 +10,11 @@ import {
   type AnalyticsExpense,
   buildFixedVariableBreakdown,
   categoryBreakdownByMonth,
+  categoryBreakdownByRange,
   listExpensesForAnalytics,
+  listExpensesForRange,
   merchantBreakdownByMonth,
+  merchantBreakdownByRange,
 } from '../db';
 import { supabase } from '../supabase';
 
@@ -41,6 +44,45 @@ function mockMonthQuery(data: unknown[]) {
     gte,
     lte,
   };
+}
+
+function mockOrderedQuery(data: unknown[]) {
+  const secondOrder = jest.fn<
+    (
+      column: string,
+      options: { ascending: boolean },
+    ) => Promise<{ data: unknown[]; error: null }>
+  >();
+  secondOrder.mockResolvedValue({ data, error: null });
+  const firstOrder = jest.fn(() => ({ order: secondOrder }));
+  const lte = jest.fn(() => ({ order: firstOrder }));
+  const gte = jest.fn(() => ({ lte }));
+  const select = jest.fn(() => ({ gte }));
+
+  return {
+    client: { select } as unknown as ReturnType<typeof supabase.from>,
+    firstOrder,
+    gte,
+    lte,
+    secondOrder,
+  };
+}
+
+function sumTotals(
+  rows: readonly {
+    totalRsd: number;
+    totalUsd: number;
+    totalEur: number;
+  }[],
+) {
+  return rows.reduce(
+    (totals, row) => ({
+      totalRsd: totals.totalRsd + row.totalRsd,
+      totalUsd: totals.totalUsd + row.totalUsd,
+      totalEur: totals.totalEur + row.totalEur,
+    }),
+    { totalRsd: 0, totalUsd: 0, totalEur: 0 },
+  );
 }
 
 describe('categoryBreakdownByMonth', () => {
@@ -241,47 +283,130 @@ describe('merchantBreakdownByMonth', () => {
   });
 });
 
+describe('range analytics queries', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+  });
+
+  test('matches month breakdowns and preserves row totals over inclusive bounds', async () => {
+    const categoryRows = [
+      {
+        category_id: 'food',
+        amount_rsd: '100.10',
+        amount_usd: '1.00',
+        amount_eur: '0.90',
+        category: {
+          emoji: '🛒',
+          name: 'Продукты',
+          group: 'Еда',
+        },
+      },
+      {
+        category_id: 'transport',
+        amount_rsd: '50.00',
+        amount_usd: '0.45',
+        amount_eur: '0.42',
+        category: {
+          emoji: '🚌',
+          name: 'Транспорт',
+          group: 'Транспорт',
+        },
+      },
+    ];
+    const merchantRows = [
+      {
+        merchant_id: 'maxi',
+        amount_rsd: '100.10',
+        amount_usd: '1.00',
+        amount_eur: '0.90',
+        merchant: { name: 'Maxi' },
+      },
+      {
+        merchant_id: null,
+        amount_rsd: '50.00',
+        amount_usd: '0.45',
+        amount_eur: '0.42',
+        merchant: null,
+      },
+    ];
+    const categoryMonthQuery = mockMonthQuery(categoryRows);
+    const categoryRangeQuery = mockMonthQuery(categoryRows);
+    const merchantMonthQuery = mockMonthQuery(merchantRows);
+    const merchantRangeQuery = mockMonthQuery(merchantRows);
+    fromMock
+      .mockReturnValueOnce(categoryMonthQuery.client)
+      .mockReturnValueOnce(categoryRangeQuery.client)
+      .mockReturnValueOnce(merchantMonthQuery.client)
+      .mockReturnValueOnce(merchantRangeQuery.client);
+
+    const categoryMonth = await categoryBreakdownByMonth('2026-07');
+    const categoryRange = await categoryBreakdownByRange(
+      '2026-07-01',
+      '2026-07-31',
+    );
+    const merchantMonth = await merchantBreakdownByMonth('2026-07');
+    const merchantRange = await merchantBreakdownByRange(
+      '2026-07-01',
+      '2026-07-31',
+    );
+
+    expect(categoryRange).toEqual(categoryMonth);
+    expect(merchantRange).toEqual(merchantMonth);
+    expect(sumTotals(categoryRange.categories)).toEqual({
+      totalRsd: categoryRange.totalRsd,
+      totalUsd: categoryRange.totalUsd,
+      totalEur: categoryRange.totalEur,
+    });
+    expect(sumTotals(merchantRange.merchants)).toEqual({
+      totalRsd: merchantRange.totalRsd,
+      totalUsd: merchantRange.totalUsd,
+      totalEur: merchantRange.totalEur,
+    });
+    expect(categoryRangeQuery.gte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-01',
+    );
+    expect(categoryRangeQuery.lte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-31',
+    );
+    expect(merchantRangeQuery.gte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-01',
+    );
+    expect(merchantRangeQuery.lte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-31',
+    );
+  });
+});
+
 describe('listExpensesForAnalytics', () => {
   beforeEach(() => {
     fromMock.mockReset();
   });
 
   test('maps one ordered month query to stored currency cents', async () => {
-    const secondOrder = jest.fn<
-      (
-        column: string,
-        options: { ascending: boolean },
-      ) => Promise<{ data: unknown[]; error: null }>
-    >();
-    secondOrder.mockResolvedValue({
-      data: [
-        {
-          id: 'expense-1',
-          occurred_on: '2026-07-29',
-          created_at: '2026-07-29T15:45:00Z',
-          description: '',
-          category_id: 'food',
-          merchant_id: 'maxi',
-          amount_rsd: '100.10',
-          amount_usd: '1.00',
-          amount_eur: '0.90',
-          category: {
-            emoji: '🛒',
-            name: 'Продукты',
-            type: 'variable',
-          },
-          merchant: { name: 'Maxi' },
+    const query = mockOrderedQuery([
+      {
+        id: 'expense-1',
+        occurred_on: '2026-07-29',
+        created_at: '2026-07-29T15:45:00Z',
+        description: '',
+        category_id: 'food',
+        merchant_id: 'maxi',
+        amount_rsd: '100.10',
+        amount_usd: '1.00',
+        amount_eur: '0.90',
+        category: {
+          emoji: '🛒',
+          name: 'Продукты',
+          type: 'variable',
         },
-      ],
-      error: null,
-    });
-    const firstOrder = jest.fn(() => ({ order: secondOrder }));
-    const lte = jest.fn(() => ({ order: firstOrder }));
-    const gte = jest.fn(() => ({ lte }));
-    const select = jest.fn(() => ({ gte }));
-    fromMock.mockReturnValue({
-      select,
-    } as unknown as ReturnType<typeof supabase.from>);
+        merchant: { name: 'Maxi' },
+      },
+    ]);
+    fromMock.mockReturnValue(query.client);
 
     await expect(listExpensesForAnalytics('2026-07')).resolves.toEqual([
       {
@@ -300,10 +425,59 @@ describe('listExpensesForAnalytics', () => {
         amountEur: 90,
       },
     ]);
-    expect(firstOrder).toHaveBeenCalledWith('occurred_on', {
+    expect(query.firstOrder).toHaveBeenCalledWith('occurred_on', {
       ascending: false,
     });
-    expect(secondOrder).toHaveBeenCalledWith('created_at', {
+    expect(query.secondOrder).toHaveBeenCalledWith('created_at', {
+      ascending: false,
+    });
+  });
+
+  test('matches the month query for equivalent inclusive range bounds', async () => {
+    const data = [
+      {
+        id: 'expense-1',
+        occurred_on: '2026-07-29',
+        created_at: '2026-07-29T15:45:00Z',
+        description: '',
+        category_id: 'food',
+        merchant_id: 'maxi',
+        amount_rsd: '100.10',
+        amount_usd: '1.00',
+        amount_eur: '0.90',
+        category: {
+          emoji: '🛒',
+          name: 'Продукты',
+          type: 'variable',
+        },
+        merchant: { name: 'Maxi' },
+      },
+    ];
+    const monthQuery = mockOrderedQuery(data);
+    const rangeQuery = mockOrderedQuery(data);
+    fromMock
+      .mockReturnValueOnce(monthQuery.client)
+      .mockReturnValueOnce(rangeQuery.client);
+
+    const monthResult = await listExpensesForAnalytics('2026-07');
+    const rangeResult = await listExpensesForRange(
+      '2026-07-01',
+      '2026-07-31',
+    );
+
+    expect(rangeResult).toEqual(monthResult);
+    expect(rangeQuery.gte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-01',
+    );
+    expect(rangeQuery.lte).toHaveBeenCalledWith(
+      'occurred_on',
+      '2026-07-31',
+    );
+    expect(rangeQuery.firstOrder).toHaveBeenCalledWith('occurred_on', {
+      ascending: false,
+    });
+    expect(rangeQuery.secondOrder).toHaveBeenCalledWith('created_at', {
       ascending: false,
     });
   });
