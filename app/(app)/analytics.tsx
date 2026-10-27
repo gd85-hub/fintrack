@@ -38,6 +38,7 @@ import {
   type MonthlyMerchantBreakdown,
 } from '../../lib/db';
 import { localizeCategoryName } from '../../lib/catalog';
+import { todayLocalISO } from '../../lib/dates';
 import { type Currency, formatMoney } from '../../lib/money';
 import {
   type Period,
@@ -47,10 +48,12 @@ import {
 import { theme, type Colors } from '../../lib/theme';
 
 const expensePageSize = 10;
+const millisecondsPerDay = 86_400_000;
 const topBreakdownCount = 6;
 const unknownMerchantKey = 'unknown';
 
 type AnalyticsTab = 'categories' | 'merchants' | 'fixedVariable';
+type SortMode = 'amount' | 'count' | 'name';
 
 type RankedCategory = {
   amount: number;
@@ -92,6 +95,15 @@ const analyticsTabs = [
 ] as const satisfies readonly {
   labelKey: string;
   value: AnalyticsTab;
+}[];
+
+const sortOptions = [
+  { labelKey: 'analytics.sortByAmount', value: 'amount' },
+  { labelKey: 'analytics.sortByCount', value: 'count' },
+  { labelKey: 'analytics.sortByName', value: 'name' },
+] as const satisfies readonly {
+  labelKey: string;
+  value: SortMode;
 }[];
 
 const fixedVariablePresentation = {
@@ -198,6 +210,52 @@ function TypeTabs({ value, onChange }: TypeTabsProps) {
   );
 }
 
+type SortTabsProps = {
+  value: SortMode;
+  onChange: (value: SortMode) => void;
+};
+
+function SortTabs({ value, onChange }: SortTabsProps) {
+  const { t } = useLanguage();
+  const { styles } = useAnalyticsTheme();
+
+  return (
+    <View
+      accessibilityLabel={t('analytics.sortLabel')}
+      accessibilityRole="radiogroup"
+      style={styles.typeTabs}
+    >
+      {sortOptions.map((option) => {
+        const selected = option.value === value;
+
+        return (
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ selected }}
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={({ pressed }) => [
+              styles.typeTab,
+              selected && styles.typeTabSelected,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.typeTabText,
+                selected && styles.typeTabTextSelected,
+              ]}
+            >
+              {t(option.labelKey)}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function DrilldownPanel({ children }: { children: ReactNode }) {
   const { styles } = useAnalyticsTheme();
   const items = Children.toArray(children);
@@ -281,6 +339,7 @@ export default function AnalyticsScreen() {
   const [sheetVisible, setSheetVisible] = useState(false);
   const [activeTab, setActiveTab] =
     useState<AnalyticsTab>('categories');
+  const [sortMode, setSortMode] = useState<SortMode>('amount');
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showAllMerchants, setShowAllMerchants] = useState(false);
   const { fromISO, toISO } = useMemo(() => resolvePeriod(period), [period]);
@@ -355,6 +414,35 @@ export default function AnalyticsScreen() {
   const monthTotal = breakdown
     ? amountForCurrency(breakdown, displayCurrency)
     : 0;
+  const spendingPace = useMemo(() => {
+    if (monthTotal <= 0) {
+      return null;
+    }
+
+    const rangeDays =
+      Math.round(
+        (Date.parse(toISO) - Date.parse(fromISO)) / millisecondsPerDay,
+      ) + 1;
+
+    if (period.kind === 'thisMonth') {
+      const daysElapsed = Number(todayLocalISO().slice(8, 10));
+      const daysInMonth = Number(toISO.slice(8, 10));
+      const dailyAverage = monthTotal / Math.max(daysElapsed, 1);
+
+      return {
+        dailyAverage,
+        projectedTotal:
+          daysElapsed < daysInMonth
+            ? dailyAverage * daysInMonth
+            : null,
+      };
+    }
+
+    return {
+      dailyAverage: monthTotal / Math.max(rangeDays, 1),
+      projectedTotal: null,
+    };
+  }, [fromISO, monthTotal, period.kind, toISO]);
   const rankedCategories = useMemo<RankedCategory[]>(() => {
     if (!breakdown || monthTotal <= 0) {
       return [];
@@ -366,7 +454,22 @@ export default function AnalyticsScreen() {
         category,
       }))
       .filter(({ amount }) => amount > 0)
-      .sort((left, right) => right.amount - left.amount)
+      .sort((left, right) => {
+        if (sortMode === 'count') {
+          return (
+            right.category.count - left.category.count ||
+            right.amount - left.amount
+          );
+        }
+
+        if (sortMode === 'name') {
+          const leftName = localizeCategoryName(left.category.name, t);
+          const rightName = localizeCategoryName(right.category.name, t);
+          return leftName.localeCompare(rightName, locale);
+        }
+
+        return right.amount - left.amount;
+      })
       .map((category, index) => ({
         ...category,
         color:
@@ -375,7 +478,15 @@ export default function AnalyticsScreen() {
             : colors.data.muted,
         share: (category.amount / monthTotal) * 100,
       }));
-  }, [breakdown, colors.data, displayCurrency, monthTotal]);
+  }, [
+    breakdown,
+    colors.data,
+    displayCurrency,
+    locale,
+    monthTotal,
+    sortMode,
+    t,
+  ]);
   const merchantTotal = merchantBreakdown
     ? amountForCurrency(merchantBreakdown, displayCurrency)
     : 0;
@@ -390,7 +501,33 @@ export default function AnalyticsScreen() {
         merchant,
       }))
       .filter(({ amount }) => amount > 0)
-      .sort((left, right) => right.amount - left.amount)
+      .sort((left, right) => {
+        if (sortMode === 'count') {
+          return (
+            right.merchant.count - left.merchant.count ||
+            right.amount - left.amount
+          );
+        }
+
+        if (sortMode === 'name') {
+          const leftUnknown =
+            left.merchant.merchantId === null ||
+            left.merchant.name === null;
+          const rightUnknown =
+            right.merchant.merchantId === null ||
+            right.merchant.name === null;
+
+          if (leftUnknown !== rightUnknown) {
+            return leftUnknown ? 1 : -1;
+          }
+
+          const leftName = left.merchant.name ?? t('analytics.noPlace');
+          const rightName = right.merchant.name ?? t('analytics.noPlace');
+          return leftName.localeCompare(rightName, locale);
+        }
+
+        return right.amount - left.amount;
+      })
       .map((merchant, index) => ({
         ...merchant,
         color:
@@ -399,7 +536,15 @@ export default function AnalyticsScreen() {
             : colors.data.muted,
         share: (merchant.amount / merchantTotal) * 100,
       }));
-  }, [colors.data, displayCurrency, merchantBreakdown, merchantTotal]);
+  }, [
+    colors.data,
+    displayCurrency,
+    locale,
+    merchantBreakdown,
+    merchantTotal,
+    sortMode,
+    t,
+  ]);
   const fixedVariableBreakdown = useMemo(
     () => buildFixedVariableBreakdown(analyticsExpenses),
     [analyticsExpenses],
@@ -670,10 +815,25 @@ export default function AnalyticsScreen() {
         />
 
         <View style={styles.totalBlock}>
-          <Text style={styles.totalLabel}>{t('analytics.monthTotal')}</Text>
+          <Text style={styles.totalLabel}>{t('analytics.periodTotal')}</Text>
           <Text style={styles.monthTotal}>
             {formatMoney(monthTotal)} {displayCurrency}
           </Text>
+          {!loading && !errorMessage && spendingPace ? (
+            <Text numberOfLines={1} style={styles.paceLine}>
+              {t('analytics.pacePerDay', {
+                amount: formatMoney(Math.round(spendingPace.dailyAverage)),
+              })}
+              {spendingPace.projectedTotal !== null
+                ? ` · ${t('analytics.projection', {
+                    amount: formatMoney(
+                      Math.round(spendingPace.projectedTotal),
+                    ),
+                  })}`
+                : ''}{' '}
+              {displayCurrency}
+            </Text>
+          ) : null}
         </View>
 
         {errorMessage ? (
@@ -710,6 +870,7 @@ export default function AnalyticsScreen() {
                 accessibilityLabel={t('analytics.byCategoryA11y')}
                 segments={categoryShareSegments}
               />
+              <SortTabs onChange={setSortMode} value={sortMode} />
 
               <View style={styles.categoryList}>
                 {visibleCategories.map(
@@ -758,9 +919,14 @@ export default function AnalyticsScreen() {
                               {localizeCategoryName(category.name, t)}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {t('analytics.shareOps', {
+                              {t('analytics.shareOpsAvg', {
                                 share: formatShare(share),
                                 count: category.count,
+                                avg: formatMoney(
+                                  Math.round(
+                                    amount / Math.max(category.count, 1),
+                                  ),
+                                ),
                               })}
                             </Text>
                           </View>
@@ -819,9 +985,15 @@ export default function AnalyticsScreen() {
                           {t('analytics.otherCategories')}
                         </Text>
                         <Text style={styles.categoryMeta}>
-                          {t('analytics.shareOps', {
+                          {t('analytics.shareOpsAvg', {
                             share: formatShare(otherCategories.share),
                             count: otherCategories.count,
+                            avg: formatMoney(
+                              Math.round(
+                                otherCategories.amount /
+                                  Math.max(otherCategories.count, 1),
+                              ),
+                            ),
                           })}
                         </Text>
                       </View>
@@ -865,6 +1037,7 @@ export default function AnalyticsScreen() {
                 accessibilityLabel={t('analytics.byMerchantA11y')}
                 segments={merchantShareSegments}
               />
+              <SortTabs onChange={setSortMode} value={sortMode} />
 
               <View style={styles.categoryList}>
                 {visibleMerchants.map(
@@ -914,9 +1087,14 @@ export default function AnalyticsScreen() {
                               {merchant.name ?? t('analytics.noPlace')}
                             </Text>
                             <Text style={styles.categoryMeta}>
-                              {t('analytics.shareOps', {
+                              {t('analytics.shareOpsAvg', {
                                 share: formatShare(share),
                                 count: merchant.count,
+                                avg: formatMoney(
+                                  Math.round(
+                                    amount / Math.max(merchant.count, 1),
+                                  ),
+                                ),
                               })}
                             </Text>
                           </View>
@@ -974,9 +1152,15 @@ export default function AnalyticsScreen() {
                           {t('analytics.otherCategories')}
                         </Text>
                         <Text style={styles.categoryMeta}>
-                          {t('analytics.shareOps', {
+                          {t('analytics.shareOpsAvg', {
                             share: formatShare(otherMerchants.share),
                             count: otherMerchants.count,
+                            avg: formatMoney(
+                              Math.round(
+                                otherMerchants.amount /
+                                  Math.max(otherMerchants.count, 1),
+                              ),
+                            ),
                           })}
                         </Text>
                       </View>
@@ -1305,6 +1489,11 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     color: c.text.primary,
     fontSize: theme.fontSizes.monthTotal,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  paceLine: {
+    ...theme.type.captionDefault,
+    color: c.text.secondary,
     textAlign: 'center',
   },
   otherEmojiSpacer: {
