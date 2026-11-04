@@ -7,8 +7,8 @@ type RateResult = {
 };
 
 type KursRate = {
-  code: 'USD' | 'EUR';
-  exchangeMiddle: number;
+  code: string;
+  perUnitRate: number;
 };
 
 const corsHeaders = {
@@ -40,21 +40,34 @@ function todayInBelgrade(): string {
   return `${year}-${month}-${day}`;
 }
 
-function readRate(value: unknown, code: 'USD' | 'EUR'): KursRate | null {
-  if (!isRecord(value) || value.code !== code) {
-    return null;
-  }
-
-  const exchangeMiddle = value.exchange_middle;
+function readRate(value: unknown): KursRate | null {
   if (
-    typeof exchangeMiddle !== 'number' ||
-    !Number.isFinite(exchangeMiddle) ||
-    exchangeMiddle <= 0
+    !isRecord(value) ||
+    typeof value.code !== 'string' ||
+    !/^[A-Z]{3}$/.test(value.code)
   ) {
     return null;
   }
 
-  return { code, exchangeMiddle };
+  const exchangeMiddle = value.exchange_middle;
+  const parity = value.parity;
+  if (
+    typeof exchangeMiddle !== 'number' ||
+    !Number.isFinite(exchangeMiddle) ||
+    exchangeMiddle <= 0 ||
+    typeof parity !== 'number' ||
+    !Number.isFinite(parity) ||
+    parity <= 0
+  ) {
+    return null;
+  }
+
+  const perUnitRate = exchangeMiddle / parity;
+  if (!Number.isFinite(perUnitRate) || perUnitRate <= 0) {
+    return null;
+  }
+
+  return { code: value.code, perUnitRate };
 }
 
 function parseDates(body: unknown): string[] {
@@ -103,16 +116,26 @@ async function syncDate(
       throw new Error('Kurs API returned malformed JSON.');
     }
 
-    const usd = payload.rates
-      .map((rate) => readRate(rate, 'USD'))
-      .find((rate) => rate !== null);
-    const eur = payload.rates
-      .map((rate) => readRate(rate, 'EUR'))
-      .find((rate) => rate !== null);
+    const ratesByCode = new Map<string, KursRate>();
+    for (const value of payload.rates) {
+      const rate = readRate(value);
+      if (!rate || rate.code === 'RSD') {
+        continue;
+      }
+      ratesByCode.set(rate.code, rate);
+    }
 
-    if (!usd || !eur) {
+    if (!ratesByCode.has('USD') || !ratesByCode.has('EUR')) {
       throw new Error('Kurs API response is missing USD or EUR.');
     }
+
+    const rows = [...ratesByCode.values()].map((rate) => ({
+      date,
+      base_currency: rate.code,
+      quote_currency: 'RSD',
+      rate: rate.perUnitRate,
+      source: 'nbs:kurs.resenje.org',
+    }));
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
@@ -121,22 +144,7 @@ async function syncDate(
       },
     });
     const { error } = await adminClient.from('fx_rates').upsert(
-      [
-        {
-          date,
-          base_currency: 'USD',
-          quote_currency: 'RSD',
-          rate: usd.exchangeMiddle,
-          source: 'nbs:kurs.resenje.org',
-        },
-        {
-          date,
-          base_currency: 'EUR',
-          quote_currency: 'RSD',
-          rate: eur.exchangeMiddle,
-          source: 'nbs:kurs.resenje.org',
-        },
-      ],
+      rows,
       { onConflict: 'date,base_currency,quote_currency' },
     );
 
