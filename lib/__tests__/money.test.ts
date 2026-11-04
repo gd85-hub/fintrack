@@ -1,7 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  centsToDecimal,
+  centsToInput,
   convertAll,
+  decimalToCents,
   distributeCents,
   formatMoney,
   isCurrency,
@@ -36,6 +39,16 @@ describe('parseAmountInput', () => {
     expect(parseAmountInput('1 000')).toBeNull();
     expect(parseAmountInput('-5')).toBeNull();
   });
+
+  it('characterizes grouped separators and boundary input shapes', () => {
+    // Contrary to AGENTS.md, grouped Serbian input is currently rejected.
+    expect(parseAmountInput('1.234,56')).toBeNull();
+    expect(parseAmountInput('1.234')).toBeNull();
+    expect(parseAmountInput(' 12,50 ')).toBe(1250);
+    expect(parseAmountInput('007')).toBe(700);
+    expect(parseAmountInput('.5')).toBeNull();
+    expect(parseAmountInput('12,')).toBeNull();
+  });
 });
 
 describe('normalizeCurrencyCode', () => {
@@ -59,6 +72,21 @@ describe('distributeCents', () => {
 
     expect(shares).toEqual([3_334, 6_667]);
     expect(shares.reduce((sum, share) => sum + share, 0)).toBe(10_001);
+  });
+
+  it('handles zero totals and a single weight', () => {
+    expect(distributeCents(0, [])).toEqual([]);
+    expect(distributeCents(0, [1, 2])).toEqual([0, 0]);
+    expect(distributeCents(10, [1])).toEqual([10]);
+  });
+
+  it('rejects missing positive weights and negative totals', () => {
+    expect(() => distributeCents(5, [0, 0])).toThrow(
+      'At least one positive weight is required.',
+    );
+    expect(() => distributeCents(-1, [1])).toThrow(
+      'Total must be a non-negative integer number of cents.',
+    );
   });
 });
 
@@ -94,11 +122,83 @@ describe('convertAll', () => {
       eur: 1,
     });
   });
+
+  it('returns zero in every currency for a zero amount', () => {
+    expect(convertAll(0, 'RSD', 100, 117)).toEqual({
+      rsd: 0,
+      usd: 0,
+      eur: 0,
+    });
+  });
+
+  it('rejects negative amounts and non-positive exchange rates', () => {
+    expect(() => convertAll(-1, 'RSD', 100, 117)).toThrow(
+      'Amount must be a non-negative integer number of cents.',
+    );
+    expect(() => convertAll(100, 'USD', 0, 117)).toThrow(
+      'Exchange rates must be positive.',
+    );
+  });
+
+  it('rounds values below half a cent down', () => {
+    expect(convertAll(1, 'RSD', 4, 4)).toEqual({
+      rsd: 1,
+      usd: 0,
+      eur: 0,
+    });
+  });
 });
 
 describe('formatMoney', () => {
   it('uses spaces and comma decimals', () => {
     expect(formatMoney(123456)).toBe('1 234,56');
     expect(formatMoney(12)).toBe('0,12');
+  });
+
+  it('formats zero, small, large, and negative amounts', () => {
+    expect(formatMoney(0)).toBe('0,00');
+    expect(formatMoney(5)).toBe('0,05');
+    expect(formatMoney(100)).toBe('1,00');
+    expect(formatMoney(123456789)).toBe('1 234 567,89');
+    expect(formatMoney(-2550)).toBe('-25,50');
+  });
+});
+
+describe('centsToInput', () => {
+  it('formats cents for editable input', () => {
+    expect(centsToInput(100)).toBe('1');
+    expect(centsToInput(150)).toBe('1,50');
+    expect(centsToInput(5)).toBe('0,05');
+    expect(centsToInput(0)).toBe('0');
+  });
+});
+
+describe('centsToDecimal', () => {
+  it('formats cents as a database decimal string', () => {
+    expect(centsToDecimal(12345)).toBe('123.45');
+    expect(centsToDecimal(5)).toBe('0.05');
+    expect(centsToDecimal(-500)).toBe('-5.00');
+  });
+});
+
+describe('decimalToCents', () => {
+  it('converts database decimal values to cents', () => {
+    expect(decimalToCents(null)).toBe(0);
+    expect(decimalToCents('123.45')).toBe(12345);
+    expect(decimalToCents(123.45)).toBe(12345);
+    expect(decimalToCents('0')).toBe(0);
+    expect(decimalToCents('1.999')).toBe(200);
+  });
+
+  it('rejects invalid and non-finite database values', () => {
+    expect(() => decimalToCents('abc')).toThrow(
+      'Invalid database money value.',
+    );
+    expect(() => decimalToCents(Infinity)).toThrow();
+  });
+
+  it('characterizes the IEEE-754 half-cent boundary', () => {
+    // 1.005 * 100 is 100.4999..., so the current half-up helper returns 100.
+    expect(decimalToCents(1.005)).toBe(100);
   });
 });
