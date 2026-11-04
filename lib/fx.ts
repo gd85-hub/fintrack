@@ -23,7 +23,7 @@ export class RateUnavailableError extends Error {
   }
 }
 
-function parseRows(data: unknown): FxRateRow[] {
+export function parseRows(data: unknown): FxRateRow[] {
   if (!Array.isArray(data)) {
     return [];
   }
@@ -45,7 +45,7 @@ function parseRows(data: unknown): FxRateRow[] {
   });
 }
 
-function findCompletePair(rows: FxRateRow[]): ResolvedRates | null {
+export function findCompletePair(rows: FxRateRow[]): ResolvedRates | null {
   const grouped = new Map<
     string,
     { usdRsd?: number; eurRsd?: number }
