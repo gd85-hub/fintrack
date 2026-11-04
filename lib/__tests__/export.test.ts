@@ -84,6 +84,88 @@ describe('buildCsv', () => {
     // Totals: label in the date cell, summed rsd/eur/usd, other cells empty.
     expect(lines[3]).toBe('Total,,,,,,,449.99,3.85,4.16,');
   });
+
+  it('doubles quotes inside a quoted description cell', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        description: 'Say "hi"',
+      },
+    ];
+
+    const csv = buildCsv(csvRows, columns, meta);
+
+    expect(csv.includes('"Say ""hi"""')).toBe(true);
+  });
+
+  it('preserves an embedded newline inside a quoted place cell', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        place: 'Line1\nLine2',
+      },
+    ];
+
+    const csv = buildCsv(csvRows, columns, meta);
+
+    expect(csv.includes('"Line1\nLine2"')).toBe(true);
+  });
+
+  it('writes only the header and zero totals for empty rows', () => {
+    const csv = buildCsv([], columns, meta);
+    const lines = csv.slice(1).split('\r\n');
+
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe('Total,,,,,,,0.00,0.00,0.00,');
+  });
+
+  it('formats a negative amount with two dot-decimal places', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        amountRsd: -12.5,
+      },
+    ];
+
+    const csv = buildCsv(csvRows, columns, meta);
+
+    expect(csv).toContain('-12.50');
+  });
+
+  it('passes Cyrillic text through without unnecessary quoting', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        category: 'Продукты',
+      },
+    ];
+
+    const csv = buildCsv(csvRows, columns, meta);
+
+    expect(csv).toContain(',Продукты,');
+  });
+
+  it('rounds floating-point totals to cents', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        amountRsd: 0.1,
+        amountEur: 0,
+        amountUsd: 0,
+      },
+      {
+        ...rows[1],
+        amountRsd: 0.2,
+        amountEur: 0,
+        amountUsd: 0,
+      },
+    ];
+
+    const csv = buildCsv(csvRows, columns, meta);
+    const totals = csv.slice(1).split('\r\n').at(-1)?.split(',');
+
+    expect(totals?.[7]).toBe('0.30');
+  });
 });
 
 describe('buildXlsx', () => {
@@ -100,6 +182,48 @@ describe('buildXlsx', () => {
     // Totals RSD cell (column H, row 4 = header + 2 data rows) is a real number.
     expect(sheet.H4.t).toBe('n');
     expect(sheet.H4.v).toBeCloseTo(449.99, 2);
+  });
+
+  it('sanitizes forbidden characters in the sheet name', () => {
+    const bytes = buildXlsx(rows, columns, {
+      ...meta,
+      periodLabel: 'Q1 2026 / Report:final',
+    });
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+
+    expect(sheetName).not.toContain('/');
+    expect(sheetName).not.toContain(':');
+    expect(sheetName.length).toBeLessThanOrEqual(31);
+  });
+
+  it('uses the default sheet name for an empty period label', () => {
+    const bytes = buildXlsx(rows, columns, {
+      ...meta,
+      periodLabel: '',
+    });
+    const workbook = XLSX.read(bytes, { type: 'array' });
+
+    expect(workbook.SheetNames[0]).toBe('Sheet');
+  });
+
+  it('keeps the original amount as a numeric cell', () => {
+    const bytes = buildXlsx(rows, columns, meta);
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    expect(sheet.F2.t).toBe('n');
+    expect(sheet.F2.v).toBe(rows[0].amountOriginal);
+  });
+
+  it('keeps EUR and USD totals as numeric cells', () => {
+    const bytes = buildXlsx(rows, columns, meta);
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const totalsRowNumber = rows.length + 2;
+
+    expect(sheet[`I${totalsRowNumber}`].t).toBe('n');
+    expect(sheet[`J${totalsRowNumber}`].t).toBe('n');
   });
 });
 
