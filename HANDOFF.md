@@ -1,37 +1,37 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-04 · автор витка: ChatGPT · исполнитель: Codex_
+_Обновлено: 2026-11-06 · автор витка: ChatGPT · исполнитель: Codex_
 
 Это дельта и указатель «что дальше». Долгий контекст — в `AGENTS.md` (закон для исполнителя) и `FINTRACK-CONTEXT.md` (контекст для автора, вне репо). Здесь их не дублируем.
 
 ## Где мы
 
-После релиза 2026-10-27 начат валютный этап CURRENCY: `sync-fx` расширен с USD/EUR до полного списка валют НБС, чтобы заранее накапливать курсы для будущей автоматической конвертации экзотических валют.
+Исправляется lifecycle ручного редактора трат: персистентный tab-screen больше не переносит заполненные поля и `saving=true` в следующее открытие формы.
 
 ## Только что сделано
 
-- `sync-fx` теперь сохраняет каждую валидную валюту из ответа NBS mirror одним idempotent-upsert, пропускает RSD/битые строки и по-прежнему требует USD+EUR; схема не менялась.
-- API подтвердил поля `code`, `exchange_middle`, `parity`: средний курс указан за `parity` единиц, поэтому сохраняется `exchange_middle / parity` (например JPY 63.2602 за 100 → 0.632602 RSD за 1 JPY; RUB в проверенном ответе имеет parity 1).
-- **Проверено:** реальный API за `2026-07-15` дал 40 валидных валют; spot-check USD/EUR/RUB/TRY/GBP/CHF/JPY/HUF подтвердил normalization; `deno check`, `npm run typecheck`, 23 сьюта / 212 тестов, Web export и Android Metro export с `--no-bytecode` успешны. Deploy/invoke и проверка строк в Supabase не выполнены: CLI не авторизован (`AccessTokenRequiredError`).
+- Wrapper `ExpenseEditorScreen` увеличивает `focusKey` при каждом focus и ремоунтит внутренний `ExpenseForm`: новая трата снова открывается пустой, edit заново заполняется загруженной тратой, `saving` сбрасывается через state initializer.
+- Data-loading effect не зависит от `focusKey`, поэтому повторный focus не добавляет сетевых загрузок; validation, conversion, save/update/delete не менялись.
+- **Проверено:** `npm run typecheck` — чисто; полный `npm test -- --runInBand` — 23 сьюта / 212 тестов зелёные; Web export и Android Metro export с `--no-bytecode` успешны. Ручной повторный create/edit/delete smoke-test на запущенных Web/Android не выполнялся.
 - У Глеба остаются untracked `BUGS.md` и `DEPLOY.md`; они не изменены и не коммитятся.
 
 ## Состояние origin/main
 
-Ветка `main`. Коммит CURRENCY-1 идёт поверх `98e12d8` и содержит только `supabase/functions/sync-fx/index.ts`, `HANDOFF.md` и append-only запись в `CHANGELOG.md`. После push `origin/main` должен указывать на этот коммит.
+Ветка `main`. Fix-коммит идёт поверх `b2b9628` и содержит только `components/ExpenseEditorScreen.tsx`, `HANDOFF.md` и append-only запись в `CHANGELOG.md`. После push `origin/main` должен указывать на этот коммит.
 
 ## Следующий шаг
 
-**Сначала авторизовать Supabase CLI, deploy/invoke `sync-fx` и проверить БД; затем CURRENCY-2 — обобщить `convertAll` на любую исходную валюту.** Локальная реализация и Deno-типы проверены, но дополнительные курсы начнут накапливаться только после деплоя.
+**Спроектировать multi-photo receipt capture с overlap-aware AI.** Это следующий крупный пользовательский сценарий; lifecycle-fix редактора изолирован и не требует дальнейшего расширения.
 
 ## Открытые решения и риски
 
-- Дополнительные валюты пока только сохраняются: клиент начнёт использовать их в CURRENCY-2 и последующих этапах.
-- Корректность зависит от деления `exchange_middle` на `parity`; не заменять это предположением о фиксированных валютах или divisor 100.
-- Production deploy и проверка idempotent-upsert в `fx_rates` остаются обязательными после `supabase login`; автодеплоя в репозитории нет.
+- Ручной smoke-test повторного создания и edit/delete на Web и Android остаётся обязательным, если среды недоступны в автоматическом прогоне.
+- Production deploy CURRENCY-1 и проверка idempotent-upsert в `fx_rates` всё ещё требуют `supabase login`; автодеплоя в репозитории нет.
 - Расхождение grouped-ввода денег с `AGENTS.md` и float-граница half-up остаются открытыми решениями.
 - Budgets/limits пока не спроектированы: не выбирать модель, период или схему хранения без отдельного prompt/решения.
 
 ## Не трогать
 
 - Датированные release-блоки `CHANGELOG.md` после публикации, кроме отдельной задачи на исправление факта.
+- Навигационную регистрацию `expense/new`, validation/conversion/save/delete и загрузочный effect редактора без отдельной задачи.
 - Клиентскую денежную математику, RLS, схему и применённые миграции до отдельного CURRENCY-2/schema prompt.
 - Пользовательские untracked `BUGS.md` и `DEPLOY.md`.

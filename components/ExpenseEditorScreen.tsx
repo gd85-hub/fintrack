@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -494,6 +494,13 @@ export function ExpenseEditorScreen({
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [expense, setExpense] = useState<Expense | null>(null);
+  const [focusKey, setFocusKey] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocusKey((key) => key + 1);
+    }, []),
+  );
 
   useEffect(() => {
     let active = true;
@@ -567,6 +574,7 @@ export function ExpenseEditorScreen({
       categories={categories}
       initialExpense={expense}
       initialMerchants={merchants}
+      key={focusKey}
     />
   );
 }
