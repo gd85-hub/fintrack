@@ -8,6 +8,7 @@ import {
 } from 'react';
 
 import { warmTodayRates } from '../lib/fx';
+import { resetSiteUrl } from '../lib/env';
 import { supabase } from '../lib/supabase';
 
 type AuthResult = {
@@ -25,6 +26,7 @@ type AuthContextValue = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
+  sendPasswordReset: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<AuthResult>;
   updateName: (name: string) => Promise<AuthResult>;
 };
@@ -91,6 +93,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { error, user: data.user, session: data.session };
   }
 
+  async function sendPasswordReset(email: string): Promise<AuthResult> {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${resetSiteUrl()}/reset-password`,
+    });
+    return { error };
+  }
+
   async function signOut(): Promise<AuthResult> {
     const { error } = await supabase.auth.signOut();
     return { error };
@@ -113,7 +122,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user, loading, signIn, signUp, signOut, updateName }}
+      value={{
+        session,
+        user,
+        loading,
+        signIn,
+        signUp,
+        sendPasswordReset,
+        signOut,
+        updateName,
+      }}
     >
       {children}
     </AuthContext.Provider>

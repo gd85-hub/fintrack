@@ -63,6 +63,10 @@ export default function SignInScreen() {
           value={password}
         />
 
+        <Link href="/(auth)/forgot-password" style={styles.link}>
+          {t('auth.forgotPassword')}
+        </Link>
+
         {errorMessage ? (
           <Text style={styles.error}>{errorMessage}</Text>
         ) : null}

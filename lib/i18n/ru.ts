@@ -359,7 +359,27 @@ export const ru = {
     signUpButton: 'Зарегистрироваться',
     signingUp: 'Регистрация…',
     haveAccount: 'Уже есть аккаунт? Войдите',
+    email: 'Email',
     password: 'Пароль',
+    forgotPassword: 'Забыли пароль?',
+    forgotPasswordTitle: 'Сброс пароля',
+    sendResetLink: 'Отправить ссылку',
+    sendingResetLink: 'Отправка…',
+    resetEmailSent:
+      'Если такой адрес есть, мы отправили письмо со ссылкой.',
+    resetPasswordTitle: 'Новый пароль',
+    newPassword: 'Новый пароль',
+    confirmPassword: 'Повторите новый пароль',
+    updatePassword: 'Сохранить пароль',
+    updatingPassword: 'Сохранение…',
+    resetSuccessTitle: 'Пароль изменён',
+    resetSuccess: 'Теперь вы можете войти с новым паролем.',
+    resetLinkInvalidTitle: 'Ссылка не работает',
+    resetLinkInvalid:
+      'Ссылка для сброса пароля недействительна или устарела.',
+    requestNewResetLink: 'Запросить новую ссылку',
+    resetOnWebNote:
+      'Откройте ссылку из письма в браузере на устройстве, где удобно задать новый пароль.',
     checkEmailTitle: 'Проверьте почту',
     confirmSent:
       'Мы отправили письмо для подтверждения на {{email}}. Подтвердите адрес и войдите.',
@@ -369,6 +389,10 @@ export const ru = {
       invalidCredentials: 'Неверный email или пароль.',
       emailNotConfirmed: 'Подтвердите email по ссылке из письма.',
       passwordTooShort: 'Пароль должен содержать не менее 6 символов.',
+      passwordsDoNotMatch: 'Пароли не совпадают.',
+      resetNetworkFailed:
+        'Не удалось подключиться. Проверьте интернет и попробуйте ещё раз.',
+      resetFailed: 'Не удалось изменить пароль. Запросите новую ссылку.',
       invalidEmail: 'Введите корректный email.',
       signInFailed: 'Не удалось войти. Попробуйте ещё раз.',
       signUpFailed: 'Не удалось зарегистрироваться. Попробуйте ещё раз.',
