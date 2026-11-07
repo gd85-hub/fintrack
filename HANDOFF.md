@@ -1,33 +1,34 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-06 · автор витка: ChatGPT · исполнитель: Codex_
+_Обновлено: 2026-11-07 · автор витка: ChatGPT · исполнитель: Codex_
 
 Это дельта и указатель «что дальше». Долгий контекст — в `AGENTS.md` (закон для исполнителя) и `FINTRACK-CONTEXT.md` (контекст для автора, вне репо). Здесь их не дублируем.
 
 ## Где мы
 
-Перед beta-раздачей добавлен self-service сброс пароля: запрос отправляется из приложения, а recovery завершается на публичном web-маршруте без native deep link.
+Перед beta-раздачей добавлено self-service удаление аккаунта и всех связанных пользовательских данных через защищённую Edge Function.
 
 ## Только что сделано
 
-- На входе появилась ссылка «Забыли пароль?» и отдельная форма запроса: `AuthContext.sendPasswordReset` отправляет нейтральное письмо через Supabase, не раскрывая наличие аккаунта; только реальный network failure остаётся inline-ошибкой.
-- Верхнеуровневый `/reset-password` на Web вручную читает recovery-токены из hash при неизменном `detectSessionInUrl: false`, устанавливает временную сессию, валидирует новый пароль/подтверждение и после успешного `updateUser` закрывает recovery-сессию. Native-маршрут безопасно показывает пояснение вместо web-flow.
-- URL возврата берётся из `EXPO_PUBLIC_SITE_URL`, с fallback на `window.location.origin` на Web; строки добавлены симметрично в RU/EN.
-- **Проверено:** `npm run typecheck` чистый; полный Jest с workspace cache — 23 сьюта / 212 тестов зелёные; Web export и Android Metro export с `--no-bytecode` успешны. End-to-end письмо и recovery не проверялись: сначала нужны dashboard allowlist и build env.
+- Settings → «Удалить аккаунт» открывает обязательный confirm-modal с permanent-delete предупреждением, cancel, disabled/spinner состоянием и inline-ошибкой; RU/EN parity сохранена.
+- `AuthContext.deleteAccount()` вызывает `delete-account` и очищает локальную сессию только после `{ ok: true }`; при invoke/server error пользователь остаётся в приложении.
+- Edge Function не читает body и удаляет только `data.user.id`, полученный через service-role `auth.getUser(jwt)`; FK cascade удалит связанные строки. Для документированного JSON `unauthorized` функция сама валидирует JWT, поэтому только для неё `verify_jwt = false` на gateway.
+- **Проверено:** `deno check --no-lock` и `npm run typecheck` чистые; полный Jest с workspace cache — 23 сьюта / 212 тестов зелёные; Web export и Android Metro export с `--no-bytecode` успешны. Реальное удаление/cascade не проверялись до deploy.
 - У Глеба остаются untracked `BUGS.md` и `DEPLOY.md`; они не изменены и не коммитятся.
 
 ## Состояние origin/main
 
-Ветка `main`. RELEASE-1 идёт поверх `ce58843`; после commit/push `origin/main` должен указывать на новый auth-flow commit.
+Ветка `main`. RELEASE-2 идёт поверх `277847d`; после commit/push `origin/main` должен указывать на новый account-deletion commit.
 
 ## Следующий шаг
 
-**RELEASE-2: account deletion.** До этого для RELEASE-1 настроить Supabase Site URL/Redirect URLs и `EXPO_PUBLIC_SITE_URL`, затем пройти recovery end-to-end.
+**Ship beta: настроить SMTP/password-reset URLs, проверить RLS и собрать Android/Web по ops runbook.** Вместе задеплоить `sync-fx`, `analyze-receipt-image` и `delete-account`, затем пройти их manual checks.
 
 ## Открытые решения и риски
 
-- Для password reset нужны Supabase Site URL и Redirect URL `<web URL>/reset-password`, а также `EXPO_PUBLIC_SITE_URL` в build env; без них письмо не приведёт на рабочий recovery-route.
-- После настройки проверить Web flow, Android→browser flow, неизвестный email и просроченную/неверную ссылку; автоматический прогон не может подтвердить email delivery.
-- Production deploy CURRENCY-1 и RECEIPT-MULTI-1 всё ещё требует `supabase login`; после deploy проверить `fx_rates` и четыре vision-сценария.
+- `delete-account` ещё не задеплоена: перед проверкой убедиться, что `SUPABASE_SERVICE_ROLE_KEY` доступен Edge Functions; затем на throwaway account проверить confirm/cancel, повторный login и cascade по expenses/merchants/receipts.
+- `verify_jwt = false` для `delete-account` — осознанное исключение: иначе gateway вернёт 401 вместо обязательного JSON/HTTP 200; безопасность держится на `auth.getUser(jwt)`, а body uid игнорируется.
+- Для password reset всё ещё нужны Supabase Site URL, Redirect URL `<web URL>/reset-password` и `EXPO_PUBLIC_SITE_URL`; после настройки пройти Web и Android→browser recovery.
+- Production deploy трёх pending функций требует `supabase login`; после deploy также проверить `fx_rates` и четыре vision-сценария.
 - Ручной smoke-test повторного создания/edit/delete траты на Web и Android из предыдущего fix всё ещё не выполнен.
 - Расхождение grouped-ввода денег с `AGENTS.md` и float-граница half-up остаются открытыми решениями.
 - Budgets/limits пока не спроектированы: не выбирать модель, период или схему хранения без отдельного prompt/решения.
@@ -35,6 +36,7 @@ _Обновлено: 2026-11-06 · автор витка: ChatGPT · испол�
 ## Не трогать
 
 - Датированные release-блоки `CHANGELOG.md` после публикации, кроме отдельной задачи на исправление факта.
+- Service-role key вне Edge Functions и body-supplied uid в `delete-account`; функция удаляет только caller из проверенного JWT.
 - `detectSessionInUrl: false`: recovery остаётся локально обработанным web-flow, без native deep-link конфигурации.
 - Клиентскую денежную математику, RLS, схему и применённые миграции до отдельного CURRENCY-2/schema prompt.
 - Пользовательские untracked `BUGS.md` и `DEPLOY.md`.

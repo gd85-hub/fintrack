@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -130,7 +131,7 @@ const themeOptions: readonly {
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { signOut, updateName, user } = useAuth();
+  const { deleteAccount, signOut, updateName, user } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { theme: themePreference, setTheme } = useTheme();
   const { colors, styles } = useSettingsStyles();
@@ -143,6 +144,9 @@ export default function SettingsScreen() {
   const [nameInputFocused, setNameInputFocused] = useState(false);
   const [hasNameError, setHasNameError] = useState(false);
   const [savingName, setSavingName] = useState(false);
+  const [deleteAccountVisible, setDeleteAccountVisible] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [hasDeleteAccountError, setHasDeleteAccountError] = useState(false);
   const metadataName = user?.user_metadata.name;
   const currentName =
     typeof metadataName === 'string' ? metadataName.trim() : '';
@@ -189,6 +193,31 @@ export default function SettingsScreen() {
       setSigningOut(false);
     }
   }, [signOut]);
+
+  function openDeleteAccount() {
+    setHasDeleteAccountError(false);
+    setDeleteAccountVisible(true);
+  }
+
+  function closeDeleteAccount() {
+    if (deletingAccount) {
+      return;
+    }
+
+    setDeleteAccountVisible(false);
+    setHasDeleteAccountError(false);
+  }
+
+  async function handleDeleteAccount() {
+    setDeletingAccount(true);
+    setHasDeleteAccountError(false);
+
+    const result = await deleteAccount();
+    if (!result.ok) {
+      setHasDeleteAccountError(true);
+      setDeletingAccount(false);
+    }
+  }
 
   const currentLanguageLabel =
     languageOptions.find((option) => option.value === language)?.labelKey ??
@@ -262,6 +291,26 @@ export default function SettingsScreen() {
             <Feather
               color={colors.action.destructive.fill}
               name="log-out"
+              size={theme.spacing.lg}
+            />
+          </Pressable>
+
+          <View style={styles.separator} />
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={openDeleteAccount}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.destructiveRowPressed,
+            ]}
+          >
+            <Text style={styles.destructiveLabel}>
+              {t('settings.deleteAccount.label')}
+            </Text>
+            <Feather
+              color={colors.action.destructive.fill}
+              name="trash-2"
               size={theme.spacing.lg}
             />
           </Pressable>
@@ -434,6 +483,81 @@ export default function SettingsScreen() {
 
       <Modal
         animationType="fade"
+        onRequestClose={closeDeleteAccount}
+        transparent={true}
+        visible={deleteAccountVisible}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel={t('settings.deleteAccount.close')}
+            accessibilityRole="button"
+            disabled={deletingAccount}
+            onPress={closeDeleteAccount}
+            style={styles.scrim}
+          />
+          <View accessibilityViewIsModal={true} style={styles.modalPanel}>
+            <Text style={styles.modalTitle}>
+              {t('settings.deleteAccount.title')}
+            </Text>
+            <Text style={styles.modalBody}>
+              {t('settings.deleteAccount.body')}
+            </Text>
+
+            {hasDeleteAccountError ? (
+              <Text accessibilityRole="alert" style={styles.errorText}>
+                {t('settings.deleteAccount.error')}
+              </Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={deletingAccount}
+                onPress={closeDeleteAccount}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.cancelButton,
+                  (pressed || deletingAccount) && styles.disabled,
+                ]}
+              >
+                <Text style={styles.cancelButtonText}>
+                  {t('settings.deleteAccount.cancel')}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: deletingAccount }}
+                disabled={deletingAccount}
+                onPress={() => void handleDeleteAccount()}
+                style={({ pressed }) => [
+                  styles.modalButton,
+                  styles.deleteButton,
+                  (pressed || deletingAccount) && styles.disabled,
+                ]}
+              >
+                {deletingAccount ? (
+                  <View style={styles.deletingContent}>
+                    <ActivityIndicator
+                      color={colors.action.destructive.content}
+                      size="small"
+                    />
+                    <Text style={styles.deleteButtonText}>
+                      {t('settings.deleteAccount.deleting')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.deleteButtonText}>
+                    {t('settings.deleteAccount.confirm')}
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
         onRequestClose={() => setThemeSelectorVisible(false)}
         transparent={true}
         visible={themeSelectorVisible}
@@ -584,6 +708,19 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   destructiveRowPressed: {
     backgroundColor: c.status.error.container,
   },
+  deleteButton: {
+    backgroundColor: c.action.destructive.fill,
+  },
+  deleteButtonText: {
+    color: c.action.destructive.content,
+    fontSize: theme.fontSizes.button,
+    fontWeight: '600',
+  },
+  deletingContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
   disabled: {
     opacity: theme.opacity.disabled,
   },
@@ -627,6 +764,10 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: theme.spacing.sm,
+  },
+  modalBody: {
+    color: c.text.secondary,
+    fontSize: theme.fontSizes.body,
   },
   modalButton: {
     alignItems: 'center',

@@ -20,6 +20,21 @@ type SignUpResult = AuthResult & {
   session: Session | null;
 };
 
+type DeleteAccountError =
+  | 'config'
+  | 'delete_failed'
+  | 'invoke_failed'
+  | 'method_not_allowed'
+  | 'unauthorized';
+
+type DeleteAccountResult =
+  | { ok: true; error: null }
+  | { ok: false; error: DeleteAccountError };
+
+type DeleteAccountResponse =
+  | { ok: true }
+  | { ok: false; error: Exclude<DeleteAccountError, 'invoke_failed'> };
+
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
@@ -27,6 +42,7 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   sendPasswordReset: (email: string) => Promise<AuthResult>;
+  deleteAccount: () => Promise<DeleteAccountResult>;
   signOut: () => Promise<AuthResult>;
   updateName: (name: string) => Promise<AuthResult>;
 };
@@ -100,6 +116,45 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return { error };
   }
 
+  async function deleteAccount(): Promise<DeleteAccountResult> {
+    try {
+      const { data, error } =
+        await supabase.functions.invoke<DeleteAccountResponse>(
+          'delete-account',
+        );
+
+      if (error || !data) {
+        return { ok: false, error: 'invoke_failed' };
+      }
+
+      if (!data.ok) {
+        return { ok: false, error: data.error };
+      }
+
+      try {
+        const { error: signOutError } = await supabase.auth.signOut({
+          scope: 'local',
+        });
+        if (signOutError) {
+          console.error(
+            'Unable to clear the local session after account deletion:',
+            signOutError.message,
+          );
+        }
+      } catch (error: unknown) {
+        console.error(
+          'Unable to clear the local session after account deletion:',
+          error,
+        );
+      }
+      setSession(null);
+      return { ok: true, error: null };
+    } catch (error: unknown) {
+      console.error('Unable to invoke account deletion:', error);
+      return { ok: false, error: 'invoke_failed' };
+    }
+  }
+
   async function signOut(): Promise<AuthResult> {
     const { error } = await supabase.auth.signOut();
     return { error };
@@ -129,6 +184,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         signIn,
         signUp,
         sendPasswordReset,
+        deleteAccount,
         signOut,
         updateName,
       }}

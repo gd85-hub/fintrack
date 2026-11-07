@@ -36,6 +36,17 @@ export const en = {
     signOut: 'Sign out',
     signingOut: 'Signing out…',
     signOutError: "Couldn't sign out. Try again.",
+    deleteAccount: {
+      label: 'Delete account',
+      title: 'Delete account?',
+      body:
+        'This cannot be undone. Your account and all related data will be permanently deleted.',
+      confirm: 'Delete permanently',
+      deleting: 'Deleting…',
+      cancel: 'Cancel',
+      close: 'Close account deletion confirmation',
+      error: "Couldn't delete the account. Try again.",
+    },
     managePlaces: 'Manage places',
     manageCategories: 'Manage categories',
     manageCurrencies: 'Manage currencies',
