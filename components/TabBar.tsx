@@ -10,6 +10,7 @@ import {
   Text,
   type ViewStyle,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -43,6 +44,12 @@ const sidebarTabs: readonly RouteTab[] = [...leftTabs, ...rightTabs];
 
 // Fixed web navigation width; the Scale tokens do not cover page-level rails.
 export const SIDEBAR_WIDTH = 240;
+export const DESKTOP_MIN_WIDTH = 768;
+
+export function useIsDesktopWeb(): boolean {
+  const { width } = useWindowDimensions();
+  return Platform.OS === 'web' && width >= DESKTOP_MIN_WIDTH;
+}
 
 const sidebarPosition = Platform.select({
   default: 'absolute',
@@ -56,6 +63,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const isDesktopWeb = useIsDesktopWeb();
 
   function renderRouteTab(tab: RouteTab, placement: 'bottom' | 'sidebar') {
     const routeIndex = state.routes.findIndex(
@@ -148,7 +156,7 @@ export function TabBar({ navigation, state }: BottomTabBarProps) {
 
   return (
     <>
-      {Platform.OS === 'web' ? (
+      {isDesktopWeb ? (
         <View style={styles.sidebar}>
           <Pressable
             accessibilityLabel={t('nav.sidebarAdd')}

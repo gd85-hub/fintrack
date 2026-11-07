@@ -5,29 +5,30 @@ _Обновлено: 2026-11-07 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Web-клиент подготовлен как устанавливаемая iOS PWA для beta-тестеров: добавлены иконки, manifest и мобильный HTML shell для standalone/safe-area поведения.
+Навигация Web теперь выбирается по ширине viewport: телефонный браузер получает мобильную нижнюю панель вместо недоступного десктопного sidebar на пол-экрана.
 
 ## Только что сделано
 
-- Добавлены `app/+html.tsx` и `public/manifest.webmanifest`: standalone/portrait, `viewport-fit=cover`, light/dark theme-color, Apple/PWA icon links и mobile-web baseline без tap highlight, overscroll и input zoom.
-- В `public/` добавлены проверенные PNG: Apple touch 180×180, PWA 192×192/512×512 и favicon 48×48.
-- Масштабирование страницы не запрещено: нет `user-scalable=no`/`maximum-scale=1`; hex в shell/manifest — согласованное исключение для статического слоя и совпадает с DS `bg/base` light/dark.
-- **Проверено:** размеры всех PNG; `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web и Android exports. Реальный install/standalone/safe-area/no-zoom требует проверки на iPhone.
-- У Глеба остаются untracked `BUGS.md` и `DEPLOY.md`; они не изменены и не коммитятся.
+- В `components/TabBar.tsx` добавлены единые `DESKTOP_MIN_WIDTH = 768` и `useIsDesktopWeb()`: sidebar рендерится только на wide Web, а native и narrow Web используют существующий bottom tab bar с центральным `+`.
+- `app/(app)/_layout.tsx` применяет sidebar offset через тот же hook, поэтому shell и `paddingLeft` переключаются синхронно при resize/rotate.
+- `Platform.OS !== 'web'` у live-QR action не менялся: на web любой ширины Add sheet показывает фото и ручной ввод, но не native scan.
+- `AGENTS.md` закрепляет responsive-инвариант. **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1203 modules) и Android Metro export с `--no-bytecode` (1634 modules). Ручной viewport smoke-test <768/≥768 и Add sheet на iPhone не выполнялся.
+- Локальные изменения Глеба в `eas.json`, `package.json`, `package-lock.json`, `supabase/.temp/`, а также untracked `BUGS.md`/`DEPLOY.md` сохранены и не входят в RELEASE-7.
 
 ## Состояние origin/main
 
-Ветка `main`. RELEASE-6 идёт поверх RELEASE-5 `4768abd`; после commit/push `origin/main` должен указывать на iOS PWA commit.
+Ветка `main`. RELEASE-7 идёт поверх RELEASE-6 `64fc09a`; после commit/push `origin/main` должен указывать на responsive-navigation commit.
 
 ## Следующий шаг
 
-**Tester brief + ship:** применить feedback migration, задеплоить функции, отключить email confirmation, проверить RLS, собрать/опубликовать Web и раздать URL; отдельно подтвердить Add to Home Screen на реальном iPhone.
+**Продолжить tester round:** после Web deploy проверить на iPhone bottom tabs/full-width content, `+` без QR action и live switch через 768px; затем разбирать следующий beta feedback.
 
 ## Открытые решения и риски
 
 - Migration `feedback` ещё не применена: до неё submit будет ошибкой; после apply проверить insert, app_version/platform/user_id, offline retry и RLS-изоляцию между двумя пользователями.
 - `expo-application` — native module: реальный version/build label требует свежего EAS build; Web/dev показывает semver из Expo config.
 - Paste-flow собран на обе платформы, но требует ручного smoke-test: валидная SUF-ссылка → review, чужой URL → `notSufLink`, photo path без регрессии, native QR/manual без изменений.
+- Responsive nav собран и типизирован, но реальный narrow-Web smoke-test ещё нужен: bottom bar должен быть закреплён Tabs navigator без дополнительного `position: fixed`; fixed не добавлялся без подтверждённой необходимости.
 - При локальном `web.output: single` export manifest/icons копируются, но сгенерированный `index.html` оставался стандартным и не отражал `app/+html.tsx`; перед публичным URL проверить итоговый head. Если EAS ведёт себя так же, single-output потребует отдельного `public/index.html` prompt вместо изменения экранов.
 - `PASSWORD_RESET_UI` возвращать в `true` только после sending domain + custom SMTP (Resend), Supabase Site URL/redirect allowlist и `EXPO_PUBLIC_SITE_URL`; до этого beta recovery выполняется владельцем вручную.
 - `delete-account` ещё не задеплоена: перед проверкой убедиться, что `SUPABASE_SERVICE_ROLE_KEY` доступен Edge Functions; затем на throwaway account проверить confirm/cancel, повторный login и cascade по expenses/merchants/receipts.

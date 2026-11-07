@@ -1,8 +1,12 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { LoadingScreen } from '../../components/LoadingScreen';
-import { SIDEBAR_WIDTH, TabBar } from '../../components/TabBar';
+import {
+  SIDEBAR_WIDTH,
+  TabBar,
+  useIsDesktopWeb,
+} from '../../components/TabBar';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   DisplayCurrencyProvider,
@@ -12,6 +16,7 @@ import { ReceiptDraftProvider } from '../../contexts/ReceiptDraftContext';
 
 function AppNavigator() {
   const { loading } = useDisplayCurrency();
+  const isDesktopWeb = useIsDesktopWeb();
 
   if (loading) {
     return <LoadingScreen />;
@@ -21,7 +26,7 @@ function AppNavigator() {
     <View
       style={[
         styles.root,
-        Platform.OS === 'web' && styles.webContent,
+        isDesktopWeb && styles.webContent,
       ]}
     >
       <Tabs
