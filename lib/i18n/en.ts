@@ -47,6 +47,20 @@ export const en = {
       close: 'Close account deletion confirmation',
       error: "Couldn't delete the account. Try again.",
     },
+    feedback: {
+      row: 'Report a problem',
+      title: 'Report a problem',
+      intro:
+        'Tell us what broke or behaved oddly — and on which screen. Every message goes straight to the developer; we read and triage all of them. The more specific, the faster we fix it.',
+      placeholder: 'What happened, and on which screen',
+      submit: 'Send',
+      submitting: 'Sending…',
+      successTitle: 'Thanks — we got your message',
+      successBody: "We'll read and triage it.",
+      error:
+        "Couldn't send your message. Check your connection and try again.",
+      done: 'Done',
+    },
     managePlaces: 'Manage places',
     manageCategories: 'Manage categories',
     manageCurrencies: 'Manage currencies',
@@ -68,6 +82,7 @@ export const en = {
     comingSoon: 'Coming soon',
     about: {
       privacy: "Receipt photos aren't stored on our servers.",
+      versionLabel: 'Version {{version}}',
     },
   },
   common: {

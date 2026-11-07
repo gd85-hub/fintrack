@@ -38,6 +38,7 @@ function AppNavigator() {
         <Tabs.Screen name="receipt/review" options={{ href: null }} />
         <Tabs.Screen name="merchants" options={{ href: null }} />
         <Tabs.Screen name="categories" options={{ href: null }} />
+        <Tabs.Screen name="feedback" options={{ href: null }} />
         <Tabs.Screen name="menu" options={{ href: null }} />
       </Tabs>
     </View>

@@ -29,6 +29,7 @@ import {
   useColors,
   useTheme,
 } from '../../contexts/ThemeContext';
+import { appVersionLabel } from '../../lib/appVersion';
 import { theme, type Colors } from '../../lib/theme';
 
 type SettingsRouteRowProps = {
@@ -391,8 +392,21 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title={t('settings.section.about')}>
+          <SettingsRouteRow
+            label={t('settings.feedback.row')}
+            onPress={() => router.push('/(app)/feedback')}
+          />
+          <View style={styles.separator} />
           <View style={styles.aboutRow}>
             <Text style={styles.aboutText}>{t('settings.about.privacy')}</Text>
+          </View>
+          <View style={styles.separator} />
+          <View style={styles.aboutRow}>
+            <Text style={styles.aboutText}>
+              {t('settings.about.versionLabel', {
+                version: appVersionLabel(),
+              })}
+            </Text>
           </View>
         </SettingsSection>
       </ScrollView>
