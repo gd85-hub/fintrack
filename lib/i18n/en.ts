@@ -165,6 +165,9 @@ export const en = {
     cameraIntro: 'Photograph a paper receipt, or pick order screenshots.',
     backToQr: 'Back to QR scanner',
     qrLinkLabel: 'Link from the QR code',
+    pasteLinkHint:
+      'Receipt QR: point your phone camera at it, copy the link (suf.purs.gov.rs) and paste it here.',
+    orSeparator: 'or',
     loading: 'Reading the receipt…',
     loadReceipt: 'Load receipt',
     backToCamera: 'Back to camera',

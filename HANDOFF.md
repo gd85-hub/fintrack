@@ -5,28 +5,29 @@ _Обновлено: 2026-11-07 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Для внешней beta в Settings добавлен простой канал сообщений о проблемах с автоматической привязкой платформы и версии сборки.
+Фискальный разбор снова доступен iPhone/web-тестерам без native build: в общий фото/web flow можно вставить SUF-ссылку, которую камера телефона получила из QR-кода чека.
 
 ## Только что сделано
 
-- Settings → «О приложении» теперь показывает версию и ведёт на non-tab экран «Сообщить о проблеме»: multiline сообщение отправляется в `feedback`, success заменяет форму, ошибка сохраняет текст для retry.
-- Новая migration `20261107000000_feedback.sql` создаёт таблицу с `user_id default auth.uid()`, cascade и RLS insert/select только своих строк; клиент не передаёт `user_id`, но сохраняет `app_version` и `Platform.OS`.
-- `expo-application` добавлен через `expo install`; `appVersionLabel()`/`appVersionString()` предпочитают native version+build и безопасно падают обратно на Expo config version на Web/dev.
-- **Проверено:** `npm run typecheck` чистый; полный Jest с workspace cache — 23 сьюта / 212 тестов зелёные; Web export и Android Metro export с `--no-bytecode` успешны. `expo install --check` принимает новый модуль, но перечисляет существующие outdated Expo-пакеты вне scope. Migration/RLS и реальная отправка не проверялись до apply/deploy.
+- `ImageReceiptFlow` теперь показывает поле SUF-ссылки, подсказку и разделитель «или» над неизменённым photo input; путь доступен на Web и в native image-mode.
+- Paste-flow повторно использует `isSupportedReceiptUrl`, `fetchAndParseReceipt`, `receiptParseErrorMessage`, общий draft и `router.replace('/(app)/receipt/review')`; native QR camera, отдельный manualMode и image analysis не менялись.
+- Добавлены точные RU/EN строки для подсказки и разделителя; визуальные значения берутся из существующей темы и стилей экрана.
+- **Проверено:** `npm run typecheck` чистый; полный Jest с workspace cache — 23 сьюта / 212 тестов зелёные; Web export (1203 modules) и Android Metro export с `--no-bytecode` (1634 modules) успешны. Реальный SUF fetch/review на Safari и native image-mode вручную не проверялся.
 - У Глеба остаются untracked `BUGS.md` и `DEPLOY.md`; они не изменены и не коммитятся.
 
 ## Состояние origin/main
 
-Ветка `main`. RELEASE-4 идёт поверх `ebf32d7`; после commit/push `origin/main` должен указывать на feedback/version commit.
+Ветка `main`. RELEASE-5 идёт поверх RELEASE-4 `c79249d`; после commit/push `origin/main` должен указывать на receipt-link paste commit.
 
 ## Следующий шаг
 
-**Применить `20261107000000_feedback.sql`, задеплоить pending Edge Functions и ship beta по ops runbook.** После свежего EAS build проверить реальный native build number в Settings.
+**PWA/iOS Safari polish + короткий tester brief:** камера iPhone → QR → скопировать SUF-ссылку → вставить на web scan. Параллельно перед beta применить feedback migration и закрыть pending deploy из ops runbook.
 
 ## Открытые решения и риски
 
 - Migration `feedback` ещё не применена: до неё submit будет ошибкой; после apply проверить insert, app_version/platform/user_id, offline retry и RLS-изоляцию между двумя пользователями.
 - `expo-application` — native module: реальный version/build label требует свежего EAS build; Web/dev показывает semver из Expo config.
+- Paste-flow собран на обе платформы, но требует ручного smoke-test: валидная SUF-ссылка → review, чужой URL → `notSufLink`, photo path без регрессии, native QR/manual без изменений.
 - `PASSWORD_RESET_UI` возвращать в `true` только после sending domain + custom SMTP (Resend), Supabase Site URL/redirect allowlist и `EXPO_PUBLIC_SITE_URL`; до этого beta recovery выполняется владельцем вручную.
 - `delete-account` ещё не задеплоена: перед проверкой убедиться, что `SUPABASE_SERVICE_ROLE_KEY` доступен Edge Functions; затем на throwaway account проверить confirm/cancel, повторный login и cascade по expenses/merchants/receipts.
 - `verify_jwt = false` для `delete-account` — осознанное исключение: иначе gateway вернёт 401 вместо обязательного JSON/HTTP 200; безопасность держится на `auth.getUser(jwt)`, а body uid игнорируется.
