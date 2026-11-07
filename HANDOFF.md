@@ -5,29 +5,30 @@ _Обновлено: 2026-11-07 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Фискальный разбор снова доступен iPhone/web-тестерам без native build: в общий фото/web flow можно вставить SUF-ссылку, которую камера телефона получила из QR-кода чека.
+Web-клиент подготовлен как устанавливаемая iOS PWA для beta-тестеров: добавлены иконки, manifest и мобильный HTML shell для standalone/safe-area поведения.
 
 ## Только что сделано
 
-- `ImageReceiptFlow` теперь показывает поле SUF-ссылки, подсказку и разделитель «или» над неизменённым photo input; путь доступен на Web и в native image-mode.
-- Paste-flow повторно использует `isSupportedReceiptUrl`, `fetchAndParseReceipt`, `receiptParseErrorMessage`, общий draft и `router.replace('/(app)/receipt/review')`; native QR camera, отдельный manualMode и image analysis не менялись.
-- Добавлены точные RU/EN строки для подсказки и разделителя; визуальные значения берутся из существующей темы и стилей экрана.
-- **Проверено:** `npm run typecheck` чистый; полный Jest с workspace cache — 23 сьюта / 212 тестов зелёные; Web export (1203 modules) и Android Metro export с `--no-bytecode` (1634 modules) успешны. Реальный SUF fetch/review на Safari и native image-mode вручную не проверялся.
+- Добавлены `app/+html.tsx` и `public/manifest.webmanifest`: standalone/portrait, `viewport-fit=cover`, light/dark theme-color, Apple/PWA icon links и mobile-web baseline без tap highlight, overscroll и input zoom.
+- В `public/` добавлены проверенные PNG: Apple touch 180×180, PWA 192×192/512×512 и favicon 48×48.
+- Масштабирование страницы не запрещено: нет `user-scalable=no`/`maximum-scale=1`; hex в shell/manifest — согласованное исключение для статического слоя и совпадает с DS `bg/base` light/dark.
+- **Проверено:** размеры всех PNG; `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web и Android exports. Реальный install/standalone/safe-area/no-zoom требует проверки на iPhone.
 - У Глеба остаются untracked `BUGS.md` и `DEPLOY.md`; они не изменены и не коммитятся.
 
 ## Состояние origin/main
 
-Ветка `main`. RELEASE-5 идёт поверх RELEASE-4 `c79249d`; после commit/push `origin/main` должен указывать на receipt-link paste commit.
+Ветка `main`. RELEASE-6 идёт поверх RELEASE-5 `4768abd`; после commit/push `origin/main` должен указывать на iOS PWA commit.
 
 ## Следующий шаг
 
-**PWA/iOS Safari polish + короткий tester brief:** камера iPhone → QR → скопировать SUF-ссылку → вставить на web scan. Параллельно перед beta применить feedback migration и закрыть pending deploy из ops runbook.
+**Tester brief + ship:** применить feedback migration, задеплоить функции, отключить email confirmation, проверить RLS, собрать/опубликовать Web и раздать URL; отдельно подтвердить Add to Home Screen на реальном iPhone.
 
 ## Открытые решения и риски
 
 - Migration `feedback` ещё не применена: до неё submit будет ошибкой; после apply проверить insert, app_version/platform/user_id, offline retry и RLS-изоляцию между двумя пользователями.
 - `expo-application` — native module: реальный version/build label требует свежего EAS build; Web/dev показывает semver из Expo config.
 - Paste-flow собран на обе платформы, но требует ручного smoke-test: валидная SUF-ссылка → review, чужой URL → `notSufLink`, photo path без регрессии, native QR/manual без изменений.
+- При локальном `web.output: single` export manifest/icons копируются, но сгенерированный `index.html` оставался стандартным и не отражал `app/+html.tsx`; перед публичным URL проверить итоговый head. Если EAS ведёт себя так же, single-output потребует отдельного `public/index.html` prompt вместо изменения экранов.
 - `PASSWORD_RESET_UI` возвращать в `true` только после sending domain + custom SMTP (Resend), Supabase Site URL/redirect allowlist и `EXPO_PUBLIC_SITE_URL`; до этого beta recovery выполняется владельцем вручную.
 - `delete-account` ещё не задеплоена: перед проверкой убедиться, что `SUPABASE_SERVICE_ROLE_KEY` доступен Edge Functions; затем на throwaway account проверить confirm/cancel, повторный login и cascade по expenses/merchants/receipts.
 - `verify_jwt = false` для `delete-account` — осознанное исключение: иначе gateway вернёт 401 вместо обязательного JSON/HTTP 200; безопасность держится на `auth.getUser(jwt)`, а body uid игнорируется.
