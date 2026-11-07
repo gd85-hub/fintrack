@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { localizedAuthError } from '../../lib/authErrors';
+import { PASSWORD_RESET_UI } from '../../lib/features';
 import { theme, type Colors } from '../../lib/theme';
 
 export default function SignInScreen() {
@@ -63,9 +64,11 @@ export default function SignInScreen() {
           value={password}
         />
 
-        <Link href="/(auth)/forgot-password" style={styles.link}>
-          {t('auth.forgotPassword')}
-        </Link>
+        {PASSWORD_RESET_UI ? (
+          <Link href="/(auth)/forgot-password" style={styles.link}>
+            {t('auth.forgotPassword')}
+          </Link>
+        ) : null}
 
         {errorMessage ? (
           <Text style={styles.error}>{errorMessage}</Text>
