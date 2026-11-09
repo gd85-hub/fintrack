@@ -45,6 +45,8 @@ const sidebarTabs: readonly RouteTab[] = [...leftTabs, ...rightTabs];
 // Fixed web navigation width; the Scale tokens do not cover page-level rails.
 export const SIDEBAR_WIDTH = 240;
 export const DESKTOP_MIN_WIDTH = 768;
+export const BOTTOM_TAB_BAR_HEIGHT =
+  theme.spacing.xs + theme.sizes.floatingButton + theme.sizes.border;
 
 export function useIsDesktopWeb(): boolean {
   const { width } = useWindowDimensions();
@@ -348,6 +350,7 @@ const makeStyles = (c: Colors) =>
       borderTopColor: c.border.subtle,
       borderTopWidth: theme.sizes.border,
       flexDirection: 'row',
+      minHeight: BOTTOM_TAB_BAR_HEIGHT,
       paddingTop: theme.spacing.xs,
     },
     modalRoot: {

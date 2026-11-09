@@ -8,6 +8,7 @@ import { Stack } from 'expo-router';
 import { AuthProvider } from '../contexts/AuthContext';
 import { LanguageProvider } from '../contexts/LanguageContext';
 import { ThemeProvider } from '../contexts/ThemeContext';
+import { ToastProvider } from '../contexts/ToastContext';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -25,7 +26,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <LanguageProvider>
         <AuthProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+          <ToastProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ToastProvider>
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
