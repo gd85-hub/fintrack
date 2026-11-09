@@ -170,9 +170,6 @@ export const ru = {
     cameraIntro: 'Сфотографируйте бумажный чек или выберите скриншоты заказа.',
     backToQr: 'Вернуться к QR-сканеру',
     qrLinkLabel: 'Ссылка из QR-кода',
-    pasteLinkHint:
-      'QR с чека: наведите на него камеру телефона, скопируйте ссылку (suf.purs.gov.rs) и вставьте сюда.',
-    orSeparator: 'или',
     loading: 'Читаем чек…',
     loadReceipt: 'Загрузить чек',
     backToCamera: 'Вернуться к камере',

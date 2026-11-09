@@ -5,29 +5,29 @@ _Обновлено: 2026-11-07 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Навигация Web теперь выбирается по ширине viewport: телефонный браузер получает мобильную нижнюю панель вместо недоступного десктопного sidebar на пол-экрана.
+Web-сканирование снова соответствует реальным ограничениям: SUF-ссылку из браузера загрузить нельзя из-за CORS, поэтому Web/iPhone PWA принимает чек только через работающий photo-analysis path.
 
 ## Только что сделано
 
-- В `components/TabBar.tsx` добавлены единые `DESKTOP_MIN_WIDTH = 768` и `useIsDesktopWeb()`: sidebar рендерится только на wide Web, а native и narrow Web используют существующий bottom tab bar с центральным `+`.
-- `app/(app)/_layout.tsx` применяет sidebar offset через тот же hook, поэтому shell и `paddingLeft` переключаются синхронно при resize/rotate.
-- `Platform.OS !== 'web'` у live-QR action не менялся: на web любой ширины Add sheet показывает фото и ручной ввод, но не native scan.
-- `AGENTS.md` закрепляет responsive-инвариант. **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1203 modules) и Android Metro export с `--no-bytecode` (1634 modules). Ручной viewport smoke-test <768/≥768 и Add sheet на iPhone не выполнялся.
-- Локальные изменения Глеба в `eas.json`, `package.json`, `package-lock.json`, `supabase/.temp/`, а также untracked `BUGS.md`/`DEPLOY.md` сохранены и не входят в RELEASE-7.
+- Из общего `ImageReceiptFlow` удалены SUF-link state/handler/UI/divider и их стили; Web и native image-mode снова показывают только `ReceiptImageInput`, processing/error и ручное добавление.
+- Из RU/EN удалены только `scan.pasteLinkHint` и `scan.orSeparator`; native `qrLinkLabel`/`loadReceipt`/`loading`/`notSufLink`, URL helpers и `handleReceiptUrl` сохранены без изменений.
+- Native QR scanner, dedicated manual-link screen, image analysis и `lib/receipts.ts` не затронуты.
+- **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1203 modules) и Android Metro export с `--no-bytecode` (1634 modules). End-to-end photo upload на Safari и native QR/manual вручную не проверялись.
+- Локальные изменения Глеба в `eas.json`, `package.json`, `package-lock.json`, `supabase/.temp/`, а также untracked `BUGS.md`/`DEPLOY.md` сохранены и не входят в RELEASE-8.
 
 ## Состояние origin/main
 
-Ветка `main`. RELEASE-7 идёт поверх RELEASE-6 `64fc09a`; после commit/push `origin/main` должен указывать на responsive-navigation commit.
+Ветка `main`. RELEASE-8 идёт поверх RELEASE-7 `bdcc958`; после commit/push `origin/main` должен указывать на CORS dead-end removal commit.
 
 ## Следующий шаг
 
-**Продолжить tester round:** после Web deploy проверить на iPhone bottom tabs/full-width content, `+` без QR action и live switch через 768px; затем разбирать следующий beta feedback.
+**Redeploy Web и продолжить tester round:** на iPhone проверить photo upload → review, отсутствие link field и responsive bottom tabs; native QR/manual/photo оставить smoke-check для Android.
 
 ## Открытые решения и риски
 
 - Migration `feedback` ещё не применена: до неё submit будет ошибкой; после apply проверить insert, app_version/platform/user_id, offline retry и RLS-изоляцию между двумя пользователями.
 - `expo-application` — native module: реальный version/build label требует свежего EAS build; Web/dev показывает semver из Expo config.
-- Paste-flow собран на обе платформы, но требует ручного smoke-test: валидная SUF-ссылка → review, чужой URL → `notSufLink`, photo path без регрессии, native QR/manual без изменений.
+- Fiscal SUF fetch остаётся строго native-only: browser блокирует tax page по CORS, а Supabase server — сам tax site; не возвращать link field в Web без нового подтверждённого транспорта.
 - Responsive nav собран и типизирован, но реальный narrow-Web smoke-test ещё нужен: bottom bar должен быть закреплён Tabs navigator без дополнительного `position: fixed`; fixed не добавлялся без подтверждённой необходимости.
 - При локальном `web.output: single` export manifest/icons копируются, но сгенерированный `index.html` оставался стандартным и не отражал `app/+html.tsx`; перед публичным URL проверить итоговый head. Если EAS ведёт себя так же, single-output потребует отдельного `public/index.html` prompt вместо изменения экранов.
 - `PASSWORD_RESET_UI` возвращать в `true` только после sending domain + custom SMTP (Resend), Supabase Site URL/redirect allowlist и `EXPO_PUBLIC_SITE_URL`; до этого beta recovery выполняется владельцем вручную.

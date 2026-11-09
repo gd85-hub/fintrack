@@ -82,33 +82,8 @@ function ImageReceiptFlow() {
   const { t } = useLanguage();
   const { setDraft } = useReceiptDraft();
   const { colors, styles } = useScanTheme();
-  const [linkUrl, setLinkUrl] = useState('');
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const handleLink = async () => {
-    if (processing) {
-      return;
-    }
-
-    setError(null);
-    const trimmedUrl = linkUrl.trim();
-    if (!isSupportedReceiptUrl(trimmedUrl)) {
-      setError(t('scan.notSufLink'));
-      return;
-    }
-
-    setProcessing(true);
-    const result = await fetchAndParseReceipt(trimmedUrl);
-    setProcessing(false);
-    if (!result.ok) {
-      setError(receiptParseErrorMessage(result.error));
-      return;
-    }
-
-    setDraft(result);
-    router.replace('/(app)/receipt/review');
-  };
 
   const handleImages = async (sources: ReceiptImageSource[]) => {
     setError(null);
@@ -148,41 +123,6 @@ function ImageReceiptFlow() {
 
   return (
     <View style={styles.imageFlow}>
-      <View style={styles.manualCard}>
-        <Text style={styles.label}>{t('scan.qrLinkLabel')}</Text>
-        <Text style={styles.linkHint}>{t('scan.pasteLinkHint')}</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          editable={!processing}
-          keyboardType="url"
-          onChangeText={setLinkUrl}
-          onSubmitEditing={() => void handleLink()}
-          placeholder="https://suf.purs.gov.rs/v/?vl=…"
-          placeholderTextColor={colors.field.placeholder}
-          returnKeyType="go"
-          style={styles.input}
-          value={linkUrl}
-        />
-        <Pressable
-          accessibilityRole="button"
-          disabled={processing || !linkUrl.trim()}
-          onPress={() => void handleLink()}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            (pressed || processing || !linkUrl.trim()) && styles.disabled,
-          ]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {processing ? t('scan.loading') : t('scan.loadReceipt')}
-          </Text>
-        </Pressable>
-      </View>
-      <View style={styles.orSeparator}>
-        <View style={styles.orSeparatorLine} />
-        <Text style={styles.orSeparatorText}>{t('scan.orSeparator')}</Text>
-        <View style={styles.orSeparatorLine} />
-      </View>
       <ReceiptImageInput
         disabled={processing}
         onError={setError}
@@ -521,10 +461,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
-  linkHint: {
-    color: c.text.secondary,
-    fontSize: theme.fontSizes.caption,
-  },
   linkButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -538,20 +474,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   manualCard: {
     gap: theme.spacing.md,
-  },
-  orSeparator: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  orSeparatorLine: {
-    backgroundColor: c.separatorInset,
-    flex: 1,
-    height: theme.scale.stroke.hairline,
-  },
-  orSeparatorText: {
-    color: c.text.secondary,
-    fontSize: theme.fontSizes.caption,
   },
   pressed: {
     opacity: theme.opacity.pressed,
