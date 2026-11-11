@@ -1,3 +1,4 @@
+import { anchorRateForExpense } from '../anchorRates';
 import { monthBounds } from '../dates';
 import { ratesForExpense } from '../fx';
 import {
@@ -69,19 +70,30 @@ async function conversionPayload(
     ) {
       throw new Error('Сумма в RSD должна быть больше нуля.');
     }
+    const anchorRate = manualRsdCents === null
+      ? null
+      : await anchorRateForExpense('RSD', input.occurredOn);
     return receiptExpenseAmounts(
       input.amountCents,
       currency,
       null,
       manualRsdCents,
+      anchorRate?.ratePerEur ?? null,
     );
   }
 
-  const rates = await ratesForExpense(input.occurredOn);
+  const [rates, anchorRate] = await Promise.all([
+    ratesForExpense(input.occurredOn),
+    currency === 'EUR'
+      ? Promise.resolve(null)
+      : anchorRateForExpense(currency, input.occurredOn),
+  ]);
   return receiptExpenseAmounts(
     input.amountCents,
     currency,
     rates,
+    null,
+    anchorRate?.ratePerEur ?? null,
   );
 }
 

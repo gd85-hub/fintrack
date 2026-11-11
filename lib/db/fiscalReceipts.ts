@@ -1,3 +1,4 @@
+import { anchorRateForExpense } from '../anchorRates';
 import { parseLocalISO } from '../dates';
 import { ratesForExpense } from '../fx';
 import {
@@ -249,14 +250,27 @@ export async function saveFiscalReceipt(
   const merchantLabel =
     input.receipt.merchantLabel?.trim() ||
     input.receipt.merchantName.trim();
-  const rates = isCurrency(currency)
-    ? await ratesForExpense(occurredOn)
-    : null;
+  const supportedCurrency = isCurrency(currency);
+  const manualRsdTotalCents = supportedCurrency
+    ? null
+    : input.manualRsdTotalCents ?? null;
+  const hasManualRsdTotal =
+    !supportedCurrency && manualRsdTotalCents !== null;
+  const [rates, anchorRate] = await Promise.all([
+    supportedCurrency
+      ? ratesForExpense(occurredOn)
+      : Promise.resolve(null),
+    currency === 'EUR' || (!supportedCurrency && !hasManualRsdTotal)
+      ? Promise.resolve(null)
+      : anchorRateForExpense(
+          supportedCurrency ? currency : 'RSD',
+          occurredOn,
+        ),
+  ]);
   const manualRsdShares =
-    !isCurrency(currency) && input.manualRsdTotalCents !== null &&
-    input.manualRsdTotalCents !== undefined
+    hasManualRsdTotal
       ? distributeCents(
-          input.manualRsdTotalCents,
+          manualRsdTotalCents,
           input.expenses.map((expense) => expense.amountCents),
         )
       : input.expenses.map(() => null);
@@ -331,6 +345,7 @@ export async function saveFiscalReceipt(
         currency,
         rates,
         manualRsdShares[index] ?? null,
+        anchorRate?.ratePerEur ?? null,
       );
       return {
         user_id: userId,
@@ -737,11 +752,21 @@ export async function updateFiscalReceipt(
           keptExpenses.map((expense) => expense.amountCents ?? 0),
         )
       : keptExpenses.map(() => null);
-  const rates =
-    (dateChanged || amountChanged || currencyChanged) &&
-    isCurrency(currency)
-      ? await ratesForExpense(input.occurredOn)
-      : null;
+  const conversionChanged = dateChanged || amountChanged || currencyChanged;
+  const supportedCurrency = isCurrency(currency);
+  const [rates, anchorRate] = await Promise.all([
+    conversionChanged && supportedCurrency
+      ? ratesForExpense(input.occurredOn)
+      : Promise.resolve(null),
+    currency !== 'EUR' &&
+    ((conversionChanged && supportedCurrency) ||
+      (!supportedCurrency && manualRsdTotalCents !== null))
+      ? anchorRateForExpense(
+          supportedCurrency ? currency : 'RSD',
+          input.occurredOn,
+        )
+      : Promise.resolve(null),
+  ]);
   const incomingMerchantName = rawReceiptMerchantName(
     snapshot.receipt.raw_json,
   );
@@ -764,15 +789,22 @@ export async function updateFiscalReceipt(
       }
       const itemAmountChanged =
         decimalToCents(existing.original_amount) !== expense.amountCents;
-      const converted = isCurrency(currency)
+      const converted = supportedCurrency
         ? dateChanged || itemAmountChanged || currencyChanged
-          ? receiptExpenseAmounts(expense.amountCents, currency, rates)
+          ? receiptExpenseAmounts(
+              expense.amountCents,
+              currency,
+              rates,
+              null,
+              anchorRate?.ratePerEur ?? null,
+            )
           : {}
         : receiptExpenseAmounts(
             expense.amountCents,
             currency,
             null,
             manualRsdShares[index] ?? null,
+            anchorRate?.ratePerEur ?? null,
           );
       const { error } = await supabase
         .from('expenses')

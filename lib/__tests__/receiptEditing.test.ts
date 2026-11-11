@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+import { anchorRateForExpense } from '../anchorRates';
 import {
   buildFiscalReceiptEditDraft,
   type Expense,
@@ -7,6 +8,10 @@ import {
 } from '../db';
 import { ratesForExpense } from '../fx';
 import { supabase } from '../supabase';
+
+jest.mock('../anchorRates', () => ({
+  anchorRateForExpense: jest.fn(),
+}));
 
 jest.mock('../fx', () => ({
   ratesForExpense: jest.fn(),
@@ -23,6 +28,9 @@ const getSessionMock = supabase.auth.getSession as unknown as jest.Mock;
 const fromMock = supabase.from as unknown as jest.Mock;
 const ratesMock = ratesForExpense as jest.MockedFunction<
   typeof ratesForExpense
+>;
+const anchorRateMock = anchorRateForExpense as jest.MockedFunction<
+  typeof anchorRateForExpense
 >;
 const recencyEqMock = jest.fn(async () => ({ error: null }));
 const recencyUpdateMock = jest.fn(() => ({ eq: recencyEqMock }));
@@ -239,6 +247,12 @@ describe('updateFiscalReceipt', () => {
     getSessionMock.mockReset();
     fromMock.mockReset();
     ratesMock.mockReset();
+    anchorRateMock.mockReset();
+    anchorRateMock.mockImplementation(async (currency, dateISO) => ({
+      date: dateISO,
+      quote: currency,
+      ratePerEur: currency === 'RSD' ? 117 : 1.064,
+    }));
     recencyEqMock.mockClear();
     recencyUpdateMock.mockClear();
     getSessionMock.mockImplementation(async () => ({
@@ -304,6 +318,8 @@ describe('updateFiscalReceipt', () => {
 
     expect(ratesMock).toHaveBeenCalledTimes(1);
     expect(ratesMock).toHaveBeenCalledWith('2026-08-03');
+    expect(anchorRateMock).toHaveBeenCalledTimes(1);
+    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-03');
     expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
       expect.objectContaining({
         merchant_id: 'merchant-new',
@@ -443,6 +459,7 @@ describe('updateFiscalReceipt', () => {
     ).resolves.toEqual({ deleted: false });
 
     expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).not.toHaveBeenCalled();
     const keptPayload = (
       keptExpenseUpdate.mutation as unknown as jest.Mock
     ).mock.calls[0]?.[0];
@@ -598,12 +615,14 @@ describe('updateFiscalReceipt', () => {
     });
 
     expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).toHaveBeenCalledTimes(1);
+    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-01');
     expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
       expect.objectContaining({
         original_currency: 'KZT',
         amount_rsd: '33.34',
         amount_usd: null,
-        amount_eur: null,
+        amount_eur: '0.28',
         fx_rate_date: null,
       }),
     );
@@ -612,7 +631,7 @@ describe('updateFiscalReceipt', () => {
         original_currency: 'KZT',
         amount_rsd: '66.67',
         amount_usd: null,
-        amount_eur: null,
+        amount_eur: '0.57',
         fx_rate_date: null,
       }),
     );
@@ -679,6 +698,7 @@ describe('updateFiscalReceipt', () => {
 
     expect(ratesMock).toHaveBeenCalledTimes(1);
     expect(ratesMock).toHaveBeenCalledWith('2026-08-01');
+    expect(anchorRateMock).not.toHaveBeenCalled();
     expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
       expect.objectContaining({
         original_currency: 'EUR',

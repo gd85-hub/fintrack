@@ -9,6 +9,16 @@ export type AnchorRate = {
   ratePerEur: number;
 };
 
+const ANCHOR_RATE_ERROR_MESSAGE =
+  'Курс валюты недоступен. Проверьте соединение и попробуйте ещё раз.';
+
+export class AnchorRateUnavailableError extends Error {
+  constructor() {
+    super(ANCHOR_RATE_ERROR_MESSAGE);
+    this.name = 'AnchorRateUnavailableError';
+  }
+}
+
 type JsonObject = Record<string, unknown>;
 
 const RATE_SELECTION = 'date,quote_currency,rate';
@@ -189,6 +199,55 @@ export async function ensureAnchorRatesFor(dateISO: string): Promise<boolean> {
   }
 
   return hasAnchorRateOnOrBefore(dateISO);
+}
+
+export async function anchorRateForExpense(
+  currency: string,
+  dateISO: string,
+): Promise<AnchorRate> {
+  const normalizedCurrency = normalizeCurrencyCode(currency);
+  if (normalizedCurrency === ANCHOR_CURRENCY) {
+    return {
+      date: dateISO,
+      quote: ANCHOR_CURRENCY,
+      ratePerEur: 1,
+    };
+  }
+
+  if (!normalizedCurrency) {
+    throw new AnchorRateUnavailableError();
+  }
+
+  try {
+    const existing = await resolveAnchorRate(normalizedCurrency, dateISO);
+    if (existing) {
+      return existing;
+    }
+  } catch (error: unknown) {
+    console.error('Unable to resolve anchor FX rate:', error);
+  }
+
+  try {
+    const { error } = await supabase.functions.invoke('sync-rates', {
+      body: { dates: [dateISO] },
+    });
+    if (error) {
+      console.error('Unable to synchronize anchor FX rates:', error.message);
+    }
+  } catch (error: unknown) {
+    console.error('Unable to synchronize anchor FX rates:', error);
+  }
+
+  try {
+    const refreshed = await resolveAnchorRate(normalizedCurrency, dateISO);
+    if (refreshed) {
+      return refreshed;
+    }
+  } catch (error: unknown) {
+    console.error('Unable to resolve refreshed anchor FX rate:', error);
+  }
+
+  throw new AnchorRateUnavailableError();
 }
 
 export async function fetchAnchorRatesForRange(

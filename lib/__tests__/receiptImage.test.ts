@@ -196,7 +196,7 @@ describe('receipt image currency persistence', () => {
         date: '2026-08-02',
         usdRsd: 110,
         eurRsd: 117,
-      }),
+      }, null, 1.064),
     ).toEqual({
       amount_rsd: '1100.00',
       amount_usd: '10.00',
@@ -215,11 +215,43 @@ describe('receipt image currency persistence', () => {
   });
 
   test('stores only a manual RSD share for unsupported currencies', () => {
-    expect(receiptExpenseAmounts(1000, 'KZT', null, 625)).toEqual({
+    expect(receiptExpenseAmounts(1000, 'KZT', null, 625, 117)).toEqual({
       amount_rsd: '6.25',
       amount_usd: null,
-      amount_eur: null,
+      amount_eur: '0.05',
       fx_rate_date: null,
+    });
+  });
+
+  test('uses the anchor rate for RSD while preserving legacy conversions', () => {
+    expect(
+      receiptExpenseAmounts(
+        10_000,
+        'RSD',
+        { date: '2026-08-02', usdRsd: 110, eurRsd: 117 },
+        null,
+        117,
+      ),
+    ).toEqual({
+      amount_rsd: '100.00',
+      amount_usd: '0.91',
+      amount_eur: '0.85',
+      fx_rate_date: '2026-08-02',
+    });
+  });
+
+  test('keeps an original EUR amount exact without an anchor lookup', () => {
+    expect(
+      receiptExpenseAmounts(10_000, 'EUR', {
+        date: '2026-08-02',
+        usdRsd: 110,
+        eurRsd: 117,
+      }),
+    ).toEqual({
+      amount_rsd: '11700.00',
+      amount_usd: '106.36',
+      amount_eur: '100.00',
+      fx_rate_date: '2026-08-02',
     });
   });
 });

@@ -1,12 +1,36 @@
-import { describe, expect, it } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { AnchorRate } from '../anchorRates';
+import { supabase } from '../supabase';
 
-process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
-process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
+jest.mock('../supabase', () => ({
+  supabase: {
+    from: jest.fn(),
+    functions: { invoke: jest.fn() },
+  },
+}));
 
-const { parseAnchorRows, pickRateOnOrBefore, resolveAnchorRate } =
-  require('../anchorRates') as typeof import('../anchorRates');
+const {
+  AnchorRateUnavailableError,
+  anchorRateForExpense,
+  parseAnchorRows,
+  pickRateOnOrBefore,
+  resolveAnchorRate,
+} = require('../anchorRates') as typeof import('../anchorRates');
+const fromMock = supabase.from as unknown as jest.Mock;
+const invokeMock = supabase.functions.invoke as unknown as jest.Mock;
+
+function rateQuery(data: unknown[]) {
+  const limit = jest.fn(async () => ({ data, error: null }));
+  const order = jest.fn(() => ({ limit }));
+  const lte = jest.fn(() => ({ order }));
+  const quoteEq = jest.fn(() => ({ lte, order }));
+  const baseEq = jest.fn(() => ({ eq: quoteEq }));
+  const select = jest.fn(() => ({ eq: baseEq }));
+  return {
+    client: { select } as unknown as ReturnType<typeof supabase.from>,
+  };
+}
 
 describe('parseAnchorRows', () => {
   it.each([null, undefined, {}, 'rates'])(
@@ -65,12 +89,74 @@ describe('parseAnchorRows', () => {
 });
 
 describe('resolveAnchorRate', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    invokeMock.mockReset();
+  });
+
   it('returns EUR parity without querying a stored rate', async () => {
     await expect(resolveAnchorRate(' eur ', '2026-10-15')).resolves.toEqual({
       date: '2026-10-15',
       quote: 'EUR',
       ratePerEur: 1,
     });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('anchorRateForExpense', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    invokeMock.mockReset();
+    invokeMock.mockImplementation(async () => ({ data: null, error: null }));
+  });
+
+  it('returns EUR parity without queries or synchronization', async () => {
+    await expect(
+      anchorRateForExpense(' eur ', '2026-10-15'),
+    ).resolves.toEqual({
+      date: '2026-10-15',
+      quote: 'EUR',
+      ratePerEur: 1,
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('synchronizes after a miss and resolves the refreshed rate', async () => {
+    const emptyEarlier = rateQuery([]);
+    const emptyEarliest = rateQuery([]);
+    const refreshed = rateQuery([
+      { date: '2026-10-14', quote_currency: 'USD', rate: '1.08' },
+    ]);
+    fromMock
+      .mockReturnValueOnce(emptyEarlier.client)
+      .mockReturnValueOnce(emptyEarliest.client)
+      .mockReturnValueOnce(refreshed.client);
+
+    await expect(
+      anchorRateForExpense('USD', '2026-10-15'),
+    ).resolves.toEqual({
+      date: '2026-10-14',
+      quote: 'USD',
+      ratePerEur: 1.08,
+    });
+    expect(invokeMock).toHaveBeenCalledWith('sync-rates', {
+      body: { dates: ['2026-10-15'] },
+    });
+  });
+
+  it('throws after synchronization when the rate is still unavailable', async () => {
+    fromMock
+      .mockReturnValueOnce(rateQuery([]).client)
+      .mockReturnValueOnce(rateQuery([]).client)
+      .mockReturnValueOnce(rateQuery([]).client)
+      .mockReturnValueOnce(rateQuery([]).client);
+
+    await expect(
+      anchorRateForExpense('USD', '2026-10-15'),
+    ).rejects.toBeInstanceOf(AnchorRateUnavailableError);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
   });
 });
 

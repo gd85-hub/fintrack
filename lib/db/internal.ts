@@ -4,6 +4,7 @@ import {
   convertAll,
   decimalToCents,
   isCurrency,
+  roundHalfUp,
 } from '../money';
 import { supabase } from '../supabase';
 import type { Expense } from './types';
@@ -94,15 +95,22 @@ export function receiptExpenseAmounts(
   currency: string,
   rates: ResolvedRates | null,
   manualRsdCents: number | null = null,
+  anchorRatePerEur: number | null = null,
 ) {
   if (!isCurrency(currency)) {
+    const amountEurCents = manualRsdCents === null
+      ? null
+      : roundHalfUp(
+          manualRsdCents / requiredAnchorRate(anchorRatePerEur),
+        );
     return {
       amount_rsd:
         manualRsdCents === null
           ? null
           : centsToDecimal(manualRsdCents),
       amount_usd: null,
-      amount_eur: null,
+      amount_eur:
+        amountEurCents === null ? null : centsToDecimal(amountEurCents),
       fx_rate_date: null,
     };
   }
@@ -115,10 +123,25 @@ export function receiptExpenseAmounts(
     rates.usdRsd,
     rates.eurRsd,
   );
+  const amountEurCents = currency === 'EUR'
+    ? amountCents
+    : roundHalfUp(amountCents / requiredAnchorRate(anchorRatePerEur));
   return {
     amount_rsd: centsToDecimal(converted.rsd),
     amount_usd: centsToDecimal(converted.usd),
-    amount_eur: centsToDecimal(converted.eur),
+    amount_eur: centsToDecimal(amountEurCents),
     fx_rate_date: rates.date,
   };
+}
+
+function requiredAnchorRate(ratePerEur: number | null): number {
+  if (
+    ratePerEur === null ||
+    !Number.isFinite(ratePerEur) ||
+    ratePerEur <= 0
+  ) {
+    throw new Error('A positive anchor rate is required.');
+  }
+
+  return ratePerEur;
 }

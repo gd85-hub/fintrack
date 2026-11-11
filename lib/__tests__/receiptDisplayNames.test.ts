@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+import { anchorRateForExpense } from '../anchorRates';
 import { saveFiscalReceipt } from '../db';
 import { ratesForExpense } from '../fx';
 import { supabase } from '../supabase';
+
+jest.mock('../anchorRates', () => ({
+  anchorRateForExpense: jest.fn(),
+}));
 
 jest.mock('../fx', () => ({
   ratesForExpense: jest.fn(),
@@ -18,6 +23,9 @@ jest.mock('../supabase', () => ({
 const ratesMock = ratesForExpense as jest.MockedFunction<
   typeof ratesForExpense
 >;
+const anchorRateMock = anchorRateForExpense as jest.MockedFunction<
+  typeof anchorRateForExpense
+>;
 const getSessionMock = supabase.auth.getSession as unknown as jest.Mock;
 const fromMock = supabase.from as unknown as jest.Mock;
 const recencyEqMock = jest.fn(async () => ({ error: null }));
@@ -27,6 +35,12 @@ const recencyClient = { update: recencyUpdateMock };
 describe('receipt display-name persistence', () => {
   beforeEach(() => {
     ratesMock.mockReset();
+    anchorRateMock.mockReset();
+    anchorRateMock.mockImplementation(async (currency, dateISO) => ({
+      date: dateISO,
+      quote: currency,
+      ratePerEur: currency === 'RSD' ? 117 : 1.064,
+    }));
     getSessionMock.mockReset();
     fromMock.mockReset();
     recencyEqMock.mockClear();
@@ -175,6 +189,8 @@ describe('receipt display-name persistence', () => {
     });
 
     expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).toHaveBeenCalledTimes(1);
+    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-02');
     expect(receiptInsert).toHaveBeenCalledWith(
       expect.objectContaining({ currency: 'KZT' }),
     );
@@ -183,17 +199,57 @@ describe('receipt display-name persistence', () => {
         original_currency: 'KZT',
         amount_rsd: '33.34',
         amount_usd: null,
-        amount_eur: null,
+        amount_eur: '0.28',
         fx_rate_date: null,
       }),
       expect.objectContaining({
         original_currency: 'KZT',
         amount_rsd: '66.67',
         amount_usd: null,
-        amount_eur: null,
+        amount_eur: '0.57',
         fx_rate_date: null,
       }),
     ]);
+  });
+
+  test('blocks a receipt save before inserts when the anchor rate is unavailable', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+    ratesMock.mockResolvedValue({
+      date: '2026-08-02',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+    anchorRateMock.mockRejectedValue(new Error('anchor unavailable'));
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: {
+          ok: true,
+          source: 'fiscal_qr',
+          merchantName: 'UNIVEREXPORT',
+          taxId: '101692669',
+          occurredAt: '2026-08-02T12:00:00+02:00',
+          totalCents: 10_000,
+          currency: 'RSD',
+          paymentType: 'Карточка',
+          items: [],
+        },
+        merchant: { existingId: 'merchant-1' },
+        expenses: [
+          {
+            amountCents: 10_000,
+            categoryId: 'groceries',
+            description: 'Хлеб',
+            rawName: 'HLEB',
+          },
+        ],
+      }),
+    ).rejects.toThrow('anchor unavailable');
+
+    expect(fromMock).not.toHaveBeenCalled();
   });
 
   test('creates one brand merchant and keeps each branch label', async () => {

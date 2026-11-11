@@ -145,7 +145,10 @@ async function syncDate(
     });
     const { error } = await adminClient.from('fx_rates').upsert(
       rows,
-      { onConflict: 'date,base_currency,quote_currency' },
+      {
+        onConflict: 'date,base_currency,quote_currency',
+        ignoreDuplicates: true,
+      },
     );
 
     if (error) {
