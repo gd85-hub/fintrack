@@ -12,6 +12,7 @@ import {
 
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColors } from '../contexts/ThemeContext';
+import { useToast } from '../contexts/ToastContext';
 import {
   deleteExpense,
   getExpense,
@@ -70,6 +71,7 @@ function ExpenseForm({
 }: ExpenseFormProps) {
   const router = useRouter();
   const { locale, t } = useLanguage();
+  const toast = useToast();
   const { colors, styles } = useExpenseEditorTheme();
   const [amount, setAmount] = useState(
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
@@ -244,6 +246,9 @@ function ExpenseForm({
       } else {
         await insertExpense(input);
       }
+      toast.success(
+        t(initialExpense ? 'toast.changesSaved' : 'toast.expenseSaved'),
+      );
       router.back();
     } catch (error: unknown) {
       console.error('Unable to save expense:', error);
@@ -266,6 +271,7 @@ function ExpenseForm({
 
     try {
       await deleteExpense(initialExpense.id);
+      toast.success(t('toast.expenseDeleted'));
       setDeleteVisible(false);
       router.back();
     } catch (error: unknown) {

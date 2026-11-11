@@ -466,6 +466,18 @@ export const en = {
     comingSoonTitle: 'Reports coming soon',
     comingSoonBody: 'Spending reports and exports will live here.',
   },
+  toast: {
+    expenseSaved: 'Expense saved',
+    changesSaved: 'Changes saved',
+    expenseDeleted: 'Expense deleted',
+    receiptSaved: 'Receipt saved',
+    categoryRenamed: 'Category renamed',
+    categoriesMerged: 'Categories merged',
+    categoryDeleted: 'Category deleted',
+    merchantRenamed: 'Place renamed',
+    merchantsMerged: 'Places merged',
+    merchantDeleted: 'Place deleted',
+  },
   catalog: {
     category: {
       uncategorized: 'Uncategorized',

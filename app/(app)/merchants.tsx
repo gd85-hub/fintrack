@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   deleteMerchant,
   listMerchantsForManagement,
@@ -42,6 +43,7 @@ export default function MerchantsScreen() {
   const { t } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const toast = useToast();
   const [merchants, setMerchants] = useState<ManagedMerchant[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -193,6 +195,7 @@ export default function MerchantsScreen() {
         );
         return;
       }
+      toast.success(t('toast.merchantRenamed'));
       cancelRename();
       refresh();
     } catch (error: unknown) {
@@ -228,9 +231,11 @@ export default function MerchantsScreen() {
           pendingAction.target.id,
           pendingAction.sourceIds,
         );
+        toast.success(t('toast.merchantsMerged'));
         cancelMerge();
       } else {
         await deleteMerchant(pendingAction.merchant.id);
+        toast.success(t('toast.merchantDeleted'));
       }
       setPendingAction(null);
       refresh();

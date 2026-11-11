@@ -480,6 +480,18 @@ export const ru = {
     comingSoonTitle: 'Отчёты скоро появятся',
     comingSoonBody: 'Здесь появятся отчёты о расходах и экспорт.',
   },
+  toast: {
+    expenseSaved: 'Трата сохранена',
+    changesSaved: 'Изменения сохранены',
+    expenseDeleted: 'Трата удалена',
+    receiptSaved: 'Чек сохранён',
+    categoryRenamed: 'Категория переименована',
+    categoriesMerged: 'Категории объединены',
+    categoryDeleted: 'Категория удалена',
+    merchantRenamed: 'Место переименовано',
+    merchantsMerged: 'Места объединены',
+    merchantDeleted: 'Место удалено',
+  },
   catalog: {
     category: {
       uncategorized: 'Не распознано',

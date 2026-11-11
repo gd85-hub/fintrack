@@ -19,6 +19,7 @@ import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySele
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import { useColors } from '../../../contexts/ThemeContext';
+import { useToast } from '../../../contexts/ToastContext';
 import {
   getFiscalReceiptForEdit,
   listCategories,
@@ -122,6 +123,7 @@ export default function ReviewReceiptScreen() {
   const { draft, clearDraft } = useReceiptDraft();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const toast = useToast();
   const params = useLocalSearchParams<{
     receiptId?: string | string[];
   }>();
@@ -567,6 +569,9 @@ export default function ReviewReceiptScreen() {
       } catch {
         console.error('Unable to learn receipt item categories.');
       }
+      toast.success(
+        t(isEditMode ? 'toast.changesSaved' : 'toast.receiptSaved'),
+      );
       if (!isEditMode) {
         clearDraft();
       }

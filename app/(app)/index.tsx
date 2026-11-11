@@ -21,6 +21,7 @@ import { ListRow } from '../../components/ds/ListRow';
 import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import {
   deleteExpense,
   deleteReceipt,
@@ -423,6 +424,7 @@ export default function HomeScreen() {
   const { t, locale } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const toast = useToast();
   const params = useLocalSearchParams<{ month?: string | string[] }>();
   const currentMonth = todayLocalISO().slice(0, 7);
   const requestedMonth = monthFromParam(params.month);
@@ -729,6 +731,10 @@ export default function HomeScreen() {
     } catch (error: unknown) {
       deletionFailed = true;
       console.error('Unable to delete the complete purchase:', error);
+    }
+
+    if (!deletionFailed) {
+      toast.success(t('toast.expenseDeleted'));
     }
 
     try {

@@ -5,36 +5,35 @@ _Обновлено: 2026-11-11 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-Feedback foundation теперь покрывает transient и inline поверхности: Toast уже доступен глобально, а load/field errors приведены к двум DS-компонентам; текст сообщений и маршрутизация всех реальных success/error sites остаются следующей задачей.
+Feedback foundation подключён к успешным пользовательским действиям: сохранение и удаление трат, сохранение чеков, а также переименование, объединение и удаление категорий и мест теперь подтверждаются коротким success-toast; существующие error-пути не менялись.
 
 ## Только что сделано
 
-- Добавлен `components/ds/StatusBanner.tsx`: четыре status-tone, токенизированные container/border/content/icon, сообщение до трёх строк, optional action и assertive live region.
-- Добавлен `components/ds/FieldError.tsx`: единая caption-ошибка под полем, null для пустого сообщения и assertive live region.
-- Home, Analytics, Categories и Merchants используют `StatusBanner` для load/error state с тем же `home.retry` и прежними retry handlers; Reports использует banner без action. Операционные/editor/export ошибки вне этих load states не менялись.
-- Ручная проверка RSD-equivalent validation в `ExpenseEditorScreen` переведена на `FieldError`; условие, текст и Save gating сохранены.
-- Copy и i18n не менялись, `useToast` к экранам не подключался.
-- **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1207 modules); Android Metro export (1638 modules); локальный Chrome smoke-test в dark theme — banner/action и появление/очистка FieldError. Реальные offline states пяти экранов и Android UI вручную не форсировались.
+- В ручном редакторе новая трата подтверждается `Трата сохранена`, правка — `Изменения сохранены`, удаление — `Трата удалена`; toast показывается только после успешной DB-операции и до возврата назад.
+- Удаление покупки из Home подтверждается только после успешного удаления всех строк и связанного чека; partial-failure ветка остаётся без success-toast.
+- Создание и правка чека подтверждаются `Чек сохранён` / `Изменения сохранены` после сохранения и best-effort обучения словаря, перед навигацией.
+- Управление категориями и местами подтверждает rename/merge/delete; collision/no-op и type-change ветки не получили ложных success-сообщений.
+- Добавлены одинаковые RU/EN i18n-ключи для десяти success-toast; экран feedback и все error-сообщения не менялись.
+- **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1207 modules); Android Metro export (1638 modules); статический аудит success-only порядка после `await` и до navigation/refresh. Реальные мутации в Supabase и Android UI вручную не выполнялись.
 
 ## Состояние origin/main
 
-Ветка `main`; после commit/push FEEDBACK-2 `origin/main` содержит DS error surfaces поверх FEEDBACK-1 `8c2aad8`.
+Ветка `main`; FEEDBACK-3a готовится одним commit/push поверх FEEDBACK-2 `8314e5c`.
 
 ## Следующий шаг
 
-**FEEDBACK-3:** собрать короткий human-friendly message catalog и направить каждый реальный результат действия на правильную поверхность — toast, status banner или field error — включая success feedback.
+**FEEDBACK-3b:** направить реальные failure-пути на согласованные Toast / StatusBanner / FieldError и собрать короткий human-friendly message catalog, не меняя бизнес-логику.
 
 ## Открытые решения и риски
 
-- На реальном Android нужно подтвердить live-region announcements и визуальные интервалы StatusBanner/FieldError.
-- Offline retry проверен сохранением исходных callback-ссылок и component smoke-test, но не реальным отключением сети на каждом из пяти экранов.
+- На реальных Web/Android данных нужно пройти save/edit/delete/rename/merge и подтвердить, что тост успевает показаться при навигации и не появляется при ошибке или collision.
 - Migration `feedback` и pending Edge Functions ещё требуют отдельного deploy/операционного smoke-test перед tester round.
 - `PASSWORD_RESET_UI` остаётся `false` до sending domain + custom SMTP и корректных redirect/Site URL настроек.
 - Fiscal SUF fetch остаётся строго native-only; Web/iPhone используют photo-analysis path.
 
 ## Не трогать
 
-- Не переписывать copy и не подключать Toast/StatusBanner/FieldError к новым sites до FEEDBACK-3.
-- Не мигрировать auth, receipt-review warning/mismatch и scan error card в обход отдельной задачи.
+- Не заменять существующие error-поверхности и copy вне отдельного FEEDBACK-3b.
+- Не показывать success-toast до завершения DB-операции и не добавлять его в collision/no-op/partial-failure ветки.
 - Не возвращать SUF-link field в Web и не включать `PASSWORD_RESET_UI` без готовой инфраструктуры.
 - Не менять денежную математику, RLS, applied migrations и service-role boundary без отдельной задачи.

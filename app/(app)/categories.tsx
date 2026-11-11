@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { filterAndSortCategories } from '../../lib/categoryManagement';
 import { localizeCategoryName, localizeGroup } from '../../lib/catalog';
 import {
@@ -63,6 +64,7 @@ export default function CategoriesScreen() {
   const { t } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const toast = useToast();
   const [categories, setCategories] = useState<ManagedCategory[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -216,6 +218,7 @@ export default function CategoriesScreen() {
           currentEditor.category.id,
           currentEditor.input,
         );
+        toast.success(t('toast.categoryRenamed'));
       } else {
         await createCategory(currentEditor.input);
       }
@@ -322,9 +325,11 @@ export default function CategoriesScreen() {
           pendingAction.target.id,
           pendingAction.sourceIds,
         );
+        toast.success(t('toast.categoriesMerged'));
         cancelMerge();
       } else if (pendingAction.kind === 'delete') {
         await deleteCategory(pendingAction.category.id);
+        toast.success(t('toast.categoryDeleted'));
       } else {
         await updateCategory(
           pendingAction.category.id,
