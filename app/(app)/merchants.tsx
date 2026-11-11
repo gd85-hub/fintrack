@@ -200,7 +200,7 @@ export default function MerchantsScreen() {
       refresh();
     } catch (error: unknown) {
       console.error('Unable to rename merchant:', error);
-      setRenameError(t('merchant.renameFailed'));
+      toast.error(t('merchant.renameFailed'));
     } finally {
       setSaving(false);
     }
@@ -242,7 +242,7 @@ export default function MerchantsScreen() {
     } catch (error: unknown) {
       console.error('Unable to manage merchant:', error);
       setPendingAction(null);
-      setErrorMessage(
+      toast.error(
         pendingAction.kind === 'merge'
           ? t('merchant.mergeFailed')
           : t('merchant.deleteFailed'),

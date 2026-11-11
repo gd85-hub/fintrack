@@ -226,7 +226,7 @@ export default function CategoriesScreen() {
       refresh();
     } catch (error: unknown) {
       console.error('Unable to save category:', error);
-      setEditorError(t('cat.saveFailed'));
+      toast.error(t('cat.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -343,7 +343,7 @@ export default function CategoriesScreen() {
       console.error('Unable to manage category:', error);
       const actionKind = pendingAction.kind;
       setPendingAction(null);
-      setErrorMessage(
+      toast.error(
         actionKind === 'merge'
           ? t('cat.mergeFailed')
           : actionKind === 'delete'

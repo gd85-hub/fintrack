@@ -12,6 +12,7 @@ import {
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { submitFeedback } from '../../lib/db/feedback';
 import { theme, type Colors } from '../../lib/theme';
 
@@ -20,10 +21,10 @@ export default function FeedbackScreen() {
   const { t } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const toast = useToast();
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [hasError, setHasError] = useState(false);
   const submitDisabled = !message.trim() || submitting;
 
   async function handleSubmit() {
@@ -32,11 +33,10 @@ export default function FeedbackScreen() {
     }
 
     setSubmitting(true);
-    setHasError(false);
 
     const { error } = await submitFeedback(message);
     if (error) {
-      setHasError(true);
+      toast.error(t('settings.feedback.error'));
       setSubmitting(false);
       return;
     }
@@ -94,12 +94,6 @@ export default function FeedbackScreen() {
               value={message}
             />
 
-            {hasError ? (
-              <Text accessibilityRole="alert" style={styles.errorText}>
-                {t('settings.feedback.error')}
-              </Text>
-            ) : null}
-
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: submitDisabled }}
@@ -142,10 +136,6 @@ const makeStyles = (c: Colors) =>
       padding: theme.spacing.lg,
       paddingBottom: theme.spacing.xxl,
       width: '100%',
-    },
-    errorText: {
-      color: c.status.error.content,
-      fontSize: theme.fontSizes.caption,
     },
     form: {
       gap: theme.spacing.md,

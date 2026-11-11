@@ -587,7 +587,7 @@ export default function ReviewReceiptScreen() {
       }
     } catch (error: unknown) {
       console.error('Unable to save receipt review:', error);
-      setErrorMessage(
+      toast.error(
         error instanceof RateUnavailableError
           ? t('editor.ratesLoadFailed')
           : error instanceof Error && error.message

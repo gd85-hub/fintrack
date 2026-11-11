@@ -252,7 +252,7 @@ function ExpenseForm({
       router.back();
     } catch (error: unknown) {
       console.error('Unable to save expense:', error);
-      setFormError(
+      toast.error(
         error instanceof RateUnavailableError
           ? t('editor.ratesLoadFailed')
           : t('editor.saveFailed'),
@@ -278,7 +278,7 @@ function ExpenseForm({
       console.error('Unable to delete expense:', error);
       setDeleteVisible(false);
       setDeleting(false);
-      setFormError(t('editor.deleteFailed'));
+      toast.error(t('editor.deleteFailed'));
     }
   }
 
