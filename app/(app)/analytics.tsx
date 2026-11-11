@@ -20,6 +20,7 @@ import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { PeriodSelector } from '../../components/PeriodSelector';
 import { ShareBar } from '../../components/ShareBar';
+import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
@@ -837,15 +838,14 @@ export default function AnalyticsScreen() {
         </View>
 
         {errorMessage ? (
-          <View style={styles.errorState}>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setRetryKey((current) => current + 1)}
-            >
-              <Text style={styles.retryText}>{t('home.retry')}</Text>
-            </Pressable>
-          </View>
+          <StatusBanner
+            action={{
+              label: t('home.retry'),
+              onPress: () => setRetryKey((current) => current + 1),
+            }}
+            message={errorMessage}
+            tone="error"
+          />
         ) : null}
 
         {loading ? <LoadingScreen compact /> : null}
@@ -1411,15 +1411,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontSize: theme.fontSizes.body,
     textAlign: 'center',
   },
-  errorState: {
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
-  errorText: {
-    color: c.status.error.content,
-    fontSize: theme.fontSizes.caption,
-    textAlign: 'center',
-  },
   drilldownItemDivider: {
     borderBottomColor: c.border.default,
     borderBottomWidth: theme.sizes.border,
@@ -1501,11 +1492,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   pressed: {
     opacity: theme.opacity.pressed,
-  },
-  retryText: {
-    color: c.action.link.rest,
-    fontSize: theme.fontSizes.label,
-    fontWeight: '600',
   },
   rowPressed: {
     backgroundColor: c.surface.default,

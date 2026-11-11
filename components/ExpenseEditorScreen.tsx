@@ -42,6 +42,7 @@ import { theme, type Colors } from '../lib/theme';
 import { CategoryPicker } from './CategoryPicker';
 import { ConfirmDialog } from './ConfirmDialog';
 import { DatePicker } from './DatePicker';
+import { FieldError } from './ds/FieldError';
 import { LoadingScreen } from './LoadingScreen';
 import { MerchantPicker } from './MerchantPicker';
 import { ReceiptCurrencySelector } from './ReceiptCurrencySelector';
@@ -346,11 +347,13 @@ function ExpenseForm({
               <Text style={styles.manualCurrency}>RSD</Text>
             </View>
             <Text style={styles.helperText}>{t('editor.manualRsdHint')}</Text>
-            {hasInvalidManualRsd ? (
-              <Text accessibilityRole="alert" style={styles.errorText}>
-                {t('review.amountAboveZero')}
-              </Text>
-            ) : null}
+            <FieldError
+              message={
+                hasInvalidManualRsd
+                  ? t('review.amountAboveZero')
+                  : null
+              }
+            />
           </View>
         ) : null}
 

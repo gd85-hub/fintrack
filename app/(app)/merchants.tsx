@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import {
@@ -298,16 +299,11 @@ export default function MerchantsScreen() {
         />
 
         {errorMessage ? (
-          <View style={styles.errorState}>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={refresh}
-              style={({ pressed }) => pressed && styles.pressed}
-            >
-              <Text style={styles.retryText}>{t('home.retry')}</Text>
-            </Pressable>
-          </View>
+          <StatusBanner
+            action={{ label: t('home.retry'), onPress: refresh }}
+            message={errorMessage}
+            tone="error"
+          />
         ) : null}
 
         {loading ? (
@@ -605,10 +601,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     paddingVertical: theme.spacing.xl,
     textAlign: 'center',
   },
-  errorState: {
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
   errorText: {
     color: c.status.error.content,
     fontSize: theme.fontSizes.caption,
@@ -724,11 +716,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontSize: theme.fontSizes.body,
     minHeight: theme.sizes.buttonHeight,
     paddingHorizontal: theme.spacing.sm,
-  },
-  retryText: {
-    color: c.action.link.rest,
-    fontSize: theme.fontSizes.label,
-    fontWeight: '600',
   },
   screen: {
     backgroundColor: c.bg.base,

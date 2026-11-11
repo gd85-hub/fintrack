@@ -18,6 +18,7 @@ import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
+import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import {
@@ -606,15 +607,14 @@ export default function HomeScreen() {
         ) : null}
 
         {errorMessage ? (
-          <View style={styles.errorState}>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setRetryKey((current) => current + 1)}
-            >
-              <Text style={styles.retryText}>{t('home.retry')}</Text>
-            </Pressable>
-          </View>
+          <StatusBanner
+            action={{
+              label: t('home.retry'),
+              onPress: () => setRetryKey((current) => current + 1),
+            }}
+            message={errorMessage}
+            tone="error"
+          />
         ) : null}
 
         {purchaseErrorMessage ? (
@@ -1045,11 +1045,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   purchaseUnit: {
     width: '100%',
-  },
-  retryText: {
-    color: c.action.link.rest,
-    fontSize: theme.fontSizes.label,
-    fontWeight: '600',
   },
   rowPressed: {
     backgroundColor: c.surface.default,

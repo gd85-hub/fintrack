@@ -1,39 +1,40 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-09 · автор витка: ChatGPT · исполнитель: Codex_
+_Обновлено: 2026-11-11 · автор витка: ChatGPT · исполнитель: Codex_
 
 Это дельта и указатель «что дальше». Долгий контекст — в `AGENTS.md` (закон для исполнителя) и `FINTRACK-CONTEXT.md` (контекст для автора, вне репо). Здесь их не дублируем.
 
 ## Где мы
 
-Заложен общий слой краткой обратной связи: любой экран теперь может вызвать токенизированный toast через `useToast()`, но продуктовые действия к нему пока намеренно не подключены.
+Feedback foundation теперь покрывает transient и inline поверхности: Toast уже доступен глобально, а load/field errors приведены к двум DS-компонентам; текст сообщений и маршрутизация всех реальных success/error sites остаются следующей задачей.
 
 ## Только что сделано
 
-- Добавлен DS-компонент `components/ds/Toast.tsx`: inverse surface, tone-иконки success/error/info, сообщение до двух строк и необязательное действие.
-- Добавлены `ToastProvider` и `useToast()` в `contexts/ToastContext.tsx`: один toast за раз, замена сбрасывает таймер, значения по умолчанию — 3 с для success, 6 с для error и 4 с для info.
-- Host закреплён над нижним tab bar с учётом safe area (`fixed` на Web, `absolute` на native), анимацией fade/translate, горизонтальным swipe-dismiss и assertive live region; высота нижнего bar вынесена из `TabBar` в общий экспорт.
-- Provider смонтирован в корневом layout внутри существующих app providers. Ни один экран и ни одна строка i18n пока не используют toast — это оставлено следующим задачам.
-- **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web и Android Metro export; локальный Chrome smoke-test success/error/action, авто-закрытия и swipe-dismiss. Реальный Android UI вручную не проверялся.
+- Добавлен `components/ds/StatusBanner.tsx`: четыре status-tone, токенизированные container/border/content/icon, сообщение до трёх строк, optional action и assertive live region.
+- Добавлен `components/ds/FieldError.tsx`: единая caption-ошибка под полем, null для пустого сообщения и assertive live region.
+- Home, Analytics, Categories и Merchants используют `StatusBanner` для load/error state с тем же `home.retry` и прежними retry handlers; Reports использует banner без action. Операционные/editor/export ошибки вне этих load states не менялись.
+- Ручная проверка RSD-equivalent validation в `ExpenseEditorScreen` переведена на `FieldError`; условие, текст и Save gating сохранены.
+- Copy и i18n не менялись, `useToast` к экранам не подключался.
+- **Проверено:** `npm run typecheck`; 23 Jest-съюта / 212 тестов; Web export (1207 modules); Android Metro export (1638 modules); локальный Chrome smoke-test в dark theme — banner/action и появление/очистка FieldError. Реальные offline states пяти экранов и Android UI вручную не форсировались.
 
 ## Состояние origin/main
 
-Ветка `main`; после commit/push FEEDBACK-1 `origin/main` содержит Toast foundation поверх RELEASE-8 `e46560e`.
+Ветка `main`; после commit/push FEEDBACK-2 `origin/main` содержит DS error surfaces поверх FEEDBACK-1 `8c2aad8`.
 
 ## Следующий шаг
 
-**FEEDBACK-2:** добавить inline `FieldError` и `StatusBanner`, затем **FEEDBACK-3:** каталог сообщений и подключение подходящей поверхности к каждому реальному success/error site.
+**FEEDBACK-3:** собрать короткий human-friendly message catalog и направить каждый реальный результат действия на правильную поверхность — toast, status banner или field error — включая success feedback.
 
 ## Открытые решения и риски
 
-- Toast пока не вызывается продуктовым кодом; пользователь увидит его только после FEEDBACK-3.
-- Положение и жест проверены на Web; на реальном Android нужно подтвердить safe-area/tab-bar clearance и TalkBack announcement.
-- Migration `feedback` и pending Edge Functions ещё требуют отдельного deploy/операционного smoke-test перед следующим tester round.
+- На реальном Android нужно подтвердить live-region announcements и визуальные интервалы StatusBanner/FieldError.
+- Offline retry проверен сохранением исходных callback-ссылок и component smoke-test, но не реальным отключением сети на каждом из пяти экранов.
+- Migration `feedback` и pending Edge Functions ещё требуют отдельного deploy/операционного smoke-test перед tester round.
 - `PASSWORD_RESET_UI` остаётся `false` до sending domain + custom SMTP и корректных redirect/Site URL настроек.
 - Fiscal SUF fetch остаётся строго native-only; Web/iPhone используют photo-analysis path.
 
 ## Не трогать
 
-- Не подключать Toast к отдельным экранам и не добавлять copy/i18n до FEEDBACK-3.
-- Не заменять inverse surface тональными контейнерами: tone Toast передаётся иконкой; tonal status surface относится к `StatusBanner`.
+- Не переписывать copy и не подключать Toast/StatusBanner/FieldError к новым sites до FEEDBACK-3.
+- Не мигрировать auth, receipt-review warning/mismatch и scan error card в обход отдельной задачи.
 - Не возвращать SUF-link field в Web и не включать `PASSWORD_RESET_UI` без готовой инфраструктуры.
 - Не менять денежную математику, RLS, applied migrations и service-role boundary без отдельной задачи.

@@ -12,6 +12,7 @@ import {
 
 import { MonthPicker } from '../../components/MonthPicker';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { localizeCategoryName, localizeGroup } from '../../lib/catalog';
@@ -258,9 +259,7 @@ export default function ReportsScreen() {
         ) : null}
 
         {loadError ? (
-          <Text accessibilityRole="alert" style={styles.errorText}>
-            {loadError}
-          </Text>
+          <StatusBanner message={loadError} tone="error" />
         ) : null}
 
         {!loading && !loadError && !hasExpenses ? (
