@@ -8,3 +8,10 @@
 // is hidden; beta password resets are done manually by the owner via an admin
 // recovery link. The reset code stays in place and dormant.
 export const PASSWORD_RESET_UI = false;
+
+// ANCHOR_DISPLAY: display amounts computed from the frozen EUR anchor
+// (amount_eur) + historical EUR-base rates, instead of the stored
+// amount_rsd/usd/eur triple. Stays false until FX-14 wires Home/analytics
+// through lib/fxDisplay.ts. While false, nothing in production reads
+// EUR-base fx_rates rows.
+export const ANCHOR_DISPLAY = false;

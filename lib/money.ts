@@ -85,7 +85,7 @@ export type ConvertedAmounts = {
 
 const AMOUNT_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
 
-function roundHalfUp(value: number): number {
+export function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);
 }
 
