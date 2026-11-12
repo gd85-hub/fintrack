@@ -24,9 +24,11 @@ export type ParsedReceipt = {
   merchantLabel?: string | null;
   taxId: string | null;
   occurredAt: string | null;
-  occurredOn?: string;
+  // Photo drafts carry the model's honest null when the date or currency could
+  // not be read; review requires the human to fill them before saving.
+  occurredOn?: string | null;
   totalCents: number;
-  currency: string;
+  currency: string | null;
   paymentType: string | null;
   items: ParsedReceiptItem[];
   source?: 'fiscal_qr' | 'ocr_photo';

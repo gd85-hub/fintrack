@@ -20,7 +20,8 @@ type ReceiptCurrencySelectorProps = {
   disabled?: boolean;
   label?: string;
   onChange: (currency: string) => void;
-  value: string;
+  // null = the model could not read it; the human picks one on review.
+  value: string | null;
 };
 
 function isCommonCurrency(value: string) {
@@ -42,7 +43,7 @@ export function ReceiptCurrencySelector({
   const customCurrency = normalizeCurrencyCode(customInput);
 
   function open() {
-    setCustomInput(isCommonCurrency(value) ? '' : value);
+    setCustomInput(value && !isCommonCurrency(value) ? value : '');
     setVisible(true);
   }
 
@@ -64,7 +65,7 @@ export function ReceiptCurrencySelector({
           pressed && styles.pressed,
         ]}
       >
-        <Text style={styles.value}>{value}</Text>
+        <Text style={styles.value}>{value ?? t('common.select')}</Text>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
 

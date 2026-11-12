@@ -279,12 +279,11 @@ export async function analyzeReceiptImages(
   }
 }
 
+// An unreadable date or currency never throws the analysis away: the honest
+// null is carried into the draft and review asks the human to fill it in.
 export function receiptFromImageAnalysis(
   analysis: ReceiptImageAnalysisSuccess,
-): ParsedReceipt | null {
-  if (!analysis.occurredOn || !analysis.currency) {
-    return null;
-  }
+): ParsedReceipt {
   const merchantLabel = analysis.merchantName?.trim() ?? '';
   return {
     ok: true,
@@ -293,11 +292,11 @@ export function receiptFromImageAnalysis(
     merchantLabel,
     taxId: null,
     occurredAt: null,
-    occurredOn: analysis.occurredOn,
+    occurredOn: analysis.occurredOn ?? null,
     totalCents:
       analysis.totalCents ??
       analysis.items.reduce((sum, item) => sum + item.lineTotalCents, 0),
-    currency: analysis.currency,
+    currency: analysis.currency ?? null,
     paymentType: null,
     items: analysis.items.map((item) => ({
       ...item,

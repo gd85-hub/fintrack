@@ -244,7 +244,9 @@ export async function saveFiscalReceipt(
   const occurredOn = parsedReceiptDate(input.receipt);
   const userId = await authenticatedUserId();
   const source = input.receipt.source ?? 'fiscal_qr';
-  const currency = normalizeCurrencyCode(input.receipt.currency);
+  // A draft whose currency the model could not read is filled in on review;
+  // the save path still accepts only a real code.
+  const currency = normalizeCurrencyCode(input.receipt.currency ?? '');
   if (!currency) {
     throw new Error('Укажите трёхбуквенный код валюты.');
   }

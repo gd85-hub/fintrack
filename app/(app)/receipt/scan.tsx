@@ -103,12 +103,9 @@ function ImageReceiptFlow() {
         setError(receiptImageErrorMessage(analysis.error, t));
         return;
       }
-      const receipt = receiptFromImageAnalysis(analysis);
-      if (!receipt) {
-        setError(t('scan.photoFailDateCurrency'));
-        return;
-      }
-      setDraft(receipt);
+      // An unreadable date or currency no longer throws the analysis away:
+      // review carries the honest null and asks the human to fill it in.
+      setDraft(receiptFromImageAnalysis(analysis));
       router.replace('/(app)/receipt/review');
     } catch (caught: unknown) {
       setError(

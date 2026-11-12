@@ -31,7 +31,11 @@ import {
   type FiscalReceiptMerchantInput,
   type Merchant,
 } from '../../../lib/db';
-import { formatLongDate, parseLocalISO } from '../../../lib/dates';
+import {
+  formatLongDate,
+  parseLocalISO,
+  todayLocalISO,
+} from '../../../lib/dates';
 import { RateUnavailableError } from '../../../lib/fx';
 import {
   centsToInput,
@@ -47,6 +51,10 @@ import {
   findMatchingMerchant,
   parsedReceiptDate,
 } from '../../../lib/receipts';
+import {
+  needsManualRsdEquivalent,
+  receiptDraftBlockers,
+} from '../../../lib/receiptReview';
 import { theme, type Colors } from '../../../lib/theme';
 
 type MerchantMode = 'existing' | 'new';
@@ -141,8 +149,10 @@ export default function ReviewReceiptScreen() {
     draft?.merchantName ?? '',
   );
   const [occurredOn, setOccurredOn] = useState('');
-  const [receiptCurrency, setReceiptCurrency] = useState(
-    draft?.currency ?? 'RSD',
+  // null = not read from the photo and not chosen yet. Never silently RSD:
+  // a quiet guess is exactly what this screen must not do.
+  const [receiptCurrency, setReceiptCurrency] = useState<string | null>(
+    draft?.currency ?? null,
   );
   const [manualRsdInput, setManualRsdInput] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -251,7 +261,15 @@ export default function ReviewReceiptScreen() {
         setMerchantMode(matched ? 'existing' : 'new');
         setMerchantId(matched?.id ?? null);
         setMerchantName(draft.merchantName);
-        setOccurredOn(parsedReceiptDate(draft));
+        // An unreadable date arrives as null: leave the field empty so review
+        // asks the human for it instead of throwing the analysis away.
+        let draftDate = '';
+        try {
+          draftDate = parsedReceiptDate(draft);
+        } catch {
+          draftDate = '';
+        }
+        setOccurredOn(draftDate);
         setReceiptCurrency(draft.currency);
         setManualRsdInput('');
         const preparedItems = draft.items.map((item, itemIndex) => {
@@ -359,10 +377,20 @@ export default function ReviewReceiptScreen() {
   const manualRsdTotalCents = manualRsdInput.trim()
     ? parseAmountInput(manualRsdInput)
     : null;
+  // A null currency is "not chosen yet", not an exotic one, so the manual
+  // RSD-equivalent branch stays closed until the human picks a code.
+  const usesManualRsdEquivalent = needsManualRsdEquivalent(receiptCurrency);
   const hasInvalidManualRsdTotal =
-    !isCurrency(receiptCurrency) &&
+    usesManualRsdEquivalent &&
     manualRsdInput.trim() !== '' &&
     (manualRsdTotalCents === null || manualRsdTotalCents <= 0);
+  // What the model could not read and the human has not filled in yet.
+  const draftBlockers = receiptDraftBlockers({
+    occurredOn,
+    currency: receiptCurrency,
+  });
+  const needsDate = draftBlockers.includes('date');
+  const needsCurrency = draftBlockers.includes('currency');
 
   if (loading) {
     return <LoadingScreen />;
@@ -496,6 +524,10 @@ export default function ReviewReceiptScreen() {
       setErrorMessage(t('review.validDate'));
       return;
     }
+    if (!receiptCurrency) {
+      setErrorMessage(t('review.currencyMissing'));
+      return;
+    }
 
     let merchant: FiscalReceiptMerchantInput | null = null;
     if (merchantMode === 'existing' && merchantId) {
@@ -546,7 +578,10 @@ export default function ReviewReceiptScreen() {
           throw new Error(t('review.receiptNotFound'));
         }
         await saveFiscalReceipt({
-          receipt: { ...draft, currency: receiptCurrency },
+          // occurredOn comes from the form: for a photo draft the date may have
+          // been unreadable and filled in here, and the save path reads it off
+          // the receipt.
+          receipt: { ...draft, currency: receiptCurrency, occurredOn },
           merchant,
           manualRsdTotalCents,
           expenses: validIncludedItems.map((item) => ({
@@ -637,7 +672,7 @@ export default function ReviewReceiptScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('common.date')}</Text>
-            {isEditMode ? (
+            {isEditMode || needsDate ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={saving}
@@ -648,7 +683,9 @@ export default function ReviewReceiptScreen() {
                 ]}
               >
                 <Text style={styles.dateSelectorText}>
-                  {formatLongDate(occurredOn, locale)}
+                  {occurredOn
+                    ? formatLongDate(occurredOn, locale)
+                    : t('review.datePick')}
                 </Text>
                 <Text style={styles.dateSelectorChevron}>›</Text>
               </Pressable>
@@ -677,6 +714,16 @@ export default function ReviewReceiptScreen() {
               </Text>
             </View>
           ) : null}
+          {needsDate ? (
+            <Text accessibilityRole="alert" style={styles.missingFieldText}>
+              {t('review.dateMissing')}
+            </Text>
+          ) : null}
+          {needsCurrency ? (
+            <Text accessibilityRole="alert" style={styles.missingFieldText}>
+              {t('review.currencyMissing')}
+            </Text>
+          ) : null}
         </View>
 
         {!isEditMode && draft?.confidence === 'low' ? (
@@ -693,7 +740,7 @@ export default function ReviewReceiptScreen() {
           </View>
         ) : null}
 
-        {!isCurrency(receiptCurrency) ? (
+        {usesManualRsdEquivalent ? (
           <View style={styles.manualCurrencySection}>
             <View style={styles.manualField}>
               <Text style={styles.label}>{t('review.manualRsdLabel')}</Text>
@@ -958,7 +1005,8 @@ export default function ReviewReceiptScreen() {
           disabled={
             saving ||
             hasInvalidIncludedAmounts ||
-            hasInvalidManualRsdTotal
+            hasInvalidManualRsdTotal ||
+            draftBlockers.length > 0
           }
           onPress={() => void handleSave()}
           style={({ pressed }) => [
@@ -966,7 +1014,8 @@ export default function ReviewReceiptScreen() {
             (pressed ||
               saving ||
               hasInvalidIncludedAmounts ||
-              hasInvalidManualRsdTotal) &&
+              hasInvalidManualRsdTotal ||
+              draftBlockers.length > 0) &&
               styles.disabled,
           ]}
         >
@@ -980,14 +1029,14 @@ export default function ReviewReceiptScreen() {
         </Pressable>
       </ScrollView>
 
-      {isEditMode && parseLocalISO(occurredOn) ? (
-        <DatePicker
-          onChange={setOccurredOn}
-          onClose={() => setDatePickerVisible(false)}
-          value={occurredOn}
-          visible={datePickerVisible}
-        />
-      ) : null}
+      {/* Also reachable for a photo draft whose date the model could not read:
+          the picker opens on the current month until the human picks a day. */}
+      <DatePicker
+        onChange={setOccurredOn}
+        onClose={() => setDatePickerVisible(false)}
+        value={occurredOn || todayLocalISO()}
+        visible={datePickerVisible}
+      />
 
       <ConfirmDialog
         confirming={saving}
@@ -1174,6 +1223,10 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontSize: theme.fontSizes.caption,
     marginTop: theme.spacing.xxs,
     textAlign: 'right',
+  },
+  missingFieldText: {
+    color: c.status.error.content,
+    fontSize: theme.fontSizes.caption,
   },
   label: {
     color: c.text.primary,

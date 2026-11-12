@@ -161,8 +161,6 @@ export const en = {
     photoIntro:
       'Upload a photo of a paper receipt or an order screenshot from an email.',
     recognizing: 'Reading the photo…',
-    photoFailDateCurrency:
-      "Couldn't read the receipt's date or currency. Add the expense manually.",
     photoFailPrepare: "Couldn't prepare the images. Try again.",
     pickAgain: 'Pick an image again, or add the expense manually.',
     notSufLink: "This isn't a SUF fiscal-receipt link.",
@@ -205,6 +203,9 @@ export const en = {
     fixIncludedAmounts: 'Fix the amounts of the included items.',
     validTotalOrEmpty: 'Enter a valid RSD total, or leave the field empty.',
     validDate: 'Pick a valid purchase date.',
+    dateMissing: "The date couldn't be read — set it manually",
+    datePick: 'Set the date',
+    currencyMissing: "The currency couldn't be read — pick one",
     pickExistingPlace: 'Pick an existing place.',
     enterNewPlaceName: 'Enter a name for the new place.',
     saveChangesFailed: "Couldn't save your changes. Try again.",
