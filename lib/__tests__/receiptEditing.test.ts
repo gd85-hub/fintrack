@@ -7,6 +7,7 @@ import {
   updateFiscalReceipt,
 } from '../db';
 import { ratesForExpense } from '../fx';
+import { centsToDecimal, roundHalfUp } from '../money';
 import { supabase } from '../supabase';
 
 jest.mock('../anchorRates', () => ({
@@ -561,6 +562,138 @@ describe('updateFiscalReceipt', () => {
       merchant_label: 'OLD MARKET 101 CENTER',
       total: '350.00',
     });
+  });
+
+  test('keeps a covered receipt frozen when conversion inputs are unchanged', async () => {
+    const coveredReceiptSnapshot = {
+      ...receiptSnapshot,
+      currency: 'KZT',
+      total: '100.00',
+    };
+    const coveredExpenseSnapshot = {
+      ...expenseSnapshots[0],
+      original_currency: 'KZT',
+      amount_rsd: null,
+      amount_usd: null,
+      amount_eur: '0.20',
+      fx_rate_date: null,
+    };
+    const receiptQuery = singleResultClient(
+      coveredReceiptSnapshot,
+      'maybeSingle',
+    );
+    const expensesQuery = listResultClient([coveredExpenseSnapshot]);
+    const merchantQuery = singleResultClient(
+      { name: 'Old Market', aliases: [] },
+      'single',
+    );
+    const expenseUpdate = twoFilterMutationClient('update');
+    const receiptUpdate = oneFilterUpdateClient();
+
+    fromMock
+      .mockReturnValueOnce(receiptQuery.client)
+      .mockReturnValueOnce(expensesQuery.client)
+      .mockReturnValueOnce(merchantQuery.client)
+      .mockReturnValueOnce(expenseUpdate.client)
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
+
+    await updateFiscalReceipt('receipt-1', {
+      merchant: { existingId: 'merchant-old' },
+      merchantLabel: 'OLD MARKET 101 CENTER',
+      occurredOn: '2026-08-01',
+      expenses: [
+        {
+          id: 'expense-1',
+          amountCents: 10_000,
+          categoryId: 'groceries',
+          description: 'Хлеб цельнозерновой',
+          rawName: 'HLEB',
+          included: true,
+        },
+      ],
+    });
+
+    expect(anchorRateMock).not.toHaveBeenCalled();
+    const updatePayload = (
+      expenseUpdate.mutation as unknown as jest.Mock
+    ).mock.calls[0]?.[0];
+    expect(updatePayload).not.toHaveProperty('amount_eur');
+    expect(updatePayload).not.toHaveProperty('amount_rsd');
+    expect(updatePayload).not.toHaveProperty('amount_usd');
+    expect(updatePayload).not.toHaveProperty('fx_rate_date');
+    expect(updatePayload).not.toHaveProperty('original_currency');
+  });
+
+  test('refreezes a covered receipt through its own anchor when amount changes', async () => {
+    const ratePerEur = 500;
+    const nextAmountCents = 15_000;
+    anchorRateMock.mockResolvedValue({
+      date: '2026-08-01',
+      quote: 'KZT',
+      ratePerEur,
+    });
+    const coveredReceiptSnapshot = {
+      ...receiptSnapshot,
+      currency: 'KZT',
+      total: '100.00',
+    };
+    const coveredExpenseSnapshot = {
+      ...expenseSnapshots[0],
+      original_currency: 'KZT',
+      amount_rsd: null,
+      amount_usd: null,
+      amount_eur: '0.20',
+      fx_rate_date: null,
+    };
+    const receiptQuery = singleResultClient(
+      coveredReceiptSnapshot,
+      'maybeSingle',
+    );
+    const expensesQuery = listResultClient([coveredExpenseSnapshot]);
+    const merchantQuery = singleResultClient(
+      { name: 'Old Market', aliases: [] },
+      'single',
+    );
+    const expenseUpdate = twoFilterMutationClient('update');
+    const receiptUpdate = oneFilterUpdateClient();
+
+    fromMock
+      .mockReturnValueOnce(receiptQuery.client)
+      .mockReturnValueOnce(expensesQuery.client)
+      .mockReturnValueOnce(merchantQuery.client)
+      .mockReturnValueOnce(expenseUpdate.client)
+      .mockReturnValueOnce(receiptUpdate.client)
+      .mockReturnValueOnce(recencyClient);
+
+    await updateFiscalReceipt('receipt-1', {
+      merchant: { existingId: 'merchant-old' },
+      merchantLabel: 'OLD MARKET 101 CENTER',
+      occurredOn: '2026-08-01',
+      expenses: [
+        {
+          id: 'expense-1',
+          amountCents: nextAmountCents,
+          categoryId: 'groceries',
+          description: 'Хлеб',
+          rawName: 'HLEB',
+          included: true,
+        },
+      ],
+    });
+
+    expect(anchorRateMock).toHaveBeenCalledTimes(1);
+    expect(anchorRateMock).toHaveBeenCalledWith('KZT', '2026-08-01');
+    expect(expenseUpdate.mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount_eur: centsToDecimal(
+          roundHalfUp(nextAmountCents / ratePerEur),
+        ),
+        amount_rsd: null,
+        amount_usd: null,
+        fx_rate_date: null,
+      }),
+    );
   });
 
   test('changes TMT to KZT and converts every item through one KZT anchor', async () => {

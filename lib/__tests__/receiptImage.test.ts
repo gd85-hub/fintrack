@@ -232,6 +232,15 @@ describe('receipt image currency persistence', () => {
     });
   });
 
+  test('throws for a covered currency without a usable anchor rate', () => {
+    expect(() =>
+      receiptExpenseAmounts(1000, 'KZT', null, null, null),
+    ).toThrow();
+    expect(() =>
+      receiptExpenseAmounts(1000, 'KZT', null, null, 0),
+    ).toThrow();
+  });
+
   test('uses the anchor rate for RSD while preserving legacy conversions', () => {
     expect(
       receiptExpenseAmounts(
