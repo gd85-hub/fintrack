@@ -20,6 +20,7 @@ import {
 
 import { ScreenHeader } from '../../components/ScreenHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import { useHomeCurrency } from '../../contexts/HomeCurrencyContext';
 import {
   type Language,
   useLanguage,
@@ -30,6 +31,7 @@ import {
   useTheme,
 } from '../../contexts/ThemeContext';
 import { appVersionLabel } from '../../lib/appVersion';
+import { SUPPORTED_HOME_CURRENCIES } from '../../lib/homeCurrency';
 import { theme, type Colors } from '../../lib/theme';
 
 type SettingsRouteRowProps = {
@@ -133,6 +135,7 @@ const themeOptions: readonly {
 export default function SettingsScreen() {
   const router = useRouter();
   const { deleteAccount, signOut, updateName, user } = useAuth();
+  const { homeCurrency, setHomeCurrency } = useHomeCurrency();
   const { language, setLanguage, t } = useLanguage();
   const { theme: themePreference, setTheme } = useTheme();
   const { colors, styles } = useSettingsStyles();
@@ -140,6 +143,8 @@ export default function SettingsScreen() {
   const [hasSignOutError, setHasSignOutError] = useState(false);
   const [nameEditorVisible, setNameEditorVisible] = useState(false);
   const [languageSelectorVisible, setLanguageSelectorVisible] = useState(false);
+  const [homeCurrencySelectorVisible, setHomeCurrencySelectorVisible] =
+    useState(false);
   const [themeSelectorVisible, setThemeSelectorVisible] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [nameInputFocused, setNameInputFocused] = useState(false);
@@ -375,6 +380,28 @@ export default function SettingsScreen() {
             </Text>
             <Text numberOfLines={1} style={styles.rowValue}>
               {t(currentLanguageLabel)}
+            </Text>
+            <Feather
+              color={colors.icon.secondary}
+              name="chevron-right"
+              size={theme.spacing.lg}
+            />
+          </Pressable>
+          <View style={styles.separator} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: homeCurrencySelectorVisible }}
+            onPress={() => setHomeCurrencySelectorVisible(true)}
+            style={({ pressed }) => [
+              styles.row,
+              pressed && styles.rowPressed,
+            ]}
+          >
+            <Text style={styles.rowLabel}>
+              {t('settings.homeCurrency.row')}
+            </Text>
+            <Text numberOfLines={1} style={styles.rowValue}>
+              {homeCurrency}
             </Text>
             <Feather
               color={colors.icon.secondary}
@@ -672,6 +699,63 @@ export default function SettingsScreen() {
                       ) : null}
                     </Pressable>
                     {index < languageOptions.length - 1 ? (
+                      <View style={styles.separator} />
+                    ) : null}
+                  </Fragment>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setHomeCurrencySelectorVisible(false)}
+        transparent={true}
+        visible={homeCurrencySelectorVisible}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel={t('settings.homeCurrency.title')}
+            accessibilityRole="button"
+            onPress={() => setHomeCurrencySelectorVisible(false)}
+            style={styles.scrim}
+          />
+          <View accessibilityViewIsModal={true} style={styles.modalPanel}>
+            <Text style={styles.modalTitle}>
+              {t('settings.homeCurrency.title')}
+            </Text>
+            <View style={styles.languageOptions}>
+              {SUPPORTED_HOME_CURRENCIES.map((currency, index) => {
+                const selected = homeCurrency === currency;
+
+                return (
+                  <Fragment key={currency}>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      onPress={() => {
+                        setHomeCurrency(currency);
+                        setHomeCurrencySelectorVisible(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.languageOption,
+                        pressed && styles.rowPressed,
+                      ]}
+                    >
+                      <Text style={styles.languageOptionLabel}>
+                        {currency}
+                      </Text>
+                      {selected ? (
+                        <Feather
+                          color={colors.icon.action}
+                          name="check"
+                          size={theme.spacing.lg}
+                        />
+                      ) : null}
+                    </Pressable>
+                    {index < SUPPORTED_HOME_CURRENCIES.length - 1 ? (
                       <View style={styles.separator} />
                     ) : null}
                   </Fragment>

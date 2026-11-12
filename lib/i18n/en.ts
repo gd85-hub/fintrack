@@ -78,6 +78,10 @@ export const en = {
       russian: 'Русский',
       english: 'English',
     },
+    homeCurrency: {
+      row: 'Home currency',
+      title: 'Home currency',
+    },
     export: 'Export',
     comingSoon: 'Coming soon',
     about: {

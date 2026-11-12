@@ -12,13 +12,18 @@ import {
   DisplayCurrencyProvider,
   useDisplayCurrency,
 } from '../../contexts/DisplayCurrencyContext';
+import {
+  HomeCurrencyProvider,
+  useHomeCurrency,
+} from '../../contexts/HomeCurrencyContext';
 import { ReceiptDraftProvider } from '../../contexts/ReceiptDraftContext';
 
 function AppNavigator() {
-  const { loading } = useDisplayCurrency();
+  const { loading: displayCurrencyLoading } = useDisplayCurrency();
+  const { loading: homeCurrencyLoading } = useHomeCurrency();
   const isDesktopWeb = useIsDesktopWeb();
 
-  if (loading) {
+  if (displayCurrencyLoading || homeCurrencyLoading) {
     return <LoadingScreen />;
   }
 
@@ -63,9 +68,11 @@ export default function AppLayout() {
 
   return (
     <DisplayCurrencyProvider>
-      <ReceiptDraftProvider>
-        <AppNavigator />
-      </ReceiptDraftProvider>
+      <HomeCurrencyProvider>
+        <ReceiptDraftProvider>
+          <AppNavigator />
+        </ReceiptDraftProvider>
+      </HomeCurrencyProvider>
     </DisplayCurrencyProvider>
   );
 }
