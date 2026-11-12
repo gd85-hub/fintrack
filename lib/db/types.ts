@@ -77,7 +77,7 @@ export type Expense = {
   originalCurrency: string;
   amountRsdCents: number;
   amountUsdCents: number;
-  amountEurCents: number;
+  amountEurCents: number | null;
   fxRateDate: string | null;
   note: string;
   createdAt: string;

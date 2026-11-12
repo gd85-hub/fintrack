@@ -129,7 +129,7 @@ export default function ReportsScreen() {
         amountOriginal: expense.originalAmountCents / 100,
         currencyOriginal: expense.originalCurrency,
         amountRsd: expense.amountRsdCents / 100,
-        amountEur: expense.amountEurCents / 100,
+        amountEur: (expense.amountEurCents ?? 0) / 100,
         amountUsd: expense.amountUsdCents / 100,
         type: typeLabel(meta?.type),
       };

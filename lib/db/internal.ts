@@ -50,7 +50,8 @@ export function mapExpense(row: ExpenseQueryRow): Expense {
     originalCurrency: row.original_currency,
     amountRsdCents: decimalToCents(row.amount_rsd),
     amountUsdCents: decimalToCents(row.amount_usd),
-    amountEurCents: decimalToCents(row.amount_eur),
+    amountEurCents:
+      row.amount_eur === null ? null : decimalToCents(row.amount_eur),
     fxRateDate: row.fx_rate_date,
     note: row.note ?? '',
     createdAt: row.created_at,

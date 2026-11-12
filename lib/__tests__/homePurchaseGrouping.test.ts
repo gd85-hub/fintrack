@@ -228,7 +228,7 @@ describe('Home purchase grouping', () => {
           return sum + expense.amountUsdCents;
         }
         if (currency === 'EUR') {
-          return sum + expense.amountEurCents;
+          return sum + (expense.amountEurCents ?? 0);
         }
         return sum + expense.amountRsdCents;
       }, 0);

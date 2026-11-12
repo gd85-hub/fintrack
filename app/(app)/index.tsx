@@ -19,9 +19,16 @@ import { LoadingScreen } from '../../components/LoadingScreen';
 import { MonthPicker } from '../../components/MonthPicker';
 import { ListRow } from '../../components/ds/ListRow';
 import { StatusBanner } from '../../components/ds/StatusBanner';
+import { useHomeCurrency } from '../../contexts/HomeCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
+import {
+  fetchAnchorRatesForRange,
+  pickRateOnOrBefore,
+  type AnchorRate,
+} from '../../lib/anchorRates';
+import { localizeCategoryName } from '../../lib/catalog';
 import {
   deleteExpense,
   deleteReceipt,
@@ -35,12 +42,17 @@ import {
   monthBounds,
   todayLocalISO,
 } from '../../lib/dates';
+import { ANCHOR_DISPLAY } from '../../lib/features';
+import { ANCHOR_CURRENCY } from '../../lib/fxDisplay';
+import {
+  sumExpenseDisplayAmounts,
+  type RateLookup,
+} from '../../lib/homeDisplay';
 import {
   collapseIdenticalPurchaseItems,
   decideHomeRowPresentation,
   resolveHomeRowHeader,
 } from '../../lib/homeRowPresentation';
-import { localizeCategoryName } from '../../lib/catalog';
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme, type Colors } from '../../lib/theme';
 
@@ -58,7 +70,7 @@ export type PurchaseUnit = {
 export type HomeDaySection = {
   data: PurchaseUnit[];
   date: string;
-  dayTotal: number;
+  dayTotal: number | null;
   units: PurchaseUnit[];
 };
 
@@ -67,6 +79,11 @@ type PendingPurchaseDelete = {
   expenseIds: string[];
   receiptId: string | null;
   unitKey: string;
+};
+
+type AnchorRateCache = {
+  key: string;
+  rates: AnchorRate[];
 };
 
 const expensePageSize = 10;
@@ -81,7 +98,7 @@ function amountForCurrency(expense: Expense, currency: Currency): number {
   }
 
   if (currency === 'EUR') {
-    return expense.amountEurCents;
+    return expense.amountEurCents ?? 0;
   }
 
   return expense.amountRsdCents;
@@ -193,6 +210,49 @@ function purchaseDisplayAmount(
   };
 }
 
+function anchorPurchaseDisplayAmount(
+  expenses: readonly Expense[],
+  displayCurrency: string,
+  rateAt: RateLookup,
+) {
+  const firstExpense = expenses[0];
+  const usesOneUnconvertedCurrency =
+    firstExpense !== undefined &&
+    expenses.every(
+      (expense) =>
+        expense.amountEurCents === null &&
+        expense.fxRateDate === null &&
+        expense.originalCurrency === firstExpense.originalCurrency,
+    );
+
+  if (usesOneUnconvertedCurrency) {
+    return {
+      amountCents: expenses.reduce(
+        (sum, expense) => sum + expense.originalAmountCents,
+        0,
+      ),
+      currency: firstExpense.originalCurrency,
+    };
+  }
+
+  const amountCents = sumExpenseDisplayAmounts(
+    expenses,
+    displayCurrency,
+    rateAt,
+  );
+  if (amountCents !== null) {
+    return { amountCents, currency: displayCurrency };
+  }
+
+  return {
+    amountCents: expenses.reduce(
+      (sum, expense) => sum + expense.originalAmountCents,
+      0,
+    ),
+    currency: firstExpense?.originalCurrency ?? displayCurrency,
+  };
+}
+
 export function purchaseCategoryHint(expenses: readonly Expense[]): string {
   const categories = new Map<string, string>();
 
@@ -217,30 +277,36 @@ export function purchaseCategoryHint(expenses: readonly Expense[]): string {
 }
 
 type PurchaseRowProps = {
+  displayCurrency: string;
   expanded: boolean;
   onDelete?: () => void;
   onEdit?: () => void;
   onOpenExpense: (expenseId: string) => void;
   onShowMore?: () => void;
   onToggle?: () => void;
+  rateAt: RateLookup;
   unit: PurchaseUnit;
   visibleCount: number;
 };
 
 function PurchaseRow({
+  displayCurrency,
   expanded,
   onDelete,
   onEdit,
   onOpenExpense,
   onShowMore,
   onToggle,
+  rateAt,
   unit,
   visibleCount,
 }: PurchaseRowProps) {
   const { t } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
-  const displayAmount = purchaseDisplayAmount(unit.expenses, 'RSD');
+  const displayAmount = ANCHOR_DISPLAY
+    ? anchorPurchaseDisplayAmount(unit.expenses, displayCurrency, rateAt)
+    : purchaseDisplayAmount(unit.expenses, 'RSD');
   const firstExpense = unit.expenses[0];
   const header = resolveHomeRowHeader(unit.expenses);
   const iconEmoji = unit.expenses
@@ -320,10 +386,13 @@ function PurchaseRow({
 
           {visibleItems.map((item) => {
             const expense = item.firstExpense;
-            const itemAmount = purchaseDisplayAmount(
-              item.expenses,
-              'RSD',
-            );
+            const itemAmount = ANCHOR_DISPLAY
+              ? anchorPurchaseDisplayAmount(
+                  item.expenses,
+                  displayCurrency,
+                  rateAt,
+                )
+              : purchaseDisplayAmount(item.expenses, 'RSD');
             const displayName = `${item.displayName}${
               item.count > 1 ? ` ×${item.count}` : ''
             }`;
@@ -422,6 +491,7 @@ function monthFromParam(value: string | string[] | undefined) {
 export default function HomeScreen() {
   const router = useRouter();
   const { t, locale } = useLanguage();
+  const { homeCurrency, loading: homeCurrencyLoading } = useHomeCurrency();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const toast = useToast();
@@ -450,6 +520,10 @@ export default function HomeScreen() {
   const [deletingPurchase, setDeletingPurchase] = useState(false);
   const [purchaseErrorMessage, setPurchaseErrorMessage] = useState('');
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [anchorRateCache, setAnchorRateCache] = useState<AnchorRateCache>({
+    key: '',
+    rates: [],
+  });
 
   useEffect(() => {
     if (requestedMonth) {
@@ -463,6 +537,48 @@ export default function HomeScreen() {
     setUnitVisibleCounts({});
     setPurchaseErrorMessage('');
   }, [visibleMonth]);
+
+  const anchorRateKey = `${visibleMonth}:${homeCurrency}`;
+  const needsAnchorRates =
+    ANCHOR_DISPLAY &&
+    !homeCurrencyLoading &&
+    homeCurrency !== ANCHOR_CURRENCY &&
+    expenses.some(
+      (expense) =>
+        expense.amountEurCents !== null &&
+        expense.originalCurrency.trim().toUpperCase() !== homeCurrency,
+    );
+
+  useEffect(() => {
+    if (!needsAnchorRates) {
+      return;
+    }
+
+    let active = true;
+    const bounds = monthBounds(visibleMonth);
+    setAnchorRateCache({ key: '', rates: [] });
+
+    void fetchAnchorRatesForRange(
+      homeCurrency,
+      bounds.first,
+      bounds.last,
+    )
+      .then((rates) => {
+        if (active) {
+          setAnchorRateCache({ key: anchorRateKey, rates });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load Home anchor FX rates:', error);
+        if (active) {
+          setAnchorRateCache({ key: anchorRateKey, rates: [] });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [anchorRateKey, homeCurrency, needsAnchorRates, visibleMonth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -514,9 +630,42 @@ export default function HomeScreen() {
     () => groupExpenses(visibleExpenses),
     [visibleExpenses],
   );
+  const rateAt = useMemo<RateLookup>(() => {
+    if (
+      homeCurrency === ANCHOR_CURRENCY ||
+      anchorRateCache.key !== anchorRateKey
+    ) {
+      return () => null;
+    }
+
+    return (dateISO) =>
+      pickRateOnOrBefore(
+        anchorRateCache.rates,
+        homeCurrency,
+        dateISO,
+      )?.ratePerEur ?? null;
+  }, [anchorRateCache, anchorRateKey, homeCurrency]);
   const sections = useMemo(
-    () => buildDaySections(groups, collapsedDays, 'RSD'),
-    [collapsedDays, groups],
+    () => {
+      if (!ANCHOR_DISPLAY) {
+        return buildDaySections(groups, collapsedDays, 'RSD');
+      }
+
+      return groups.map((group) => {
+        const units = buildPurchaseUnits(group.expenses);
+        return {
+          data: collapsedDays.has(group.date) ? [] : units,
+          date: group.date,
+          dayTotal: sumExpenseDisplayAmounts(
+            group.expenses,
+            homeCurrency,
+            rateAt,
+          ),
+          units,
+        };
+      });
+    },
+    [collapsedDays, groups, homeCurrency, rateAt],
   );
   const monthTotals = useMemo(
     () => ({
@@ -535,6 +684,13 @@ export default function HomeScreen() {
       ),
     }),
     [expenses],
+  );
+  const anchorMonthTotal = useMemo(
+    () =>
+      ANCHOR_DISPLAY
+        ? sumExpenseDisplayAmounts(expenses, homeCurrency, rateAt)
+        : null,
+    [expenses, homeCurrency, rateAt],
   );
   const monthName = formatMonthName(visibleMonth, locale);
   const monthPrepositional = formatMonthPrepositional(visibleMonth, locale);
@@ -574,12 +730,20 @@ export default function HomeScreen() {
                 numberOfLines={1}
                 style={styles.heroAmount}
               >
-                {formatMoney(monthTotals.rsd)}
-                <Text style={styles.heroCurrency}> RSD</Text>
+                {ANCHOR_DISPLAY
+                  ? anchorMonthTotal === null
+                    ? '—'
+                    : formatMoney(anchorMonthTotal)
+                  : formatMoney(monthTotals.rsd)}
+                <Text style={styles.heroCurrency}>
+                  {ANCHOR_DISPLAY ? ` ${homeCurrency}` : ' RSD'}
+                </Text>
               </Text>
-              <Text numberOfLines={1} style={styles.heroEquivalents}>
-                {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
-              </Text>
+              {!ANCHOR_DISPLAY ? (
+                <Text numberOfLines={1} style={styles.heroEquivalents}>
+                  {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -630,6 +794,8 @@ export default function HomeScreen() {
     ),
     [
       errorMessage,
+      anchorMonthTotal,
+      homeCurrency,
       loading,
       monthName,
       monthPrepositional,
@@ -793,7 +959,13 @@ export default function HomeScreen() {
                   {formatDayHeader(section.date, locale)}
                 </Text>
                 <Text numberOfLines={1} style={styles.dayTotal}>
-                  {formatMoney(section.dayTotal)} RSD
+                  {ANCHOR_DISPLAY
+                    ? `${
+                        section.dayTotal === null
+                          ? '—'
+                          : formatMoney(section.dayTotal)
+                      } ${homeCurrency}`
+                    : `${formatMoney(section.dayTotal ?? 0)} RSD`}
                 </Text>
               </Pressable>
 
@@ -810,6 +982,7 @@ export default function HomeScreen() {
                     return (
                       <View key={unit.key}>
                         <PurchaseRow
+                          displayCurrency={homeCurrency}
                           expanded={expandedUnitKeys.has(unit.key)}
                           onDelete={() => requestPurchaseDelete(unit)}
                           onEdit={
@@ -828,6 +1001,7 @@ export default function HomeScreen() {
                           }
                           onShowMore={() => showMoreUnit(unit.key)}
                           onToggle={() => toggleUnit(unit.key)}
+                          rateAt={rateAt}
                           unit={unit}
                           visibleCount={
                             unitVisibleCounts[unit.key] ?? expensePageSize
