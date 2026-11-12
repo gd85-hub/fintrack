@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   centsToDecimal,
   centsToInput,
+  commonCurrencies,
   convertAll,
   decimalToCents,
   distributeCents,
@@ -11,6 +12,21 @@ import {
   normalizeCurrencyCode,
   parseAmountInput,
 } from '../money';
+
+describe('commonCurrencies', () => {
+  it('offers every covered currency in the quick selector', () => {
+    expect(commonCurrencies).toEqual([
+      'RSD',
+      'USD',
+      'EUR',
+      'RUB',
+      'KZT',
+      'TRY',
+      'GBP',
+      'CHF',
+    ]);
+  });
+});
 
 describe('isCurrency', () => {
   it('recognizes currencies supported by frozen conversion', () => {

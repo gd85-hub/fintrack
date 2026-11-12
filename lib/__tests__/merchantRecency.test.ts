@@ -113,7 +113,12 @@ describe('merchant usage recency', () => {
     expect(recency.eq).toHaveBeenCalledWith('id', 'merchant-1');
   });
 
-  test('changes TMT to KZT and stores only the manual RSD value', async () => {
+  test('changes TMT to KZT and converts through the KZT anchor', async () => {
+    anchorRateMock.mockResolvedValue({
+      date: '2026-08-03',
+      quote: 'KZT',
+      ratePerEur: 500,
+    });
     const existingExpenseQuery = {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
@@ -144,14 +149,14 @@ describe('merchant usage recency', () => {
     expect(expenseUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         original_currency: 'KZT',
-        amount_rsd: '98.76',
+        amount_rsd: null,
         amount_usd: null,
-        amount_eur: '0.84',
+        amount_eur: '0.25',
         fx_rate_date: null,
       }),
     );
     expect(anchorRateMock).toHaveBeenCalledTimes(1);
-    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-03');
+    expect(anchorRateMock).toHaveBeenCalledWith('KZT', '2026-08-03');
   });
 
   test('switches a manual expense to EUR and replaces manual values with FX', async () => {
@@ -200,6 +205,38 @@ describe('merchant usage recency', () => {
     );
   });
 
+  test('inserts a covered-currency expense from its own anchor', async () => {
+    anchorRateMock.mockResolvedValue({
+      date: '2026-08-03',
+      quote: 'RUB',
+      ratePerEur: 100,
+    });
+    const expenseInsert = jest.fn(async () => ({ error: null }));
+    const recency = recencyClient();
+    fromMock
+      .mockReturnValueOnce({ insert: expenseInsert })
+      .mockReturnValueOnce(recency.client);
+
+    await insertExpense({
+      ...input,
+      currency: 'RUB',
+      manualRsdCents: null,
+    });
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).toHaveBeenCalledTimes(1);
+    expect(anchorRateMock).toHaveBeenCalledWith('RUB', '2026-08-03');
+    expect(expenseInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original_currency: 'RUB',
+        amount_rsd: null,
+        amount_usd: null,
+        amount_eur: '1.25',
+        fx_rate_date: null,
+      }),
+    );
+  });
+
   test('inserts an exotic-currency expense without fabricating FX', async () => {
     const expenseInsert = jest.fn(async () => ({ error: null }));
     const recency = recencyClient();
@@ -209,7 +246,7 @@ describe('merchant usage recency', () => {
 
     await insertExpense({
       ...input,
-      currency: 'KZT',
+      currency: 'THB',
       manualRsdCents: null,
     });
 
@@ -217,7 +254,7 @@ describe('merchant usage recency', () => {
     expect(anchorRateMock).not.toHaveBeenCalled();
     expect(expenseInsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        original_currency: 'KZT',
+        original_currency: 'THB',
         amount_rsd: null,
         amount_usd: null,
         amount_eur: null,
@@ -227,14 +264,12 @@ describe('merchant usage recency', () => {
   });
 
   test('blocks an insert before writing when the anchor rate is unavailable', async () => {
-    ratesMock.mockResolvedValue({
-      date: '2026-08-03',
-      usdRsd: 110,
-      eurRsd: 117,
-    });
     anchorRateMock.mockRejectedValue(new Error('anchor unavailable'));
 
-    await expect(insertExpense(input)).rejects.toThrow('anchor unavailable');
+    await expect(
+      insertExpense({ ...input, currency: 'KZT', manualRsdCents: null }),
+    ).rejects.toThrow('anchor unavailable');
+    expect(ratesMock).not.toHaveBeenCalled();
     expect(fromMock).not.toHaveBeenCalled();
   });
 });

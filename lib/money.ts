@@ -1,12 +1,17 @@
+import { SUPPORTED_HOME_CURRENCIES } from './homeCurrency';
+
 export const currencies = ['RSD', 'USD', 'EUR'] as const;
 export const commonCurrencies = [
   'RSD',
   'USD',
   'EUR',
-  'KZT',
-  'RUB',
-  'TRY',
-] as const;
+  ...SUPPORTED_HOME_CURRENCIES.filter(
+    (currency) =>
+      currency !== 'RSD' &&
+      currency !== 'USD' &&
+      currency !== 'EUR',
+  ),
+] as readonly string[];
 
 export type Currency = (typeof currencies)[number];
 

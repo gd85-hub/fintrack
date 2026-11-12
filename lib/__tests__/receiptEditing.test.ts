@@ -563,7 +563,12 @@ describe('updateFiscalReceipt', () => {
     });
   });
 
-  test('changes TMT to KZT and distributes the manual RSD total exactly', async () => {
+  test('changes TMT to KZT and converts every item through one KZT anchor', async () => {
+    anchorRateMock.mockResolvedValue({
+      date: '2026-08-01',
+      quote: 'KZT',
+      ratePerEur: 500,
+    });
     const manualReceiptSnapshot = {
       ...receiptSnapshot,
       currency: 'TMT',
@@ -616,22 +621,22 @@ describe('updateFiscalReceipt', () => {
 
     expect(ratesMock).not.toHaveBeenCalled();
     expect(anchorRateMock).toHaveBeenCalledTimes(1);
-    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-01');
+    expect(anchorRateMock).toHaveBeenCalledWith('KZT', '2026-08-01');
     expect(firstExpenseUpdate.mutation).toHaveBeenCalledWith(
       expect.objectContaining({
         original_currency: 'KZT',
-        amount_rsd: '33.34',
+        amount_rsd: null,
         amount_usd: null,
-        amount_eur: '0.28',
+        amount_eur: '0.20',
         fx_rate_date: null,
       }),
     );
     expect(secondExpenseUpdate.mutation).toHaveBeenCalledWith(
       expect.objectContaining({
         original_currency: 'KZT',
-        amount_rsd: '66.67',
+        amount_rsd: null,
         amount_usd: null,
-        amount_eur: '0.57',
+        amount_eur: '0.40',
         fx_rate_date: null,
       }),
     );

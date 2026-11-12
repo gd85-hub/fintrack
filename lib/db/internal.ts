@@ -1,4 +1,5 @@
 import type { ResolvedRates } from '../fx';
+import { isSupportedHomeCurrency } from '../homeCurrency';
 import {
   centsToDecimal,
   convertAll,
@@ -98,6 +99,18 @@ export function receiptExpenseAmounts(
   anchorRatePerEur: number | null = null,
 ) {
   if (!isCurrency(currency)) {
+    if (isSupportedHomeCurrency(currency)) {
+      const amountEurCents = roundHalfUp(
+        amountCents / requiredAnchorRate(anchorRatePerEur),
+      );
+      return {
+        amount_rsd: null,
+        amount_usd: null,
+        amount_eur: centsToDecimal(amountEurCents),
+        fx_rate_date: null,
+      };
+    }
+
     const amountEurCents = manualRsdCents === null
       ? null
       : roundHalfUp(

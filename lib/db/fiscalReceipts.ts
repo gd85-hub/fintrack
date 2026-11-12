@@ -1,6 +1,7 @@
 import { anchorRateForExpense } from '../anchorRates';
 import { parseLocalISO } from '../dates';
 import { ratesForExpense } from '../fx';
+import { isSupportedHomeCurrency } from '../homeCurrency';
 import {
   centsToDecimal,
   decimalToCents,
@@ -251,7 +252,9 @@ export async function saveFiscalReceipt(
     input.receipt.merchantLabel?.trim() ||
     input.receipt.merchantName.trim();
   const supportedCurrency = isCurrency(currency);
-  const manualRsdTotalCents = supportedCurrency
+  const coveredCurrency =
+    !supportedCurrency && isSupportedHomeCurrency(currency);
+  const manualRsdTotalCents = supportedCurrency || coveredCurrency
     ? null
     : input.manualRsdTotalCents ?? null;
   const hasManualRsdTotal =
@@ -260,10 +263,11 @@ export async function saveFiscalReceipt(
     supportedCurrency
       ? ratesForExpense(occurredOn)
       : Promise.resolve(null),
-    currency === 'EUR' || (!supportedCurrency && !hasManualRsdTotal)
+    currency === 'EUR' ||
+    (!supportedCurrency && !coveredCurrency && !hasManualRsdTotal)
       ? Promise.resolve(null)
       : anchorRateForExpense(
-          supportedCurrency ? currency : 'RSD',
+          supportedCurrency || coveredCurrency ? currency : 'RSD',
           occurredOn,
         ),
   ]);
@@ -731,6 +735,7 @@ export async function updateFiscalReceipt(
   const currencyChanged = currency !== currentCurrency;
   const existingManualRsdTotal =
     !isCurrency(currentCurrency) &&
+    !isSupportedHomeCurrency(currentCurrency) &&
     snapshot.expenses.every((expense) => expense.amount_rsd !== null)
       ? snapshot.expenses.reduce(
           (total, expense) =>
@@ -738,7 +743,10 @@ export async function updateFiscalReceipt(
           0,
         )
       : null;
-  const manualRsdTotalCents = isCurrency(currency)
+  const supportedCurrency = isCurrency(currency);
+  const coveredCurrency =
+    !supportedCurrency && isSupportedHomeCurrency(currency);
+  const manualRsdTotalCents = supportedCurrency || coveredCurrency
     ? null
     : input.manualRsdTotalCents !== undefined
       ? input.manualRsdTotalCents
@@ -746,23 +754,22 @@ export async function updateFiscalReceipt(
         ? null
         : existingManualRsdTotal;
   const manualRsdShares =
-    !isCurrency(currency) && manualRsdTotalCents !== null
+    !supportedCurrency && !coveredCurrency && manualRsdTotalCents !== null
       ? distributeCents(
           manualRsdTotalCents,
           keptExpenses.map((expense) => expense.amountCents ?? 0),
         )
       : keptExpenses.map(() => null);
   const conversionChanged = dateChanged || amountChanged || currencyChanged;
-  const supportedCurrency = isCurrency(currency);
   const [rates, anchorRate] = await Promise.all([
     conversionChanged && supportedCurrency
       ? ratesForExpense(input.occurredOn)
       : Promise.resolve(null),
     currency !== 'EUR' &&
-    ((conversionChanged && supportedCurrency) ||
-      (!supportedCurrency && manualRsdTotalCents !== null))
+    ((conversionChanged && (supportedCurrency || coveredCurrency)) ||
+      (!supportedCurrency && !coveredCurrency && manualRsdTotalCents !== null))
       ? anchorRateForExpense(
-          supportedCurrency ? currency : 'RSD',
+          supportedCurrency || coveredCurrency ? currency : 'RSD',
           input.occurredOn,
         )
       : Promise.resolve(null),
@@ -789,7 +796,7 @@ export async function updateFiscalReceipt(
       }
       const itemAmountChanged =
         decimalToCents(existing.original_amount) !== expense.amountCents;
-      const converted = supportedCurrency
+      const converted = supportedCurrency || coveredCurrency
         ? dateChanged || itemAmountChanged || currencyChanged
           ? receiptExpenseAmounts(
               expense.amountCents,

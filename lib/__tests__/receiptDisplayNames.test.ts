@@ -130,11 +130,16 @@ describe('receipt display-name persistence', () => {
     expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-1');
   });
 
-  test('stores an exact manual RSD total for a scanned exotic-currency receipt', async () => {
+  test('uses one currency anchor for every item in a covered-currency receipt', async () => {
     getSessionMock.mockImplementation(async () => ({
       data: { session: { user: { id: 'user-1' } } },
       error: null,
     }));
+    anchorRateMock.mockResolvedValue({
+      date: '2026-08-02',
+      quote: 'KZT',
+      ratePerEur: 500,
+    });
 
     const merchantQuery = {
       select: jest.fn().mockReturnThis(),
@@ -190,23 +195,23 @@ describe('receipt display-name persistence', () => {
 
     expect(ratesMock).not.toHaveBeenCalled();
     expect(anchorRateMock).toHaveBeenCalledTimes(1);
-    expect(anchorRateMock).toHaveBeenCalledWith('RSD', '2026-08-02');
+    expect(anchorRateMock).toHaveBeenCalledWith('KZT', '2026-08-02');
     expect(receiptInsert).toHaveBeenCalledWith(
       expect.objectContaining({ currency: 'KZT' }),
     );
     expect(expenseInsert).toHaveBeenCalledWith([
       expect.objectContaining({
         original_currency: 'KZT',
-        amount_rsd: '33.34',
+        amount_rsd: null,
         amount_usd: null,
-        amount_eur: '0.28',
+        amount_eur: '0.20',
         fx_rate_date: null,
       }),
       expect.objectContaining({
         original_currency: 'KZT',
-        amount_rsd: '66.67',
+        amount_rsd: null,
         amount_usd: null,
-        amount_eur: '0.57',
+        amount_eur: '0.40',
         fx_rate_date: null,
       }),
     ]);

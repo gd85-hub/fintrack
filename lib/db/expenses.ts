@@ -1,6 +1,7 @@
 import { anchorRateForExpense } from '../anchorRates';
 import { monthBounds } from '../dates';
 import { ratesForExpense } from '../fx';
+import { isSupportedHomeCurrency } from '../homeCurrency';
 import {
   centsToDecimal,
   decimalToCents,
@@ -63,6 +64,20 @@ async function conversionPayload(
   currency: string,
 ) {
   if (!isCurrency(currency)) {
+    if (isSupportedHomeCurrency(currency)) {
+      const anchorRate = await anchorRateForExpense(
+        currency,
+        input.occurredOn,
+      );
+      return receiptExpenseAmounts(
+        input.amountCents,
+        currency,
+        null,
+        null,
+        anchorRate.ratePerEur,
+      );
+    }
+
     const manualRsdCents = input.manualRsdCents ?? null;
     if (
       manualRsdCents !== null &&

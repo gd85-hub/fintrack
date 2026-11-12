@@ -14,6 +14,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColors } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
 import {
+  anchorRateForExpense,
+  AnchorRateUnavailableError,
+} from '../lib/anchorRates';
+import {
   deleteExpense,
   getExpense,
   insertExpense,
@@ -31,6 +35,7 @@ import {
   todayLocalISO,
 } from '../lib/dates';
 import { RateUnavailableError, ratesForExpense } from '../lib/fx';
+import { isSupportedHomeCurrency } from '../lib/homeCurrency';
 import {
   centsToInput,
   convertAll,
@@ -38,6 +43,7 @@ import {
   formatMoney,
   isCurrency,
   parseAmountInput,
+  roundHalfUp,
 } from '../lib/money';
 import { theme, type Colors } from '../lib/theme';
 import { CategoryPicker } from './CategoryPicker';
@@ -57,6 +63,10 @@ type ExpenseFormProps = {
   categories: Category[];
   initialMerchants: Merchant[];
 };
+
+type ConversionPreview =
+  | { kind: 'anchor'; eurCents: number }
+  | { kind: 'legacy'; amounts: ConvertedAmounts };
 
 function useExpenseEditorTheme() {
   const colors = useColors();
@@ -101,7 +111,7 @@ function ExpenseForm({
   );
   const [note, setNote] = useState(initialExpense?.note ?? '');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [preview, setPreview] = useState<ConvertedAmounts | null>(null);
+  const [preview, setPreview] = useState<ConversionPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [rateError, setRateError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
@@ -116,9 +126,12 @@ function ExpenseForm({
     : null;
   const validAmount = parsedAmount !== null && parsedAmount > 0;
   const validDate = parseLocalISO(date) !== null;
-  const automaticCurrency = isCurrency(currency) ? currency : null;
+  const legacyCurrency = isCurrency(currency) ? currency : null;
+  const isCoveredAuto =
+    legacyCurrency === null && isSupportedHomeCurrency(currency);
+  const isAutomatic = legacyCurrency !== null || isCoveredAuto;
   const hasInvalidManualRsd =
-    automaticCurrency === null &&
+    !isAutomatic &&
     manualRsdInput.trim() !== '' &&
     (parsedManualRsd === null || parsedManualRsd <= 0);
   const canSave =
@@ -132,7 +145,7 @@ function ExpenseForm({
     let active = true;
 
     if (
-      !automaticCurrency ||
+      !isAutomatic ||
       !validAmount ||
       !validDate ||
       parsedAmount === null
@@ -149,19 +162,31 @@ function ExpenseForm({
     setRateError('');
 
     const timeout = setTimeout(() => {
-      void ratesForExpense(date)
-        .then((rates) => {
+      void (async () => {
+        if (legacyCurrency) {
+          const rates = await ratesForExpense(date);
           if (active) {
-            setPreview(
-              convertAll(
+            setPreview({
+              kind: 'legacy',
+              amounts: convertAll(
                 parsedAmount,
-                automaticCurrency,
+                legacyCurrency,
                 rates.usdRsd,
                 rates.eurRsd,
               ),
-            );
+            });
           }
-        })
+          return;
+        }
+
+        const anchorRate = await anchorRateForExpense(currency, date);
+        if (active) {
+          setPreview({
+            kind: 'anchor',
+            eurCents: roundHalfUp(parsedAmount / anchorRate.ratePerEur),
+          });
+        }
+      })()
         .catch((error: unknown) => {
           if (active) {
             console.error('Unable to build conversion preview:', error);
@@ -181,8 +206,10 @@ function ExpenseForm({
       clearTimeout(timeout);
     };
   }, [
-    automaticCurrency,
+    currency,
     date,
+    isAutomatic,
+    legacyCurrency,
     parsedAmount,
     retryKey,
     t,
@@ -192,7 +219,10 @@ function ExpenseForm({
 
   function handleCurrencyChange(nextCurrency: string) {
     setCurrency(nextCurrency);
-    if (isCurrency(nextCurrency)) {
+    if (
+      isCurrency(nextCurrency) ||
+      isSupportedHomeCurrency(nextCurrency)
+    ) {
       setManualRsdInput('');
     }
   }
@@ -234,7 +264,7 @@ function ExpenseForm({
       occurredOn: date,
       description,
       note,
-      manualRsdCents: automaticCurrency ? null : parsedManualRsd,
+      manualRsdCents: isAutomatic ? null : parsedManualRsd,
     };
 
     setSaving(true);
@@ -253,7 +283,8 @@ function ExpenseForm({
     } catch (error: unknown) {
       console.error('Unable to save expense:', error);
       toast.error(
-        error instanceof RateUnavailableError
+        error instanceof RateUnavailableError ||
+          error instanceof AnchorRateUnavailableError
           ? t('editor.ratesLoadFailed')
           : t('editor.saveFailed'),
       );
@@ -331,7 +362,7 @@ function ExpenseForm({
           />
         </View>
 
-        {!automaticCurrency ? (
+        {!isAutomatic ? (
           <View style={styles.field}>
             <Text style={styles.label}>{t('editor.manualRsdLabel')}</Text>
             <View style={styles.manualAmountRow}>
@@ -423,10 +454,17 @@ function ExpenseForm({
           <Text style={styles.previewMuted}>{t('editor.loadingRates')}</Text>
         ) : null}
 
-        {preview ? (
+        {preview?.kind === 'legacy' ? (
           <Text style={styles.preview}>
-            ≈ {formatMoney(preview.rsd)} RSD · {formatMoney(preview.eur)} EUR ·{' '}
-            {formatMoney(preview.usd)} USD
+            ≈ {formatMoney(preview.amounts.rsd)} RSD ·{' '}
+            {formatMoney(preview.amounts.eur)} EUR ·{' '}
+            {formatMoney(preview.amounts.usd)} USD
+          </Text>
+        ) : null}
+
+        {preview?.kind === 'anchor' ? (
+          <Text style={styles.preview}>
+            ≈ {formatMoney(preview.eurCents)} EUR
           </Text>
         ) : null}
 

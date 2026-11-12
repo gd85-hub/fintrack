@@ -206,7 +206,7 @@ describe('receipt image currency persistence', () => {
   });
 
   test('keeps conversions null for unsupported currencies', () => {
-    expect(receiptExpenseAmounts(1000, 'TRY', null)).toEqual({
+    expect(receiptExpenseAmounts(1000, 'THB', null)).toEqual({
       amount_rsd: null,
       amount_usd: null,
       amount_eur: null,
@@ -215,10 +215,19 @@ describe('receipt image currency persistence', () => {
   });
 
   test('stores only a manual RSD share for unsupported currencies', () => {
-    expect(receiptExpenseAmounts(1000, 'KZT', null, 625, 117)).toEqual({
+    expect(receiptExpenseAmounts(1000, 'THB', null, 625, 117)).toEqual({
       amount_rsd: '6.25',
       amount_usd: null,
       amount_eur: '0.05',
+      fx_rate_date: null,
+    });
+  });
+
+  test('converts a covered currency through its own EUR anchor', () => {
+    expect(receiptExpenseAmounts(1000, 'KZT', null, null, 500)).toEqual({
+      amount_rsd: null,
+      amount_usd: null,
+      amount_eur: '0.02',
       fx_rate_date: null,
     });
   });
