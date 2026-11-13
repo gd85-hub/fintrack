@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { anchorRateForExpense } from '../anchorRates';
 import { saveFiscalReceipt } from '../db';
 import { ratesForExpense } from '../fx';
+import type { ParsedReceipt } from '../receipts';
 import { supabase } from '../supabase';
 
 jest.mock('../anchorRates', () => ({
@@ -73,6 +74,26 @@ describe('receipt display-name persistence', () => {
     const receiptSelect = jest.fn(() => ({ single: receiptSingle }));
     const receiptInsert = jest.fn(() => ({ select: receiptSelect }));
     const expenseInsert = jest.fn(async () => ({ error: null }));
+    const receipt = {
+      ok: true as const,
+      source: 'ocr_photo' as const,
+      merchantName: 'UNIVEREXPORT',
+      merchantLabel: 'UNIVEREXPORT 1369800-MP190',
+      taxId: '101692669',
+      occurredAt: '2026-08-02T12:00:00+02:00',
+      totalCents: 25000,
+      currency: 'RSD',
+      paymentType: 'Готовина',
+      items: [
+        {
+          name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
+          quantity: 1,
+          unitPriceCents: 25000,
+          lineTotalCents: 25000,
+          vatLabel: 'E',
+        },
+      ],
+    } satisfies ParsedReceipt & { totalCents: number };
 
     fromMock
       .mockReturnValueOnce(merchantQuery)
@@ -81,26 +102,8 @@ describe('receipt display-name persistence', () => {
       .mockReturnValueOnce(recencyClient);
 
     await saveFiscalReceipt({
-      receipt: {
-        ok: true,
-        source: 'fiscal_qr',
-        merchantName: 'UNIVEREXPORT',
-        merchantLabel: 'UNIVEREXPORT 1369800-MP190',
-        taxId: '101692669',
-        occurredAt: '2026-08-02T12:00:00+02:00',
-        totalCents: 25000,
-        currency: 'RSD',
-        paymentType: 'Готовина',
-        items: [
-          {
-            name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
-            quantity: 1,
-            unitPriceCents: 25000,
-            lineTotalCents: 25000,
-            vatLabel: 'E',
-          },
-        ],
-      },
+      receipt,
+      rawReceipt: { ...receipt, totalCents: null },
       merchant: { existingId: 'merchant-1' },
       expenses: [
         {
@@ -122,6 +125,8 @@ describe('receipt display-name persistence', () => {
       expect.objectContaining({
         merchant_id: 'merchant-1',
         merchant_label: 'UNIVEREXPORT 1369800-MP190',
+        raw_json: expect.objectContaining({ totalCents: null }),
+        total: '250.00',
       }),
     );
     expect(recencyUpdateMock).toHaveBeenCalledWith({

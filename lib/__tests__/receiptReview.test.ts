@@ -49,4 +49,9 @@ describe('receipt review totals', () => {
       ]),
     ).toBeNull();
   });
+
+  test('does not report a false match before the receipt total is confirmed', () => {
+    expect(reviewTotalsMismatch(2_000, null)).toBeNull();
+    expect(reviewTotalsMismatch(2_000, 2_100)).toBe(true);
+  });
 });

@@ -230,6 +230,10 @@ export const en = {
     saveReceiptFailed: "Couldn't save the receipt. Try again.",
     checkTitle: 'Review receipt',
     receiptTotal: 'Receipt total',
+    totalMissing: "The total couldn't be read — check the amount",
+    totalPrefillHint:
+      'Prefilled with the item sum — confirm it or correct it.',
+    confirmTotal: 'Confirm total',
     payment: 'Payment',
     lowConfidence: 'The scan is uncertain. Check the receipt before saving.',
     mismatchTitle: "The selected items don't match the receipt total.",

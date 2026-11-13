@@ -103,8 +103,8 @@ function ImageReceiptFlow() {
         setError(receiptImageErrorMessage(analysis.error, t));
         return;
       }
-      // An unreadable date or currency no longer throws the analysis away:
-      // review carries the honest null and asks the human to fill it in.
+      // An unreadable date, currency, or total no longer throws the analysis
+      // away: review asks the human to fill or confirm the honest null.
       setDraft(receiptFromImageAnalysis(analysis));
       router.replace('/(app)/receipt/review');
     } catch (caught: unknown) {

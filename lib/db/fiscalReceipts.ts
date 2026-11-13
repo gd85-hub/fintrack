@@ -331,10 +331,9 @@ export async function saveFiscalReceipt(
         total: centsToDecimal(input.receipt.totalCents),
         currency,
         payment_type: input.receipt.paymentType,
-        raw_json: receiptPayloadWithoutRaw({
-          ...input.receipt,
-          currency,
-        }),
+        raw_json: receiptPayloadWithoutRaw(
+          input.rawReceipt ?? { ...input.receipt, currency },
+        ),
         parsed_ok: true,
       })
       .select('id')

@@ -279,8 +279,9 @@ export async function analyzeReceiptImages(
   }
 }
 
-// An unreadable date or currency never throws the analysis away: the honest
-// null is carried into the draft and review asks the human to fill it in.
+// An unreadable date, currency, or total never throws the analysis away: the
+// honest null is carried into the draft and review asks the human to fill or
+// confirm it.
 export function receiptFromImageAnalysis(
   analysis: ReceiptImageAnalysisSuccess,
 ): ParsedReceipt {
@@ -293,9 +294,7 @@ export function receiptFromImageAnalysis(
     taxId: null,
     occurredAt: null,
     occurredOn: analysis.occurredOn ?? null,
-    totalCents:
-      analysis.totalCents ??
-      analysis.items.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    totalCents: analysis.totalCents,
     currency: analysis.currency ?? null,
     paymentType: null,
     items: analysis.items.map((item) => ({

@@ -4,6 +4,7 @@ import { receiptFromImageAnalysis } from '../receiptImage';
 import {
   needsManualRsdEquivalent,
   receiptDraftBlockers,
+  reviewTotalsMismatch,
 } from '../receiptReview';
 
 jest.mock('expo-image-manipulator', () => ({
@@ -105,45 +106,94 @@ describe('receiptFromImageAnalysis keeps an honest null', () => {
     );
   });
 
-  test('a missing total still falls back to the sum of the line items', () => {
+  test('a missing total stays null while the line items stay intact', () => {
     const draft = receiptFromImageAnalysis({ ...analysis, totalCents: null });
 
-    expect(draft.totalCents).toBe(50000);
+    expect(draft.totalCents).toBeNull();
+    expect(receiptDraftBlockers(draft)).toContain('total');
+    expect(reviewTotalsMismatch(50000, draft.totalCents)).toBeNull();
+    expect(draft.items).toEqual(
+      items.map((item) => ({ ...item, vatLabel: null })),
+    );
   });
 });
 
 describe('receiptDraftBlockers', () => {
-  test('reports both fields when neither was read', () => {
+  test('reports all fields when none was read', () => {
     expect(
-      receiptDraftBlockers({ occurredOn: null, currency: null }),
-    ).toEqual(['date', 'currency']);
+      receiptDraftBlockers({
+        occurredOn: null,
+        currency: null,
+        totalCents: null,
+      }),
+    ).toEqual(['date', 'currency', 'total']);
   });
 
   test('reports only the date when the currency is present', () => {
     expect(
-      receiptDraftBlockers({ occurredOn: null, currency: 'RSD' }),
+      receiptDraftBlockers({
+        occurredOn: null,
+        currency: 'RSD',
+        totalCents: 50000,
+      }),
     ).toEqual(['date']);
   });
 
   test('reports only the currency when the date is present', () => {
     expect(
-      receiptDraftBlockers({ occurredOn: '2026-03-04', currency: null }),
+      receiptDraftBlockers({
+        occurredOn: '2026-03-04',
+        currency: null,
+        totalCents: 50000,
+      }),
     ).toEqual(['currency']);
   });
 
-  test('reports nothing when both are filled in', () => {
+  test('reports only the total when date and currency are filled in', () => {
     expect(
-      receiptDraftBlockers({ occurredOn: '2026-03-04', currency: 'RSD' }),
+      receiptDraftBlockers({
+        occurredOn: '2026-03-04',
+        currency: 'RSD',
+        totalCents: null,
+      }),
+    ).toEqual(['total']);
+  });
+
+  test('reports nothing when all three fields are filled in', () => {
+    expect(
+      receiptDraftBlockers({
+        occurredOn: '2026-03-04',
+        currency: 'RSD',
+        totalCents: 50000,
+      }),
     ).toEqual([]);
   });
 
   test('treats an invalid or blank date as a blocker', () => {
     expect(
-      receiptDraftBlockers({ occurredOn: '', currency: 'RSD' }),
+      receiptDraftBlockers({
+        occurredOn: '',
+        currency: 'RSD',
+        totalCents: 50000,
+      }),
     ).toEqual(['date']);
     expect(
-      receiptDraftBlockers({ occurredOn: '2026-02-30', currency: 'RSD' }),
+      receiptDraftBlockers({
+        occurredOn: '2026-02-30',
+        currency: 'RSD',
+        totalCents: 50000,
+      }),
     ).toEqual(['date']);
+  });
+
+  test('a QR-shaped draft with a parsed total has no total blocker', () => {
+    expect(
+      receiptDraftBlockers({
+        occurredOn: '2026-03-04',
+        currency: 'RSD',
+        totalCents: 50000,
+      }),
+    ).not.toContain('total');
   });
 });
 

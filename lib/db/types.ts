@@ -187,7 +187,10 @@ export type FiscalReceiptMerchantInput =
   | { name: string };
 
 export type SaveFiscalReceiptInput = {
-  receipt: ParsedReceipt;
+  receipt: ParsedReceipt & { totalCents: number };
+  // For photo receipts, preserve what the model actually returned in raw_json
+  // even when review supplies a human-confirmed total for the stored receipt.
+  rawReceipt?: ParsedReceipt;
   merchant: FiscalReceiptMerchantInput;
   expenses: FiscalReceiptExpenseInput[];
   manualRsdTotalCents?: number | null;

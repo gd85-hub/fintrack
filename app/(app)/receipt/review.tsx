@@ -54,8 +54,11 @@ import {
 import {
   needsManualRsdEquivalent,
   receiptDraftBlockers,
+  reviewTotalsMismatch,
 } from '../../../lib/receiptReview';
 import { theme, type Colors } from '../../../lib/theme';
+
+export { reviewTotalsMismatch } from '../../../lib/receiptReview';
 
 type MerchantMode = 'existing' | 'new';
 
@@ -107,13 +110,6 @@ export function includedReviewTotal(
   return total;
 }
 
-export function reviewTotalsMismatch(
-  includedTotal: number | null,
-  receiptTotal: number,
-) {
-  return includedTotal !== null && includedTotal !== receiptTotal;
-}
-
 export function parseReviewAmountInput(value: string): number | null {
   const amountCents = parseAmountInput(value);
   return amountCents !== null && amountCents > 0 ? amountCents : null;
@@ -154,6 +150,10 @@ export default function ReviewReceiptScreen() {
   const [receiptCurrency, setReceiptCurrency] = useState<string | null>(
     draft?.currency ?? null,
   );
+  const [receiptTotalInput, setReceiptTotalInput] = useState('');
+  const [confirmedReceiptTotalCents, setConfirmedReceiptTotalCents] =
+    useState<number | null>(null);
+  const [totalInputEdited, setTotalInputEdited] = useState(false);
   const [manualRsdInput, setManualRsdInput] = useState('');
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null);
@@ -176,6 +176,9 @@ export default function ReviewReceiptScreen() {
     setErrorMessage('');
     setItems([]);
     setBulkCategoryId(null);
+    setReceiptTotalInput('');
+    setConfirmedReceiptTotalCents(null);
+    setTotalInputEdited(false);
 
     void Promise.all([
       listCategories(),
@@ -215,6 +218,8 @@ export default function ReviewReceiptScreen() {
           setMerchantName(loadedEditDraft.merchantName);
           setOccurredOn(loadedEditDraft.occurredOn);
           setReceiptCurrency(loadedEditDraft.currency);
+          setReceiptTotalInput(centsToInput(loadedEditDraft.totalCents));
+          setConfirmedReceiptTotalCents(loadedEditDraft.totalCents);
           setManualRsdInput(
             loadedEditDraft.manualRsdTotalCents === null ||
               loadedEditDraft.manualRsdTotalCents === undefined
@@ -271,6 +276,15 @@ export default function ReviewReceiptScreen() {
         }
         setOccurredOn(draftDate);
         setReceiptCurrency(draft.currency);
+        const itemTotalCents = draft.items.reduce(
+          (total, item) => total + item.lineTotalCents,
+          0,
+        );
+        setReceiptTotalInput(
+          centsToInput(draft.totalCents ?? itemTotalCents),
+        );
+        setConfirmedReceiptTotalCents(draft.totalCents);
+        setTotalInputEdited(false);
         setManualRsdInput('');
         const preparedItems = draft.items.map((item, itemIndex) => {
           const suggestedCategoryId = item.categoryName
@@ -372,6 +386,8 @@ export default function ReviewReceiptScreen() {
     [includedItems],
   );
   const includedTotal = includedReviewTotal(items);
+  const receiptTotalInputCents = parseReviewAmountInput(receiptTotalInput);
+  const receiptTotalCents = confirmedReceiptTotalCents;
   const hasInvalidIncludedAmounts =
     validIncludedItems.length !== includedItems.length;
   const manualRsdTotalCents = manualRsdInput.trim()
@@ -388,9 +404,12 @@ export default function ReviewReceiptScreen() {
   const draftBlockers = receiptDraftBlockers({
     occurredOn,
     currency: receiptCurrency,
+    totalCents: receiptTotalCents,
   });
   const needsDate = draftBlockers.includes('date');
   const needsCurrency = draftBlockers.includes('currency');
+  const needsTotal = draftBlockers.includes('total');
+  const totalWasUnread = !isEditMode && draft?.totalCents === null;
 
   if (loading) {
     return <LoadingScreen />;
@@ -420,8 +439,6 @@ export default function ReviewReceiptScreen() {
     );
   }
 
-  const receiptTotalCents =
-    editDraft?.totalCents ?? draft?.totalCents ?? 0;
   const receiptPaymentType =
     editDraft?.paymentType ?? draft?.paymentType ?? null;
   const receiptMerchantLabel =
@@ -506,6 +523,20 @@ export default function ReviewReceiptScreen() {
     }
   };
 
+  const changeReceiptTotal = (value: string) => {
+    setReceiptTotalInput(value);
+    setConfirmedReceiptTotalCents(null);
+    setTotalInputEdited(true);
+  };
+
+  const confirmReceiptTotal = () => {
+    if (receiptTotalInputCents === null) {
+      return;
+    }
+    setConfirmedReceiptTotalCents(receiptTotalInputCents);
+    setErrorMessage('');
+  };
+
   const saveReview = async (allowEmptyEdit: boolean) => {
     setErrorMessage('');
     if (!includedItems.length && !allowEmptyEdit) {
@@ -526,6 +557,10 @@ export default function ReviewReceiptScreen() {
     }
     if (!receiptCurrency) {
       setErrorMessage(t('review.currencyMissing'));
+      return;
+    }
+    if (receiptTotalCents === null) {
+      setErrorMessage(t('review.totalMissing'));
       return;
     }
 
@@ -581,7 +616,13 @@ export default function ReviewReceiptScreen() {
           // occurredOn comes from the form: for a photo draft the date may have
           // been unreadable and filled in here, and the save path reads it off
           // the receipt.
-          receipt: { ...draft, currency: receiptCurrency, occurredOn },
+          receipt: {
+            ...draft,
+            currency: receiptCurrency,
+            occurredOn,
+            totalCents: receiptTotalCents,
+          },
+          ...(draft.source === 'ocr_photo' ? { rawReceipt: draft } : {}),
           merchant,
           manualRsdTotalCents,
           expenses: validIncludedItems.map((item) => ({
@@ -696,9 +737,30 @@ export default function ReviewReceiptScreen() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t('review.receiptTotal')}</Text>
             <View style={styles.summaryAmount}>
-              <Text style={styles.summaryValue}>
-                {formatMoney(receiptTotalCents)}
-              </Text>
+              {totalWasUnread ? (
+                <TextInput
+                  accessibilityLabel={t('review.receiptTotal')}
+                  editable={!saving}
+                  inputMode="decimal"
+                  maxLength={20}
+                  onChangeText={changeReceiptTotal}
+                  placeholder="0,00"
+                  placeholderTextColor={colors.field.placeholder}
+                  selectTextOnFocus
+                  style={[
+                    styles.totalInput,
+                    receiptTotalInputCents === null &&
+                      styles.itemAmountInputInvalid,
+                  ]}
+                  value={receiptTotalInput}
+                />
+              ) : (
+                <Text style={styles.summaryValue}>
+                  {receiptTotalCents === null
+                    ? '—'
+                    : formatMoney(receiptTotalCents)}
+                </Text>
+              )}
               <ReceiptCurrencySelector
                 disabled={saving}
                 onChange={changeReceiptCurrency}
@@ -723,6 +785,32 @@ export default function ReviewReceiptScreen() {
             <Text accessibilityRole="alert" style={styles.missingFieldText}>
               {t('review.currencyMissing')}
             </Text>
+          ) : null}
+          {needsTotal ? (
+            <View style={styles.totalConfirmation}>
+              <Text accessibilityRole="alert" style={styles.missingFieldText}>
+                {t('review.totalMissing')}
+              </Text>
+              {!totalInputEdited ? (
+                <Text style={styles.helperText}>
+                  {t('review.totalPrefillHint')}
+                </Text>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                disabled={saving || receiptTotalInputCents === null}
+                onPress={confirmReceiptTotal}
+                style={({ pressed }) => [
+                  styles.confirmTotalButton,
+                  (pressed || saving || receiptTotalInputCents === null) &&
+                    styles.disabled,
+                ]}
+              >
+                <Text style={styles.confirmTotalText}>
+                  {t('review.confirmTotal')}
+                </Text>
+              </Pressable>
+            </View>
           ) : null}
         </View>
 
@@ -1081,6 +1169,21 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
   },
+  confirmTotalButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderColor: c.action.secondary.border,
+    borderRadius: theme.radii.button,
+    borderWidth: theme.sizes.border,
+    justifyContent: 'center',
+    minHeight: theme.sizes.iconButton,
+    paddingHorizontal: theme.spacing.md,
+  },
+  confirmTotalText: {
+    color: c.action.secondary.content,
+    fontSize: theme.fontSizes.label,
+    fontWeight: '600',
+  },
   content: {
     alignSelf: 'center',
     gap: theme.spacing.lg,
@@ -1379,6 +1482,21 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     flex: 1,
     fontSize: theme.fontSizes.body,
     fontWeight: '700',
+  },
+  totalConfirmation: {
+    gap: theme.spacing.xs,
+  },
+  totalInput: {
+    borderColor: c.field.border,
+    borderRadius: theme.radii.input,
+    borderWidth: theme.sizes.border,
+    color: c.text.primary,
+    fontSize: theme.fontSizes.body,
+    fontWeight: '600',
+    minHeight: theme.sizes.iconButton,
+    paddingHorizontal: theme.spacing.sm,
+    textAlign: 'right',
+    minWidth: theme.sizes.multilineInputHeight,
   },
   warningCard: {
     backgroundColor: c.status.warning.container,

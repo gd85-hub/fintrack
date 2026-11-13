@@ -24,10 +24,11 @@ export type ParsedReceipt = {
   merchantLabel?: string | null;
   taxId: string | null;
   occurredAt: string | null;
-  // Photo drafts carry the model's honest null when the date or currency could
-  // not be read; review requires the human to fill them before saving.
+  // Photo drafts carry the model's honest null when the date, currency, or
+  // total could not be read; review requires the human to fill or confirm them
+  // before saving.
   occurredOn?: string | null;
-  totalCents: number;
+  totalCents: number | null;
   currency: string | null;
   paymentType: string | null;
   items: ParsedReceiptItem[];
