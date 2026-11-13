@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColors } from '../contexts/ThemeContext';
@@ -9,6 +9,7 @@ import { theme, type Colors } from '../lib/theme';
 
 type ExpenseMiniRowProps = {
   amountCents: number;
+  amountLoading?: boolean;
   categoryLabel?: string;
   currency: string;
   date: string;
@@ -19,6 +20,7 @@ type ExpenseMiniRowProps = {
 
 export function ExpenseMiniRow({
   amountCents,
+  amountLoading = false,
   categoryLabel,
   currency,
   date,
@@ -55,9 +57,13 @@ export function ExpenseMiniRow({
           </Text>
         ) : null}
       </View>
-      <Text style={styles.amount}>
-        {formatMoney(amountCents)} {currency}
-      </Text>
+      {amountLoading ? (
+        <ActivityIndicator color={colors.icon.secondary} size="small" />
+      ) : (
+        <Text style={styles.amount}>
+          {formatMoney(amountCents)} {currency}
+        </Text>
+      )}
     </View>
   );
 }

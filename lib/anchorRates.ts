@@ -295,3 +295,58 @@ export async function fetchAnchorRatesForRange(
   const fallback = parseSelectedRows(fallbackData)[0];
   return fallback ? [...rates, fallback] : rates;
 }
+
+export async function ensureAnchorRatesForRange(
+  quote: string,
+  neededDates: readonly string[],
+): Promise<AnchorRate[]> {
+  const normalizedQuote = normalizeCurrencyCode(quote);
+  if (!normalizedQuote || normalizedQuote === ANCHOR_CURRENCY) {
+    return [];
+  }
+
+  const dates = [...new Set(neededDates)].filter(Boolean);
+  if (dates.length === 0) {
+    return [];
+  }
+
+  const fromISO = dates.reduce((earliest, date) =>
+    date < earliest ? date : earliest,
+  );
+  const toISO = dates.reduce((latest, date) =>
+    date > latest ? date : latest,
+  );
+
+  let rows = await fetchAnchorRatesForRange(
+    normalizedQuote,
+    fromISO,
+    toISO,
+  );
+  const missing = dates.filter(
+    (date) => !pickRateOnOrBefore(rows, normalizedQuote, date),
+  );
+  if (missing.length === 0) {
+    return rows;
+  }
+
+  try {
+    const { error } = await supabase.functions.invoke('sync-rates', {
+      body: { dates: missing },
+    });
+    if (error) {
+      console.error(
+        'Unable to sync anchor FX rates for display:',
+        error.message,
+      );
+    }
+  } catch (error: unknown) {
+    console.error('Unable to sync anchor FX rates for display:', error);
+  }
+
+  rows = await fetchAnchorRatesForRange(
+    normalizedQuote,
+    fromISO,
+    toISO,
+  );
+  return rows;
+}

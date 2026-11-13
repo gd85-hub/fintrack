@@ -6,6 +6,7 @@ import {
 } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -24,7 +25,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
-  fetchAnchorRatesForRange,
+  ensureAnchorRatesForRange,
   pickRateOnOrBefore,
   type AnchorRate,
 } from '../../lib/anchorRates';
@@ -277,6 +278,7 @@ export function purchaseCategoryHint(expenses: readonly Expense[]): string {
 }
 
 type PurchaseRowProps = {
+  anchorRatesLoading: boolean;
   displayCurrency: string;
   expanded: boolean;
   onDelete?: () => void;
@@ -290,6 +292,7 @@ type PurchaseRowProps = {
 };
 
 function PurchaseRow({
+  anchorRatesLoading,
   displayCurrency,
   expanded,
   onDelete,
@@ -320,6 +323,10 @@ function PurchaseRow({
   const collapsedItems = collapseIdenticalPurchaseItems(unit.expenses);
   const visibleItems = collapsedItems.slice(0, visibleCount);
   const remaining = collapsedItems.length - visibleItems.length;
+  const amountNeedsAnchorRate = expensesNeedAnchorRate(
+    unit.expenses,
+    displayCurrency,
+  );
 
   if (!firstExpense) {
     return null;
@@ -337,6 +344,7 @@ function PurchaseRow({
     <View style={styles.purchaseUnit}>
       <ListRow
         amount={`${formatMoney(displayAmount.amountCents)} ${displayAmount.currency}`}
+        amountLoading={anchorRatesLoading && amountNeedsAnchorRate}
         category={positionLabel}
         iconEmoji={iconEmoji}
         onPress={handleRowPress}
@@ -412,6 +420,10 @@ function PurchaseRow({
               >
                 <ExpenseMiniRow
                   amountCents={itemAmount.amountCents}
+                  amountLoading={
+                    anchorRatesLoading &&
+                    expensesNeedAnchorRate(item.expenses, displayCurrency)
+                  }
                   categoryLabel={`${expense.categoryEmoji} ${localizeCategoryName(expense.categoryName, t)}`.trim()}
                   currency={itemAmount.currency}
                   date={expense.occurredOn}
@@ -474,6 +486,17 @@ function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
   }));
 }
 
+function expensesNeedAnchorRate(
+  expenses: readonly Expense[],
+  displayCurrency: string,
+): boolean {
+  return expenses.some(
+    (expense) =>
+      expense.amountEurCents !== null &&
+      expense.originalCurrency.trim().toUpperCase() !== displayCurrency,
+  );
+}
+
 function monthFromParam(value: string | string[] | undefined) {
   const month = Array.isArray(value) ? value[0] : value;
   if (!month) {
@@ -524,6 +547,7 @@ export default function HomeScreen() {
     key: '',
     rates: [],
   });
+  const [anchorRatesLoading, setAnchorRatesLoading] = useState(false);
 
   useEffect(() => {
     if (requestedMonth) {
@@ -538,31 +562,53 @@ export default function HomeScreen() {
     setPurchaseErrorMessage('');
   }, [visibleMonth]);
 
+  const needsAttentionExpenses = useMemo(
+    () =>
+      expenses.filter(
+        (expense) =>
+          expense.categorySlug === 'uncategorized' ||
+          expense.fxRateDate === null,
+      ),
+    [expenses],
+  );
+  const visibleExpenses = useMemo(
+    () =>
+      needsAttentionOnly && needsAttentionExpenses.length > 0
+        ? needsAttentionExpenses
+        : expenses,
+    [expenses, needsAttentionExpenses, needsAttentionOnly],
+  );
   const anchorRateKey = `${visibleMonth}:${homeCurrency}`;
+  const neededAnchorRateDates = useMemo(
+    () => [
+      ...new Set(
+        visibleExpenses
+          .filter((expense) =>
+            expensesNeedAnchorRate([expense], homeCurrency),
+          )
+          .map((expense) => expense.occurredOn),
+      ),
+    ],
+    [homeCurrency, visibleExpenses],
+  );
+  const neededAnchorRateDatesKey = neededAnchorRateDates.join(',');
   const needsAnchorRates =
     ANCHOR_DISPLAY &&
     !homeCurrencyLoading &&
     homeCurrency !== ANCHOR_CURRENCY &&
-    expenses.some(
-      (expense) =>
-        expense.amountEurCents !== null &&
-        expense.originalCurrency.trim().toUpperCase() !== homeCurrency,
-    );
+    neededAnchorRateDates.length > 0;
 
   useEffect(() => {
     if (!needsAnchorRates) {
+      setAnchorRatesLoading(false);
       return;
     }
 
     let active = true;
-    const bounds = monthBounds(visibleMonth);
     setAnchorRateCache({ key: '', rates: [] });
+    setAnchorRatesLoading(true);
 
-    void fetchAnchorRatesForRange(
-      homeCurrency,
-      bounds.first,
-      bounds.last,
-    )
+    void ensureAnchorRatesForRange(homeCurrency, neededAnchorRateDates)
       .then((rates) => {
         if (active) {
           setAnchorRateCache({ key: anchorRateKey, rates });
@@ -573,12 +619,22 @@ export default function HomeScreen() {
         if (active) {
           setAnchorRateCache({ key: anchorRateKey, rates: [] });
         }
+      })
+      .finally(() => {
+        if (active) {
+          setAnchorRatesLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [anchorRateKey, homeCurrency, needsAnchorRates, visibleMonth]);
+  }, [
+    anchorRateKey,
+    homeCurrency,
+    neededAnchorRateDatesKey,
+    needsAnchorRates,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -610,22 +666,6 @@ export default function HomeScreen() {
     }, [retryKey, visibleMonth]),
   );
 
-  const needsAttentionExpenses = useMemo(
-    () =>
-      expenses.filter(
-        (expense) =>
-          expense.categorySlug === 'uncategorized' ||
-          expense.fxRateDate === null,
-      ),
-    [expenses],
-  );
-  const visibleExpenses = useMemo(
-    () =>
-      needsAttentionOnly && needsAttentionExpenses.length > 0
-        ? needsAttentionExpenses
-        : expenses,
-    [expenses, needsAttentionExpenses, needsAttentionOnly],
-  );
   const groups = useMemo(
     () => groupExpenses(visibleExpenses),
     [visibleExpenses],
@@ -725,20 +765,27 @@ export default function HomeScreen() {
               <Text style={styles.heroTitle}>
                 {t('home.spentIn', { month: monthPrepositional })}
               </Text>
-              <Text
-                adjustsFontSizeToFit
-                numberOfLines={1}
-                style={styles.heroAmount}
-              >
-                {ANCHOR_DISPLAY
-                  ? anchorMonthTotal === null
-                    ? '—'
-                    : formatMoney(anchorMonthTotal)
-                  : formatMoney(monthTotals.rsd)}
-                <Text style={styles.heroCurrency}>
-                  {ANCHOR_DISPLAY ? ` ${homeCurrency}` : ' RSD'}
+              {anchorRatesLoading ? (
+                <ActivityIndicator
+                  color={colors.icon.secondary}
+                  size="small"
+                />
+              ) : (
+                <Text
+                  adjustsFontSizeToFit
+                  numberOfLines={1}
+                  style={styles.heroAmount}
+                >
+                  {ANCHOR_DISPLAY
+                    ? anchorMonthTotal === null
+                      ? '—'
+                      : formatMoney(anchorMonthTotal)
+                    : formatMoney(monthTotals.rsd)}
+                  <Text style={styles.heroCurrency}>
+                    {ANCHOR_DISPLAY ? ` ${homeCurrency}` : ' RSD'}
+                  </Text>
                 </Text>
-              </Text>
+              )}
               {!ANCHOR_DISPLAY ? (
                 <Text numberOfLines={1} style={styles.heroEquivalents}>
                   {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
@@ -795,6 +842,7 @@ export default function HomeScreen() {
     [
       errorMessage,
       anchorMonthTotal,
+      anchorRatesLoading,
       homeCurrency,
       loading,
       monthName,
@@ -804,6 +852,7 @@ export default function HomeScreen() {
       needsAttentionOnly,
       purchaseErrorMessage,
       colors.icon.primary,
+      colors.icon.secondary,
       styles,
       t,
     ],
@@ -958,15 +1007,26 @@ export default function HomeScreen() {
                 <Text numberOfLines={1} style={styles.dayTitle}>
                   {formatDayHeader(section.date, locale)}
                 </Text>
-                <Text numberOfLines={1} style={styles.dayTotal}>
-                  {ANCHOR_DISPLAY
-                    ? `${
-                        section.dayTotal === null
-                          ? '—'
-                          : formatMoney(section.dayTotal)
-                      } ${homeCurrency}`
-                    : `${formatMoney(section.dayTotal ?? 0)} RSD`}
-                </Text>
+                {anchorRatesLoading &&
+                expensesNeedAnchorRate(
+                  section.units.flatMap((unit) => unit.expenses),
+                  homeCurrency,
+                ) ? (
+                  <ActivityIndicator
+                    color={colors.icon.secondary}
+                    size="small"
+                  />
+                ) : (
+                  <Text numberOfLines={1} style={styles.dayTotal}>
+                    {ANCHOR_DISPLAY
+                      ? `${
+                          section.dayTotal === null
+                            ? '—'
+                            : formatMoney(section.dayTotal)
+                        } ${homeCurrency}`
+                      : `${formatMoney(section.dayTotal ?? 0)} RSD`}
+                  </Text>
+                )}
               </Pressable>
 
               {!collapsed
@@ -982,6 +1042,7 @@ export default function HomeScreen() {
                     return (
                       <View key={unit.key}>
                         <PurchaseRow
+                          anchorRatesLoading={anchorRatesLoading}
                           displayCurrency={homeCurrency}
                           expanded={expandedUnitKeys.has(unit.key)}
                           onDelete={() => requestPurchaseDelete(unit)}

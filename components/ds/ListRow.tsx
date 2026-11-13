@@ -1,7 +1,13 @@
 import Feather from '@expo/vector-icons/Feather';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
@@ -16,6 +22,7 @@ export type ListRowProps = {
   place: string;
   category?: string;
   amount: string;
+  amountLoading?: boolean;
   equivalent?: string;
   kind?: 'default' | 'exception';
   icon?: ReactNode;
@@ -30,6 +37,7 @@ export function ListRow({
   place,
   category,
   amount,
+  amountLoading = false,
   equivalent,
   kind = 'default',
   icon,
@@ -103,12 +111,16 @@ export function ListRow({
       </View>
 
       <View style={styles.amountBlock}>
-        <Text
-          numberOfLines={1}
-          style={isException ? styles.exceptionAmount : styles.amount}
-        >
-          {amount}
-        </Text>
+        {amountLoading ? (
+          <ActivityIndicator color={colors.icon.secondary} size="small" />
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={isException ? styles.exceptionAmount : styles.amount}
+          >
+            {amount}
+          </Text>
+        )}
         {equivalent ? (
           <Text numberOfLines={1} style={styles.equivalent}>
             {equivalent}

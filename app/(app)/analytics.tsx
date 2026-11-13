@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,7 +34,7 @@ import {
   displayMerchantBreakdown,
 } from '../../lib/analyticsDisplay';
 import {
-  fetchAnchorRatesForRange,
+  ensureAnchorRatesForRange,
   pickRateOnOrBefore,
   type AnchorRate,
 } from '../../lib/anchorRates';
@@ -422,6 +423,7 @@ export default function AnalyticsScreen() {
     key: '',
     rates: [],
   });
+  const [anchorRatesLoading, setAnchorRatesLoading] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -482,25 +484,39 @@ export default function AnalyticsScreen() {
 
   const anchorRateKey = `${fromISO}:${toISO}:${displayCurrency}`;
   const analyticsRangeKey = `${fromISO}:${toISO}`;
+  const neededAnchorRateDates = useMemo(
+    () => [
+      ...new Set(
+        analyticsExpenses
+          .filter(
+            (expense) =>
+              expense.amountEur !== null &&
+              expense.originalCurrency.trim().toUpperCase() !==
+                displayCurrency,
+          )
+          .map((expense) => expense.occurredOn),
+      ),
+    ],
+    [analyticsExpenses, displayCurrency],
+  );
+  const neededAnchorRateDatesKey = neededAnchorRateDates.join(',');
   const needsAnchorRates =
     ANCHOR_DISPLAY &&
     analyticsExpenseRangeKey === analyticsRangeKey &&
     displayCurrency !== ANCHOR_CURRENCY &&
-    analyticsExpenses.some(
-      (expense) =>
-        expense.amountEur !== null &&
-        expense.originalCurrency.trim().toUpperCase() !== displayCurrency,
-    );
+    neededAnchorRateDates.length > 0;
 
   useEffect(() => {
     if (!needsAnchorRates) {
+      setAnchorRatesLoading(false);
       return;
     }
 
     let active = true;
     setAnchorRateCache({ key: '', rates: [] });
+    setAnchorRatesLoading(true);
 
-    void fetchAnchorRatesForRange(displayCurrency, fromISO, toISO)
+    void ensureAnchorRatesForRange(displayCurrency, neededAnchorRateDates)
       .then((rates) => {
         if (active) {
           setAnchorRateCache({ key: anchorRateKey, rates });
@@ -511,12 +527,22 @@ export default function AnalyticsScreen() {
         if (active) {
           setAnchorRateCache({ key: anchorRateKey, rates: [] });
         }
+      })
+      .finally(() => {
+        if (active) {
+          setAnchorRatesLoading(false);
+        }
       });
 
     return () => {
       active = false;
     };
-  }, [anchorRateKey, displayCurrency, fromISO, needsAnchorRates, toISO]);
+  }, [
+    anchorRateKey,
+    displayCurrency,
+    neededAnchorRateDatesKey,
+    needsAnchorRates,
+  ]);
 
   const rateAt = useMemo<RateLookup>(() => {
     if (
@@ -537,7 +563,7 @@ export default function AnalyticsScreen() {
     loading ||
     (ANCHOR_DISPLAY &&
       needsAnchorRates &&
-      anchorRateCache.key !== anchorRateKey);
+      (anchorRatesLoading || anchorRateCache.key !== anchorRateKey));
 
   const legacyDisplayCurrency: Currency = isCurrency(displayCurrency)
     ? displayCurrency
@@ -1117,9 +1143,16 @@ export default function AnalyticsScreen() {
 
         <View style={styles.totalBlock}>
           <Text style={styles.totalLabel}>{t('analytics.periodTotal')}</Text>
-          <Text style={styles.monthTotal}>
-            {formatAnalyticsAmount(monthTotal)} {displayCurrency}
-          </Text>
+          {analyticsLoading ? (
+            <ActivityIndicator
+              color={colors.icon.secondary}
+              size="small"
+            />
+          ) : (
+            <Text style={styles.monthTotal}>
+              {formatAnalyticsAmount(monthTotal)} {displayCurrency}
+            </Text>
+          )}
           {!analyticsLoading && !errorMessage && spendingPace ? (
             <Text numberOfLines={1} style={styles.paceLine}>
               {t('analytics.pacePerDay', {
