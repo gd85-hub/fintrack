@@ -126,13 +126,16 @@ export type AnalyticsExpense = {
   description: string;
   categoryId: string;
   categoryEmoji: string;
+  categoryGroup: string;
   categoryName: string;
   categoryType: ExpenseCategoryType;
   merchantId: string | null;
   merchantName: string | null;
+  originalAmountCents: number;
+  originalCurrency: string;
   amountRsd: number;
   amountUsd: number;
-  amountEur: number;
+  amountEur: number | null;
 };
 
 export type FixedVariableCategoryBreakdown = {

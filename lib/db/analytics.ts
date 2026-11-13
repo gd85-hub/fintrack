@@ -42,11 +42,14 @@ type AnalyticsExpenseQueryRow = {
   description: string;
   category_id: string;
   merchant_id: string | null;
+  original_amount: number | string;
+  original_currency: string;
   amount_rsd: number | string | null;
   amount_usd: number | string | null;
   amount_eur: number | string | null;
   category: {
     emoji: string;
+    group: string;
     name: string;
     type: ExpenseCategoryType;
   };
@@ -237,11 +240,11 @@ export function buildFixedVariableBreakdown(
     const bucket = buckets[expense.categoryType];
     bucket.totalRsd += expense.amountRsd;
     bucket.totalUsd += expense.amountUsd;
-    bucket.totalEur += expense.amountEur;
+    bucket.totalEur += expense.amountEur ?? 0;
     bucket.count += 1;
     totalRsd += expense.amountRsd;
     totalUsd += expense.amountUsd;
-    totalEur += expense.amountEur;
+    totalEur += expense.amountEur ?? 0;
 
     const current = categories[expense.categoryType].get(
       expense.categoryId,
@@ -249,7 +252,7 @@ export function buildFixedVariableBreakdown(
     if (current) {
       current.totalRsd += expense.amountRsd;
       current.totalUsd += expense.amountUsd;
-      current.totalEur += expense.amountEur;
+      current.totalEur += expense.amountEur ?? 0;
       current.count += 1;
       continue;
     }
@@ -260,7 +263,7 @@ export function buildFixedVariableBreakdown(
       name: expense.categoryName,
       totalRsd: expense.amountRsd,
       totalUsd: expense.amountUsd,
-      totalEur: expense.amountEur,
+      totalEur: expense.amountEur ?? 0,
       count: 1,
     });
   }
@@ -283,7 +286,7 @@ async function listExpensesBetween(
   const { data, error } = await supabase
     .from('expenses')
     .select(
-      'id,occurred_on,created_at,description,category_id,merchant_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,type),merchant:merchants!expenses_merchant_id_fkey(name)',
+      'id,occurred_on,created_at,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group,type),merchant:merchants!expenses_merchant_id_fkey(name)',
     )
     .gte('occurred_on', firstISO)
     .lte('occurred_on', lastISO)
@@ -301,13 +304,17 @@ async function listExpensesBetween(
     description: row.description,
     categoryId: row.category_id,
     categoryEmoji: row.category.emoji,
+    categoryGroup: row.category.group,
     categoryName: row.category.name,
     categoryType: row.category.type,
     merchantId: row.merchant_id,
     merchantName: row.merchant?.name ?? null,
+    originalAmountCents: decimalToCents(row.original_amount),
+    originalCurrency: row.original_currency,
     amountRsd: decimalToCents(row.amount_rsd),
     amountUsd: decimalToCents(row.amount_usd),
-    amountEur: decimalToCents(row.amount_eur),
+    amountEur:
+      row.amount_eur === null ? null : decimalToCents(row.amount_eur),
   }));
 }
 

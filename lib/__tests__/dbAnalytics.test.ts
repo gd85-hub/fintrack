@@ -64,6 +64,7 @@ function mockOrderedQuery(data: unknown[]) {
     firstOrder,
     gte,
     lte,
+    select,
     secondOrder,
   };
 }
@@ -395,11 +396,14 @@ describe('listExpensesForAnalytics', () => {
         description: '',
         category_id: 'food',
         merchant_id: 'maxi',
+        original_amount: '100.10',
+        original_currency: 'RSD',
         amount_rsd: '100.10',
         amount_usd: '1.00',
         amount_eur: '0.90',
         category: {
           emoji: '🛒',
+          group: 'Еда',
           name: 'Продукты',
           type: 'variable',
         },
@@ -416,10 +420,13 @@ describe('listExpensesForAnalytics', () => {
         description: '',
         categoryId: 'food',
         categoryEmoji: '🛒',
+        categoryGroup: 'Еда',
         categoryName: 'Продукты',
         categoryType: 'variable',
         merchantId: 'maxi',
         merchantName: 'Maxi',
+        originalAmountCents: 10010,
+        originalCurrency: 'RSD',
         amountRsd: 10010,
         amountUsd: 100,
         amountEur: 90,
@@ -442,11 +449,14 @@ describe('listExpensesForAnalytics', () => {
         description: '',
         category_id: 'food',
         merchant_id: 'maxi',
+        original_amount: '100.10',
+        original_currency: 'RSD',
         amount_rsd: '100.10',
         amount_usd: '1.00',
         amount_eur: '0.90',
         category: {
           emoji: '🛒',
+          group: 'Еда',
           name: 'Продукты',
           type: 'variable',
         },
@@ -481,6 +491,41 @@ describe('listExpensesForAnalytics', () => {
       ascending: false,
     });
   });
+
+  test('preserves a missing EUR anchor as null', async () => {
+    const query = mockOrderedQuery([
+      {
+        id: 'legacy-exotic',
+        occurred_on: '2026-07-29',
+        created_at: '2026-07-29T15:45:00Z',
+        description: 'Legacy',
+        category_id: 'other',
+        merchant_id: null,
+        original_amount: '100.00',
+        original_currency: 'TMT',
+        amount_rsd: null,
+        amount_usd: null,
+        amount_eur: null,
+        category: {
+          emoji: '•',
+          group: 'Прочее',
+          name: 'Прочее',
+          type: 'variable',
+        },
+        merchant: null,
+      },
+    ]);
+    fromMock.mockReturnValue(query.client);
+
+    const result = await listExpensesForAnalytics('2026-07');
+
+    expect(result[0]?.amountEur).toBeNull();
+    expect(result[0]?.originalAmountCents).toBe(10000);
+    expect(result[0]?.originalCurrency).toBe('TMT');
+    expect(query.select).toHaveBeenCalledWith(
+      expect.stringContaining('original_amount,original_currency'),
+    );
+  });
 });
 
 describe('buildFixedVariableBreakdown', () => {
@@ -493,10 +538,13 @@ describe('buildFixedVariableBreakdown', () => {
         description: 'Аренда',
         categoryId: 'rent',
         categoryEmoji: '🏠',
+        categoryGroup: 'Жильё',
         categoryName: 'Аренда',
         categoryType: 'fixed',
         merchantId: null,
         merchantName: null,
+        originalAmountCents: 7000000,
+        originalCurrency: 'RSD',
         amountRsd: 7000000,
         amountUsd: 63636,
         amountEur: 59701,
@@ -508,10 +556,13 @@ describe('buildFixedVariableBreakdown', () => {
         description: 'Продукты',
         categoryId: 'groceries',
         categoryEmoji: '🛒',
+        categoryGroup: 'Еда',
         categoryName: 'Продукты',
         categoryType: 'variable',
         merchantId: 'maxi',
         merchantName: 'Maxi',
+        originalAmountCents: 50000,
+        originalCurrency: 'RSD',
         amountRsd: 50000,
         amountUsd: 455,
         amountEur: 426,
@@ -523,10 +574,13 @@ describe('buildFixedVariableBreakdown', () => {
         description: 'Продукты',
         categoryId: 'groceries',
         categoryEmoji: '🛒',
+        categoryGroup: 'Еда',
         categoryName: 'Продукты',
         categoryType: 'variable',
         merchantId: 'maxi',
         merchantName: 'Maxi',
+        originalAmountCents: 75000,
+        originalCurrency: 'RSD',
         amountRsd: 75000,
         amountUsd: 682,
         amountEur: 639,
@@ -546,7 +600,7 @@ describe('buildFixedVariableBreakdown', () => {
       (totals, expense) => ({
         totalRsd: totals.totalRsd + expense.amountRsd,
         totalUsd: totals.totalUsd + expense.amountUsd,
-        totalEur: totals.totalEur + expense.amountEur,
+        totalEur: totals.totalEur + (expense.amountEur ?? 0),
       }),
       { totalRsd: 0, totalUsd: 0, totalEur: 0 },
     );

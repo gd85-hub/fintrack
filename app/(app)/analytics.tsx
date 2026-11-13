@@ -4,6 +4,7 @@ import {
   Children,
   type ReactNode,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 
 import { CurrencySelector } from '../../components/CurrencySelector';
+import { AnalyticsCurrencyPicker } from '../../components/AnalyticsCurrencyPicker';
 import { ExpenseMiniRow } from '../../components/ExpenseMiniRow';
 import { LoadingScreen } from '../../components/LoadingScreen';
 import { PeriodSelector } from '../../components/PeriodSelector';
@@ -24,6 +26,17 @@ import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useDisplayCurrency } from '../../contexts/DisplayCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
+import {
+  displayAnalyticsExpenseAmount,
+  displayCategoryBreakdown,
+  displayFixedVariableBreakdown,
+  displayMerchantBreakdown,
+} from '../../lib/analyticsDisplay';
+import {
+  fetchAnchorRatesForRange,
+  pickRateOnOrBefore,
+  type AnchorRate,
+} from '../../lib/anchorRates';
 import {
   type AnalyticsExpense,
   buildFixedVariableBreakdown,
@@ -38,9 +51,13 @@ import {
   type MonthlyCategoryBreakdown,
   type MonthlyMerchantBreakdown,
 } from '../../lib/db';
+import { ANCHOR_DISPLAY } from '../../lib/features';
+import { ANCHOR_CURRENCY } from '../../lib/fxDisplay';
+import { SUPPORTED_HOME_CURRENCIES } from '../../lib/homeCurrency';
+import type { RateLookup } from '../../lib/homeDisplay';
 import { localizeCategoryName } from '../../lib/catalog';
 import { todayLocalISO } from '../../lib/dates';
-import { type Currency, formatMoney } from '../../lib/money';
+import { type Currency, formatMoney, isCurrency } from '../../lib/money';
 import {
   type Period,
   periodLabel,
@@ -57,24 +74,24 @@ type AnalyticsTab = 'categories' | 'merchants' | 'fixedVariable';
 type SortMode = 'amount' | 'count' | 'name';
 
 type RankedCategory = {
-  amount: number;
+  amount: number | null;
   category: CategoryBreakdown;
   color: string;
   share: number;
 };
 
 type RankedMerchant = {
-  amount: number;
+  amount: number | null;
   color: string;
   merchant: MerchantBreakdown;
   share: number;
 };
 
 type RankedFixedVariableBucket = {
-  amount: number;
+  amount: number | null;
   bucket: FixedVariableBucketBreakdown;
   categories: Array<{
-    amount: number;
+    amount: number | null;
     category: FixedVariableCategoryBreakdown;
   }>;
   color: string;
@@ -87,6 +104,11 @@ type CurrencyTotals = {
   totalRsd: number;
   totalUsd: number;
   totalEur: number;
+};
+
+type AnchorRateCache = {
+  key: string;
+  rates: AnchorRate[];
 };
 
 const analyticsTabs = [
@@ -150,16 +172,30 @@ function amountForExpense(
   }
 
   if (currency === 'EUR') {
-    return expense.amountEur;
+    return expense.amountEur ?? 0;
   }
 
   return expense.amountRsd;
 }
 
+function formatAnalyticsAmount(amount: number | null): string {
+  return amount === null ? '—' : formatMoney(amount);
+}
+
+function formatAnalyticsAverage(
+  amount: number | null,
+  count: number,
+): string {
+  return amount === null
+    ? '—'
+    : formatMoney(Math.round(amount / Math.max(count, 1)));
+}
+
 type ExpenseDetailsProps = {
-  currency: Currency;
+  currency: string;
   expenses: AnalyticsExpense[];
   onShowMore: () => void;
+  rateAt: RateLookup;
   visibleCount: number;
 };
 
@@ -283,6 +319,7 @@ function ExpenseDetails({
   currency,
   expenses,
   onShowMore,
+  rateAt,
   visibleCount,
 }: ExpenseDetailsProps) {
   const { t } = useLanguage();
@@ -292,19 +329,35 @@ function ExpenseDetails({
 
   return (
     <DrilldownPanel>
-      {visibleExpenses.map((expense) => (
-        <ExpenseMiniRow
-          amountCents={amountForExpense(expense, currency)}
-          currency={currency}
-          date={expense.occurredOn}
-          description={
-            expense.description.trim() ||
-            localizeCategoryName(expense.categoryName, t)
-          }
-          key={expense.id}
-          merchantName={expense.merchantName}
-        />
-      ))}
+      {visibleExpenses.map((expense) => {
+        const anchorAmount = ANCHOR_DISPLAY
+          ? displayAnalyticsExpenseAmount(expense, currency, rateAt)
+          : null;
+        const amountCents = ANCHOR_DISPLAY
+          ? anchorAmount ?? expense.originalAmountCents
+          : amountForExpense(
+              expense,
+              isCurrency(currency) ? currency : 'RSD',
+            );
+        const amountCurrency =
+          ANCHOR_DISPLAY && anchorAmount === null
+            ? expense.originalCurrency
+            : currency;
+
+        return (
+          <ExpenseMiniRow
+            amountCents={amountCents}
+            currency={amountCurrency}
+            date={expense.occurredOn}
+            description={
+              expense.description.trim() ||
+              localizeCategoryName(expense.categoryName, t)
+            }
+            key={expense.id}
+            merchantName={expense.merchantName}
+          />
+        );
+      })}
       {remaining > 0 ? (
         <Pressable
           accessibilityLabel={t('analytics.showMoreA11y', {
@@ -351,6 +404,8 @@ export default function AnalyticsScreen() {
   const [analyticsExpenses, setAnalyticsExpenses] = useState<
     AnalyticsExpense[]
   >([]);
+  const [analyticsExpenseRangeKey, setAnalyticsExpenseRangeKey] =
+    useState('');
   const [expandedExpenseTypes, setExpandedExpenseTypes] = useState<
     Set<ExpenseCategoryType>
   >(() => new Set());
@@ -363,6 +418,10 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [retryKey, setRetryKey] = useState(0);
+  const [anchorRateCache, setAnchorRateCache] = useState<AnchorRateCache>({
+    key: '',
+    rates: [],
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -371,29 +430,38 @@ export default function AnalyticsScreen() {
       setBreakdown(null);
       setMerchantBreakdown(null);
       setAnalyticsExpenses([]);
+      setAnalyticsExpenseRangeKey('');
       setExpandedExpenseTypes(new Set());
       setCategoryVisibleCounts({});
       setMerchantVisibleCounts({});
       setErrorMessage('');
 
-      void Promise.all([
-        categoryBreakdownByRange(fromISO, toISO),
-        merchantBreakdownByRange(fromISO, toISO),
-        listExpensesForRange(fromISO, toISO),
-      ])
-        .then(
-          ([
-            loadedBreakdown,
-            loadedMerchantBreakdown,
-            loadedExpenses,
-          ]) => {
-            if (active) {
-              setBreakdown(loadedBreakdown);
-              setMerchantBreakdown(loadedMerchantBreakdown);
-              setAnalyticsExpenses(loadedExpenses);
-            }
-          },
-        )
+      void (async () => {
+        if (ANCHOR_DISPLAY) {
+          const loadedExpenses = await listExpensesForRange(fromISO, toISO);
+          if (active) {
+            setAnalyticsExpenses(loadedExpenses);
+            setAnalyticsExpenseRangeKey(`${fromISO}:${toISO}`);
+          }
+          return;
+        }
+
+        const [
+          loadedBreakdown,
+          loadedMerchantBreakdown,
+          loadedExpenses,
+        ] = await Promise.all([
+          categoryBreakdownByRange(fromISO, toISO),
+          merchantBreakdownByRange(fromISO, toISO),
+          listExpensesForRange(fromISO, toISO),
+        ]);
+        if (active) {
+          setBreakdown(loadedBreakdown);
+          setMerchantBreakdown(loadedMerchantBreakdown);
+          setAnalyticsExpenses(loadedExpenses);
+          setAnalyticsExpenseRangeKey(`${fromISO}:${toISO}`);
+        }
+      })()
         .catch((error: unknown) => {
           console.error('Unable to load category analytics:', error);
           if (active) {
@@ -412,11 +480,86 @@ export default function AnalyticsScreen() {
     }, [fromISO, retryKey, toISO]),
   );
 
-  const monthTotal = breakdown
-    ? amountForCurrency(breakdown, displayCurrency)
-    : 0;
+  const anchorRateKey = `${fromISO}:${toISO}:${displayCurrency}`;
+  const analyticsRangeKey = `${fromISO}:${toISO}`;
+  const needsAnchorRates =
+    ANCHOR_DISPLAY &&
+    analyticsExpenseRangeKey === analyticsRangeKey &&
+    displayCurrency !== ANCHOR_CURRENCY &&
+    analyticsExpenses.some(
+      (expense) =>
+        expense.amountEur !== null &&
+        expense.originalCurrency.trim().toUpperCase() !== displayCurrency,
+    );
+
+  useEffect(() => {
+    if (!needsAnchorRates) {
+      return;
+    }
+
+    let active = true;
+    setAnchorRateCache({ key: '', rates: [] });
+
+    void fetchAnchorRatesForRange(displayCurrency, fromISO, toISO)
+      .then((rates) => {
+        if (active) {
+          setAnchorRateCache({ key: anchorRateKey, rates });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load analytics anchor FX rates:', error);
+        if (active) {
+          setAnchorRateCache({ key: anchorRateKey, rates: [] });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [anchorRateKey, displayCurrency, fromISO, needsAnchorRates, toISO]);
+
+  const rateAt = useMemo<RateLookup>(() => {
+    if (
+      displayCurrency === ANCHOR_CURRENCY ||
+      anchorRateCache.key !== anchorRateKey
+    ) {
+      return () => null;
+    }
+
+    return (dateISO) =>
+      pickRateOnOrBefore(
+        anchorRateCache.rates,
+        displayCurrency,
+        dateISO,
+      )?.ratePerEur ?? null;
+  }, [anchorRateCache, anchorRateKey, displayCurrency]);
+  const analyticsLoading =
+    loading ||
+    (ANCHOR_DISPLAY &&
+      needsAnchorRates &&
+      anchorRateCache.key !== anchorRateKey);
+
+  const legacyDisplayCurrency: Currency = isCurrency(displayCurrency)
+    ? displayCurrency
+    : 'RSD';
+  const anchorCategoryData = useMemo(
+    () =>
+      ANCHOR_DISPLAY
+        ? displayCategoryBreakdown(
+            analyticsExpenses,
+            displayCurrency,
+            rateAt,
+          )
+        : null,
+    [analyticsExpenses, displayCurrency, rateAt],
+  );
+  const monthTotal = ANCHOR_DISPLAY
+    ? anchorCategoryData?.total ?? null
+    : breakdown
+      ? amountForCurrency(breakdown, legacyDisplayCurrency)
+      : 0;
   const spendingPace = useMemo(() => {
-    if (monthTotal <= 0) {
+    if (monthTotal === null || monthTotal <= 0) {
       return null;
     }
 
@@ -445,21 +588,44 @@ export default function AnalyticsScreen() {
     };
   }, [fromISO, monthTotal, period.kind, toISO]);
   const rankedCategories = useMemo<RankedCategory[]>(() => {
-    if (!breakdown || monthTotal <= 0) {
+    if (
+      ANCHOR_DISPLAY
+        ? !anchorCategoryData
+        : !breakdown || monthTotal === null || monthTotal <= 0
+    ) {
       return [];
     }
 
-    return breakdown.categories
-      .map((category) => ({
-        amount: amountForCurrency(category, displayCurrency),
-        category,
-      }))
-      .filter(({ amount }) => amount > 0)
+    const rows = ANCHOR_DISPLAY
+      ? (anchorCategoryData?.categories ?? []).map((category) => ({
+          amount: category.amount,
+          category: {
+            categoryId: category.categoryId,
+            count: category.count,
+            emoji: category.emoji,
+            group: category.group,
+            name: category.name,
+            totalEur: 0,
+            totalRsd: 0,
+            totalUsd: 0,
+          },
+        }))
+      : (breakdown?.categories ?? []).map((category) => ({
+          amount: amountForCurrency(category, legacyDisplayCurrency),
+          category,
+        }));
+
+    return rows
+      .filter(({ amount }) =>
+        ANCHOR_DISPLAY
+          ? amount === null || amount > 0
+          : (amount ?? 0) > 0,
+      )
       .sort((left, right) => {
         if (sortMode === 'count') {
           return (
             right.category.count - left.category.count ||
-            right.amount - left.amount
+            (right.amount ?? -1) - (left.amount ?? -1)
           );
         }
 
@@ -469,7 +635,7 @@ export default function AnalyticsScreen() {
           return leftName.localeCompare(rightName, locale);
         }
 
-        return right.amount - left.amount;
+        return (right.amount ?? -1) - (left.amount ?? -1);
       })
       .map((category, index) => ({
         ...category,
@@ -477,36 +643,74 @@ export default function AnalyticsScreen() {
           index < topBreakdownCount
             ? colors.data.categorical[index] ?? colors.data.muted
             : colors.data.muted,
-        share: (category.amount / monthTotal) * 100,
+        share:
+          category.amount !== null && monthTotal !== null && monthTotal > 0
+            ? (category.amount / monthTotal) * 100
+            : 0,
       }));
   }, [
+    anchorCategoryData,
     breakdown,
     colors.data,
-    displayCurrency,
+    legacyDisplayCurrency,
     locale,
     monthTotal,
     sortMode,
     t,
   ]);
-  const merchantTotal = merchantBreakdown
-    ? amountForCurrency(merchantBreakdown, displayCurrency)
-    : 0;
+  const anchorMerchantData = useMemo(
+    () =>
+      ANCHOR_DISPLAY
+        ? displayMerchantBreakdown(
+            analyticsExpenses,
+            displayCurrency,
+            rateAt,
+          )
+        : null,
+    [analyticsExpenses, displayCurrency, rateAt],
+  );
+  const merchantTotal = ANCHOR_DISPLAY
+    ? anchorMerchantData?.total ?? null
+    : merchantBreakdown
+      ? amountForCurrency(merchantBreakdown, legacyDisplayCurrency)
+      : 0;
   const rankedMerchants = useMemo<RankedMerchant[]>(() => {
-    if (!merchantBreakdown || merchantTotal <= 0) {
+    if (
+      ANCHOR_DISPLAY
+        ? !anchorMerchantData
+        : !merchantBreakdown || merchantTotal === null || merchantTotal <= 0
+    ) {
       return [];
     }
 
-    return merchantBreakdown.merchants
-      .map((merchant) => ({
-        amount: amountForCurrency(merchant, displayCurrency),
-        merchant,
-      }))
-      .filter(({ amount }) => amount > 0)
+    const rows = ANCHOR_DISPLAY
+      ? (anchorMerchantData?.merchants ?? []).map((merchant) => ({
+          amount: merchant.amount,
+          merchant: {
+            count: merchant.count,
+            merchantId: merchant.merchantId,
+            name: merchant.name,
+            totalEur: 0,
+            totalRsd: 0,
+            totalUsd: 0,
+          },
+        }))
+      : (merchantBreakdown?.merchants ?? []).map((merchant) => ({
+          amount: amountForCurrency(merchant, legacyDisplayCurrency),
+          merchant,
+        }));
+
+    return rows
+      .filter(({ amount }) =>
+        ANCHOR_DISPLAY
+          ? amount === null || amount > 0
+          : (amount ?? 0) > 0,
+      )
       .sort((left, right) => {
         if (sortMode === 'count') {
           return (
             right.merchant.count - left.merchant.count ||
-            right.amount - left.amount
+            (right.amount ?? -1) - (left.amount ?? -1)
           );
         }
 
@@ -527,7 +731,7 @@ export default function AnalyticsScreen() {
           return leftName.localeCompare(rightName, locale);
         }
 
-        return right.amount - left.amount;
+        return (right.amount ?? -1) - (left.amount ?? -1);
       })
       .map((merchant, index) => ({
         ...merchant,
@@ -535,11 +739,17 @@ export default function AnalyticsScreen() {
           index < topBreakdownCount
             ? colors.data.categorical[index] ?? colors.data.muted
             : colors.data.muted,
-        share: (merchant.amount / merchantTotal) * 100,
+        share:
+          merchant.amount !== null &&
+          merchantTotal !== null &&
+          merchantTotal > 0
+            ? (merchant.amount / merchantTotal) * 100
+            : 0,
       }));
   }, [
+    anchorMerchantData,
     colors.data,
-    displayCurrency,
+    legacyDisplayCurrency,
     locale,
     merchantBreakdown,
     merchantTotal,
@@ -550,17 +760,58 @@ export default function AnalyticsScreen() {
     () => buildFixedVariableBreakdown(analyticsExpenses),
     [analyticsExpenses],
   );
-  const fixedVariableTotal = amountForCurrency(
-    fixedVariableBreakdown,
-    displayCurrency,
+  const anchorFixedVariableData = useMemo(
+    () =>
+      ANCHOR_DISPLAY
+        ? displayFixedVariableBreakdown(
+            analyticsExpenses,
+            displayCurrency,
+            rateAt,
+          )
+        : null,
+    [analyticsExpenses, displayCurrency, rateAt],
   );
+  const fixedVariableTotal = ANCHOR_DISPLAY
+    ? anchorFixedVariableData?.total ?? null
+    : amountForCurrency(fixedVariableBreakdown, legacyDisplayCurrency);
   const rankedFixedVariableBuckets = useMemo<
     RankedFixedVariableBucket[]
   >(
-    () =>
-      fixedVariableBreakdown.buckets.map((bucket) => {
+    () => {
+      const buckets = ANCHOR_DISPLAY
+        ? (anchorFixedVariableData?.buckets ?? []).map((bucket) => ({
+            amount: bucket.amount,
+            bucket: {
+              categories: bucket.categories.map((category) => ({
+                categoryId: category.categoryId,
+                count: category.count,
+                emoji: category.emoji,
+                name: category.name,
+                totalEur: 0,
+                totalRsd: 0,
+                totalUsd: 0,
+              })),
+              count: bucket.count,
+              totalEur: 0,
+              totalRsd: 0,
+              totalUsd: 0,
+              type: bucket.type,
+            },
+            categoryAmounts: new Map(
+              bucket.categories.map((category) => [
+                category.categoryId,
+                category.amount,
+              ]),
+            ),
+          }))
+        : fixedVariableBreakdown.buckets.map((bucket) => ({
+            amount: amountForCurrency(bucket, legacyDisplayCurrency),
+            bucket,
+            categoryAmounts: null,
+          }));
+
+      return buckets.map(({ amount, bucket, categoryAmounts }) => {
         const presentation = fixedVariablePresentation[bucket.type];
-        const amount = amountForCurrency(bucket, displayCurrency);
         const color =
           bucket.type === 'fixed'
             ? colors.data.categorical[2]
@@ -572,18 +823,32 @@ export default function AnalyticsScreen() {
           color,
           categories: bucket.categories
             .map((category) => ({
-              amount: amountForCurrency(category, displayCurrency),
+              amount: ANCHOR_DISPLAY
+                ? categoryAmounts?.get(category.categoryId) ?? null
+                : amountForCurrency(category, legacyDisplayCurrency),
               category,
             }))
-            .sort((left, right) => right.amount - left.amount),
+            .sort(
+              (left, right) =>
+                (right.amount ?? -1) - (left.amount ?? -1),
+            ),
           ...presentation,
           share:
+            amount !== null &&
+            fixedVariableTotal !== null &&
             fixedVariableTotal > 0
               ? (amount / fixedVariableTotal) * 100
               : 0,
         };
-      }),
-    [colors.data, displayCurrency, fixedVariableBreakdown, fixedVariableTotal],
+      });
+    },
+    [
+      anchorFixedVariableData,
+      colors.data,
+      fixedVariableBreakdown,
+      fixedVariableTotal,
+      legacyDisplayCurrency,
+    ],
   );
   const { expensesByCategory, expensesByMerchant } = useMemo(() => {
     const categoryBuckets = new Map<string, AnalyticsExpense[]>();
@@ -621,9 +886,16 @@ export default function AnalyticsScreen() {
       return null;
     }
 
-    return remainder.reduce(
+    return remainder.reduce<{
+      amount: number | null;
+      count: number;
+      share: number;
+    }>(
       (summary, row) => ({
-        amount: summary.amount + row.amount,
+        amount:
+          summary.amount === null || row.amount === null
+            ? null
+            : summary.amount + row.amount,
         count: summary.count + row.category.count,
         share: summary.share + row.share,
       }),
@@ -637,9 +909,16 @@ export default function AnalyticsScreen() {
       return null;
     }
 
-    return remainder.reduce(
+    return remainder.reduce<{
+      amount: number | null;
+      count: number;
+      share: number;
+    }>(
       (summary, row) => ({
-        amount: summary.amount + row.amount,
+        amount:
+          summary.amount === null || row.amount === null
+            ? null
+            : summary.amount + row.amount,
         count: summary.count + row.merchant.count,
         share: summary.share + row.share,
       }),
@@ -647,42 +926,54 @@ export default function AnalyticsScreen() {
     );
   }, [rankedMerchants]);
   const categoryShareSegments = useMemo(
-    () => [
-      ...topCategories.map(({ amount, category, color }) => ({
-        id: category.categoryId,
-        amount,
-        color,
-      })),
-      ...(otherCategories
-        ? [
-            {
-              id: 'category-other',
-              amount: otherCategories.amount,
-              color: colors.data.muted,
-            },
-          ]
-        : []),
-    ],
-    [colors.data.muted, otherCategories, topCategories],
+    () =>
+      ANCHOR_DISPLAY && monthTotal === null
+        ? []
+        : [
+            ...topCategories.flatMap(({ amount, category, color }) =>
+              amount === null
+                ? []
+                : [{ id: category.categoryId, amount, color }],
+            ),
+            ...(otherCategories && otherCategories.amount !== null
+              ? [
+                  {
+                    id: 'category-other',
+                    amount: otherCategories.amount,
+                    color: colors.data.muted,
+                  },
+                ]
+              : []),
+          ],
+    [colors.data.muted, monthTotal, otherCategories, topCategories],
   );
   const merchantShareSegments = useMemo(
-    () => [
-      ...topMerchants.map(({ amount, color, merchant }) => ({
-        id: merchant.merchantId ?? unknownMerchantKey,
-        amount,
-        color,
-      })),
-      ...(otherMerchants
-        ? [
-            {
-              id: 'merchant-other',
-              amount: otherMerchants.amount,
-              color: colors.data.muted,
-            },
-          ]
-        : []),
-    ],
-    [colors.data.muted, otherMerchants, topMerchants],
+    () =>
+      ANCHOR_DISPLAY && merchantTotal === null
+        ? []
+        : [
+            ...topMerchants.flatMap(({ amount, color, merchant }) =>
+              amount === null
+                ? []
+                : [
+                    {
+                      id: merchant.merchantId ?? unknownMerchantKey,
+                      amount,
+                      color,
+                    },
+                  ],
+            ),
+            ...(otherMerchants && otherMerchants.amount !== null
+              ? [
+                  {
+                    id: 'merchant-other',
+                    amount: otherMerchants.amount,
+                    color: colors.data.muted,
+                  },
+                ]
+              : []),
+          ],
+    [colors.data.muted, merchantTotal, otherMerchants, topMerchants],
   );
   const visibleCategories = showAllCategories
     ? rankedCategories
@@ -809,18 +1100,27 @@ export default function AnalyticsScreen() {
           />
         </Pressable>
 
-        <CurrencySelector
-          accessibilityLabel={t('analytics.currencyA11y')}
-          onChange={setDisplayCurrency}
-          value={displayCurrency}
-        />
+        {ANCHOR_DISPLAY ? (
+          <AnalyticsCurrencyPicker
+            accessibilityLabel={t('analytics.currencyA11y')}
+            onChange={setDisplayCurrency}
+            options={SUPPORTED_HOME_CURRENCIES}
+            value={displayCurrency}
+          />
+        ) : (
+          <CurrencySelector
+            accessibilityLabel={t('analytics.currencyA11y')}
+            onChange={setDisplayCurrency}
+            value={legacyDisplayCurrency}
+          />
+        )}
 
         <View style={styles.totalBlock}>
           <Text style={styles.totalLabel}>{t('analytics.periodTotal')}</Text>
           <Text style={styles.monthTotal}>
-            {formatMoney(monthTotal)} {displayCurrency}
+            {formatAnalyticsAmount(monthTotal)} {displayCurrency}
           </Text>
-          {!loading && !errorMessage && spendingPace ? (
+          {!analyticsLoading && !errorMessage && spendingPace ? (
             <Text numberOfLines={1} style={styles.paceLine}>
               {t('analytics.pacePerDay', {
                 amount: formatMoney(Math.round(spendingPace.dailyAverage)),
@@ -848,15 +1148,15 @@ export default function AnalyticsScreen() {
           />
         ) : null}
 
-        {loading ? <LoadingScreen compact /> : null}
+        {analyticsLoading ? <LoadingScreen compact /> : null}
 
-        {!loading && !errorMessage && rankedCategories.length === 0 ? (
+        {!analyticsLoading && !errorMessage && rankedCategories.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>{t('analytics.empty')}</Text>
           </View>
         ) : null}
 
-        {!loading && !errorMessage && rankedCategories.length > 0 ? (
+        {!analyticsLoading && !errorMessage && rankedCategories.length > 0 ? (
           <>
             <TypeTabs onChange={handleTabChange} value={activeTab} />
 
@@ -889,7 +1189,7 @@ export default function AnalyticsScreen() {
                         <Pressable
                           accessibilityLabel={t('analytics.sliceA11y', {
                             name: localizeCategoryName(category.name, t),
-                            amount: formatMoney(amount),
+                            amount: formatAnalyticsAmount(amount),
                             currency: displayCurrency,
                             share: formatShare(share),
                             count: category.count,
@@ -922,16 +1222,15 @@ export default function AnalyticsScreen() {
                               {t('analytics.shareOpsAvg', {
                                 share: formatShare(share),
                                 count: category.count,
-                                avg: formatMoney(
-                                  Math.round(
-                                    amount / Math.max(category.count, 1),
-                                  ),
+                                avg: formatAnalyticsAverage(
+                                  amount,
+                                  category.count,
                                 ),
                               })}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
-                            {formatMoney(amount)} {displayCurrency}
+                            {formatAnalyticsAmount(amount)} {displayCurrency}
                           </Text>
                           <Text
                             style={[
@@ -950,6 +1249,7 @@ export default function AnalyticsScreen() {
                             onShowMore={() =>
                               showMoreCategory(category.categoryId)
                             }
+                            rateAt={rateAt}
                             visibleCount={visibleCount}
                           />
                         ) : null}
@@ -962,7 +1262,7 @@ export default function AnalyticsScreen() {
                     accessible
                     accessibilityLabel={t('analytics.sliceA11y', {
                       name: t('analytics.otherCategories'),
-                      amount: formatMoney(otherCategories.amount),
+                      amount: formatAnalyticsAmount(otherCategories.amount),
                       currency: displayCurrency,
                       share: formatShare(otherCategories.share),
                       count: otherCategories.count,
@@ -988,17 +1288,15 @@ export default function AnalyticsScreen() {
                           {t('analytics.shareOpsAvg', {
                             share: formatShare(otherCategories.share),
                             count: otherCategories.count,
-                            avg: formatMoney(
-                              Math.round(
-                                otherCategories.amount /
-                                  Math.max(otherCategories.count, 1),
-                              ),
+                            avg: formatAnalyticsAverage(
+                              otherCategories.amount,
+                              otherCategories.count,
                             ),
                           })}
                         </Text>
                       </View>
                       <Text style={styles.categoryAmount}>
-                        {formatMoney(otherCategories.amount)}{' '}
+                        {formatAnalyticsAmount(otherCategories.amount)}{' '}
                         {displayCurrency}
                       </Text>
                     </View>
@@ -1058,7 +1356,7 @@ export default function AnalyticsScreen() {
                         <Pressable
                           accessibilityLabel={t('analytics.sliceA11y', {
                             name: merchant.name ?? t('analytics.noPlace'),
-                            amount: formatMoney(amount),
+                            amount: formatAnalyticsAmount(amount),
                             currency: displayCurrency,
                             share: formatShare(share),
                             count: merchant.count,
@@ -1090,16 +1388,15 @@ export default function AnalyticsScreen() {
                               {t('analytics.shareOpsAvg', {
                                 share: formatShare(share),
                                 count: merchant.count,
-                                avg: formatMoney(
-                                  Math.round(
-                                    amount / Math.max(merchant.count, 1),
-                                  ),
+                                avg: formatAnalyticsAverage(
+                                  amount,
+                                  merchant.count,
                                 ),
                               })}
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
-                            {formatMoney(amount)} {displayCurrency}
+                            {formatAnalyticsAmount(amount)} {displayCurrency}
                           </Text>
                           <Text
                             style={[
@@ -1118,6 +1415,7 @@ export default function AnalyticsScreen() {
                             onShowMore={() =>
                               showMoreMerchant(merchant.merchantId)
                             }
+                            rateAt={rateAt}
                             visibleCount={visibleCount}
                           />
                         ) : null}
@@ -1130,7 +1428,7 @@ export default function AnalyticsScreen() {
                     accessible
                     accessibilityLabel={t('analytics.sliceA11y', {
                       name: t('analytics.otherCategories'),
-                      amount: formatMoney(otherMerchants.amount),
+                      amount: formatAnalyticsAmount(otherMerchants.amount),
                       currency: displayCurrency,
                       share: formatShare(otherMerchants.share),
                       count: otherMerchants.count,
@@ -1155,17 +1453,15 @@ export default function AnalyticsScreen() {
                           {t('analytics.shareOpsAvg', {
                             share: formatShare(otherMerchants.share),
                             count: otherMerchants.count,
-                            avg: formatMoney(
-                              Math.round(
-                                otherMerchants.amount /
-                                  Math.max(otherMerchants.count, 1),
-                              ),
+                            avg: formatAnalyticsAverage(
+                              otherMerchants.amount,
+                              otherMerchants.count,
                             ),
                           })}
                         </Text>
                       </View>
                       <Text style={styles.categoryAmount}>
-                        {formatMoney(otherMerchants.amount)}{' '}
+                        {formatAnalyticsAmount(otherMerchants.amount)}{' '}
                         {displayCurrency}
                       </Text>
                     </View>
@@ -1202,13 +1498,16 @@ export default function AnalyticsScreen() {
               </Text>
               <ShareBar
                 accessibilityLabel={t('analytics.byTypeA11y')}
-                segments={rankedFixedVariableBuckets.map(
-                  ({ amount, bucket, color }) => ({
-                    id: bucket.type,
-                    amount,
-                    color,
-                  }),
-                )}
+                segments={
+                  ANCHOR_DISPLAY && fixedVariableTotal === null
+                    ? []
+                    : rankedFixedVariableBuckets.flatMap(
+                        ({ amount, bucket, color }) =>
+                          amount === null
+                            ? []
+                            : [{ id: bucket.type, amount, color }],
+                      )
+                }
               />
 
               <View style={styles.categoryList}>
@@ -1235,7 +1534,7 @@ export default function AnalyticsScreen() {
                         <Pressable
                           accessibilityLabel={t('analytics.sliceA11y', {
                             name: label,
-                            amount: formatMoney(amount),
+                            amount: formatAnalyticsAmount(amount),
                             currency: displayCurrency,
                             share: formatShare(share),
                             count: bucket.count,
@@ -1272,7 +1571,7 @@ export default function AnalyticsScreen() {
                             </Text>
                           </View>
                           <Text style={styles.categoryAmount}>
-                            {formatMoney(amount)} {displayCurrency}
+                            {formatAnalyticsAmount(amount)} {displayCurrency}
                           </Text>
                           <Text
                             style={[
@@ -1309,7 +1608,7 @@ export default function AnalyticsScreen() {
                                     </Text>
                                   </View>
                                   <Text style={styles.merchantAmount}>
-                                    {formatMoney(categoryAmount)}{' '}
+                                    {formatAnalyticsAmount(categoryAmount)}{' '}
                                     {displayCurrency}
                                   </Text>
                                 </View>
