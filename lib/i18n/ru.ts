@@ -100,6 +100,12 @@ export const ru = {
       hint: 'Показывается на главной рядом с основной суммой',
     },
     off: 'Выкл.',
+    rates: {
+      title: 'Курсы валют',
+      source: 'Источник: Frankfurter (центробанки)',
+      updated: 'Обновлено {{date}}',
+      unavailable: 'Курсы недоступны',
+    },
   },
   common: {
     cancel: 'Отмена',

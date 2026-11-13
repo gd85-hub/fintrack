@@ -9,6 +9,8 @@ export type AnchorRate = {
   ratePerEur: number;
 };
 
+export type LatestAnchorRate = Pick<AnchorRate, 'date' | 'ratePerEur'>;
+
 const ANCHOR_RATE_ERROR_MESSAGE =
   'Курс валюты недоступен. Проверьте соединение и попробуйте ещё раз.';
 
@@ -349,4 +351,68 @@ export async function ensureAnchorRatesForRange(
     toISO,
   );
   return rows;
+}
+
+export async function fetchLatestAnchorRates(
+  quotes: readonly string[],
+  onOrBeforeISO: string,
+): Promise<Map<string, LatestAnchorRate>> {
+  const wanted = [
+    ...new Set(
+      quotes
+        .map((quote) => normalizeCurrencyCode(quote))
+        .filter(
+          (quote): quote is string =>
+            Boolean(quote) && quote !== ANCHOR_CURRENCY,
+        ),
+    ),
+  ];
+  if (wanted.length === 0) {
+    return new Map();
+  }
+
+  const read = async () => {
+    const { data, error } = await supabase
+      .from('fx_rates')
+      .select(RATE_SELECTION)
+      .eq('base_currency', ANCHOR_CURRENCY)
+      .in('quote_currency', wanted)
+      .lte('date', onOrBeforeISO)
+      .order('date', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    const rates = new Map<string, LatestAnchorRate>();
+    for (const row of parseSelectedRows(data)) {
+      if (!rates.has(row.quote)) {
+        rates.set(row.quote, {
+          date: row.date,
+          ratePerEur: row.ratePerEur,
+        });
+      }
+    }
+    return rates;
+  };
+
+  let rates = await read();
+  const missing = wanted.filter((quote) => !rates.has(quote));
+  if (missing.length === 0) {
+    return rates;
+  }
+
+  try {
+    const { error } = await supabase.functions.invoke('sync-rates', {
+      body: { dates: [onOrBeforeISO] },
+    });
+    if (error) {
+      console.error('Unable to sync latest FX rates:', error.message);
+    }
+  } catch (error: unknown) {
+    console.error('Unable to sync latest FX rates:', error);
+  }
+
+  rates = await read();
+  return rates;
 }

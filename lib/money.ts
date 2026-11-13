@@ -157,6 +157,28 @@ export function formatMoney(cents: number): string {
   return `${sign}${groupedWhole},${fraction}`;
 }
 
+export function formatRate(value: number): string {
+  const options: Intl.NumberFormatOptions =
+    value >= 100
+      ? {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 2,
+          useGrouping: false,
+        }
+      : value >= 1
+        ? {
+            maximumFractionDigits: 4,
+            minimumFractionDigits: 2,
+            useGrouping: false,
+          }
+        : {
+            maximumSignificantDigits: 6,
+            useGrouping: false,
+          };
+
+  return new Intl.NumberFormat('ru-RU', options).format(value);
+}
+
 export function centsToDecimal(cents: number): string {
   const sign = cents < 0 ? '-' : '';
   const absoluteCents = Math.abs(cents);

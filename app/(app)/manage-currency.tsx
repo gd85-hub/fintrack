@@ -1,7 +1,8 @@
 import Feather from '@expo/vector-icons/Feather';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,7 +19,13 @@ import { useHomeCurrency } from '../../contexts/HomeCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useSecondaryCurrency } from '../../contexts/SecondaryCurrencyContext';
 import { useColors } from '../../contexts/ThemeContext';
+import {
+  fetchLatestAnchorRates,
+  type LatestAnchorRate,
+} from '../../lib/anchorRates';
+import { formatDayMonth, todayLocalISO } from '../../lib/dates';
 import { SUPPORTED_HOME_CURRENCIES } from '../../lib/homeCurrency';
+import { formatRate } from '../../lib/money';
 import { theme, type Colors } from '../../lib/theme';
 
 type PickerKind = 'primary' | 'secondary' | null;
@@ -67,10 +74,14 @@ export default function ManageCurrencyScreen() {
   const { homeCurrency, setHomeCurrency } = useHomeCurrency();
   const { secondaryCurrency, setSecondaryCurrency } =
     useSecondaryCurrency();
-  const { t } = useLanguage();
+  const { locale, t } = useLanguage();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const [pickerKind, setPickerKind] = useState<PickerKind>(null);
+  const [rates, setRates] = useState<Map<string, LatestAnchorRate>>(
+    () => new Map(),
+  );
+  const [ratesLoading, setRatesLoading] = useState(true);
   const currencyOptions = useMemo<readonly CurrencyPickerOption[]>(
     () =>
       SUPPORTED_HOME_CURRENCIES.map((currency) => ({
@@ -88,6 +99,45 @@ export default function ManageCurrencyScreen() {
   );
   const primaryPickerVisible = pickerKind === 'primary';
   const secondaryPickerVisible = pickerKind === 'secondary';
+  const latestDate = useMemo(
+    () =>
+      [...rates.values()].reduce<string | null>(
+        (latest, rate) =>
+          latest === null || rate.date > latest ? rate.date : latest,
+        null,
+      ),
+    [rates],
+  );
+
+  useEffect(() => {
+    let active = true;
+    setRatesLoading(true);
+
+    void fetchLatestAnchorRates(
+      SUPPORTED_HOME_CURRENCIES,
+      todayLocalISO(),
+    )
+      .then((latestRates) => {
+        if (active) {
+          setRates(latestRates);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load latest FX rates:', error);
+        if (active) {
+          setRates(new Map());
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setRatesLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [homeCurrency]);
 
   return (
     <View style={styles.screen}>
@@ -117,6 +167,64 @@ export default function ManageCurrencyScreen() {
               {t('manageCurrency.secondary.hint')}
             </Text>
           </View>
+        </View>
+
+        <View style={styles.ratesSection}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            {t('manageCurrency.rates.title')}
+          </Text>
+          {ratesLoading ? (
+            <ActivityIndicator color={colors.action.primary.fill} />
+          ) : (
+            <>
+              <View style={styles.ratesList}>
+                {SUPPORTED_HOME_CURRENCIES.filter(
+                  (currency) => currency !== homeCurrency,
+                ).map((currency, index, visibleCurrencies) => {
+                  const primaryRate =
+                    homeCurrency === 'EUR'
+                      ? 1
+                      : rates.get(homeCurrency)?.ratePerEur;
+                  const quoteRate =
+                    currency === 'EUR'
+                      ? 1
+                      : rates.get(currency)?.ratePerEur;
+                  const crossRate =
+                    primaryRate !== undefined &&
+                    primaryRate > 0 &&
+                    quoteRate !== undefined &&
+                    quoteRate > 0
+                      ? primaryRate / quoteRate
+                      : null;
+
+                  return (
+                    <View key={currency}>
+                      <View style={styles.rateRow}>
+                        <Text style={styles.rateText}>
+                          1 {currency} ={' '}
+                          {crossRate === null
+                            ? '—'
+                            : formatRate(crossRate)}{' '}
+                          {homeCurrency}
+                        </Text>
+                      </View>
+                      {index < visibleCurrencies.length - 1 ? (
+                        <View style={styles.separator} />
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={styles.sourceText}>
+                {t('manageCurrency.rates.source')} ·{' '}
+                {latestDate
+                  ? t('manageCurrency.rates.updated', {
+                      date: formatDayMonth(latestDate, locale),
+                    })
+                  : t('manageCurrency.rates.unavailable')}
+              </Text>
+            </>
+          )}
         </View>
       </ScrollView>
 
@@ -148,6 +256,7 @@ const makeStyles = (c: Colors) =>
   StyleSheet.create({
     content: {
       alignSelf: 'center',
+      gap: theme.spacing.lg,
       maxWidth: theme.sizes.maxContentWidth,
       padding: theme.spacing.lg,
       width: '100%',
@@ -188,6 +297,27 @@ const makeStyles = (c: Colors) =>
       fontSize: theme.fontSizes.caption,
       textAlign: 'right',
     },
+    rateRow: {
+      justifyContent: 'center',
+      minHeight: theme.sizes.floatingButton,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.xs,
+    },
+    ratesList: {
+      backgroundColor: c.surface.default,
+      borderColor: c.border.default,
+      borderRadius: theme.radii.card,
+      borderWidth: theme.sizes.border,
+      overflow: 'hidden',
+    },
+    ratesSection: {
+      gap: theme.spacing.xs,
+    },
+    rateText: {
+      color: c.text.primary,
+      fontSize: theme.fontSizes.body,
+      fontVariant: ['tabular-nums'],
+    },
     screen: {
       backgroundColor: c.bg.base,
       flex: 1,
@@ -196,5 +326,17 @@ const makeStyles = (c: Colors) =>
       backgroundColor: c.separatorInset,
       height: theme.sizes.border,
       marginLeft: theme.spacing.md,
+    },
+    sectionTitle: {
+      color: c.text.tertiary,
+      fontSize: theme.fontSizes.caption,
+      fontWeight: '600',
+      paddingHorizontal: theme.spacing.xs,
+      textTransform: 'uppercase',
+    },
+    sourceText: {
+      color: c.text.secondary,
+      fontSize: theme.fontSizes.caption,
+      paddingHorizontal: theme.spacing.xs,
     },
   });

@@ -100,6 +100,12 @@ export const en = {
       hint: 'Shown on Home below the main total',
     },
     off: 'Off',
+    rates: {
+      title: 'Exchange rates',
+      source: 'Source: Frankfurter (central banks)',
+      updated: 'Updated {{date}}',
+      unavailable: 'Rates unavailable',
+    },
   },
   common: {
     cancel: 'Cancel',

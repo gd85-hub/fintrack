@@ -8,6 +8,7 @@ import {
   decimalToCents,
   distributeCents,
   formatMoney,
+  formatRate,
   isCurrency,
   normalizeCurrencyCode,
   parseAmountInput,
@@ -177,6 +178,22 @@ describe('formatMoney', () => {
     expect(formatMoney(100)).toBe('1,00');
     expect(formatMoney(123456789)).toBe('1 234 567,89');
     expect(formatMoney(-2550)).toBe('-25,50');
+  });
+});
+
+describe('formatRate', () => {
+  it('uses adaptive decimal precision with the money decimal separator', () => {
+    expect(formatRate(117.42)).toBe('117,42');
+    expect(formatRate(1.0858)).toBe('1,0858');
+    expect(formatRate(1.2)).toBe('1,20');
+    expect(formatRate(0.0085)).toBe('0,0085');
+  });
+
+  it('keeps small values out of exponential notation', () => {
+    const formatted = formatRate(0.000000123456);
+
+    expect(formatted.toLowerCase()).not.toContain('e');
+    expect(formatted).toBe('0,000000123456');
   });
 });
 

@@ -14,6 +14,7 @@ const {
   AnchorRateUnavailableError,
   anchorRateForExpense,
   ensureAnchorRatesForRange,
+  fetchLatestAnchorRates,
   parseAnchorRows,
   pickRateOnOrBefore,
   resolveAnchorRate,
@@ -39,6 +40,17 @@ function rateQuery(data: unknown[]) {
   const lte = jest.fn(() => ({ order }));
   const quoteEq = jest.fn(() => ({ lte, order }));
   const baseEq = jest.fn(() => ({ eq: quoteEq }));
+  const select = jest.fn(() => ({ eq: baseEq }));
+  return {
+    client: { select } as unknown as ReturnType<typeof supabase.from>,
+  };
+}
+
+function latestRatesQuery(data: unknown[]) {
+  const order = jest.fn(async () => ({ data, error: null }));
+  const lte = jest.fn(() => ({ order }));
+  const quoteIn = jest.fn(() => ({ lte }));
+  const baseEq = jest.fn(() => ({ in: quoteIn }));
   const select = jest.fn(() => ({ eq: baseEq }));
   return {
     client: { select } as unknown as ReturnType<typeof supabase.from>,
@@ -293,5 +305,82 @@ describe('ensureAnchorRatesForRange', () => {
     expect(invokeMock).toHaveBeenCalledWith('sync-rates', {
       body: { dates: ['2026-10-15'] },
     });
+  });
+});
+
+describe('fetchLatestAnchorRates', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    invokeMock.mockReset();
+    invokeMock.mockImplementation(async () => ({ data: null, error: null }));
+  });
+
+  it('returns the newest stored rate per quote without syncing', async () => {
+    fromMock.mockReturnValueOnce(
+      latestRatesQuery([
+        { date: '2026-11-12', quote_currency: 'USD', rate: '1.08' },
+        { date: '2026-11-11', quote_currency: 'RSD', rate: '117.2' },
+        { date: '2026-11-10', quote_currency: 'USD', rate: '1.07' },
+      ]).client,
+    );
+
+    const rates = await fetchLatestAnchorRates(
+      ['USD', 'RSD', 'EUR', ' usd '],
+      '2026-11-13',
+    );
+
+    expect([...rates.entries()]).toEqual([
+      ['USD', { date: '2026-11-12', ratePerEur: 1.08 }],
+      ['RSD', { date: '2026-11-11', ratePerEur: 117.2 }],
+    ]);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('syncs once when a quote is missing and returns the refreshed map', async () => {
+    fromMock
+      .mockReturnValueOnce(
+        latestRatesQuery([
+          { date: '2026-11-12', quote_currency: 'USD', rate: '1.08' },
+        ]).client,
+      )
+      .mockReturnValueOnce(
+        latestRatesQuery([
+          { date: '2026-11-12', quote_currency: 'USD', rate: '1.08' },
+          { date: '2026-11-12', quote_currency: 'RUB', rate: '92.5' },
+        ]).client,
+      );
+
+    const rates = await fetchLatestAnchorRates(
+      ['USD', 'RUB'],
+      '2026-11-13',
+    );
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith('sync-rates', {
+      body: { dates: ['2026-11-13'] },
+    });
+    expect(rates.get('RUB')).toEqual({
+      date: '2026-11-12',
+      ratePerEur: 92.5,
+    });
+  });
+
+  it('returns early for an empty quote list', async () => {
+    await expect(
+      fetchLatestAnchorRates([], '2026-11-13'),
+    ).resolves.toEqual(new Map());
+    expect(fromMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('returns early when the list contains only EUR or invalid codes', async () => {
+    await expect(
+      fetchLatestAnchorRates(
+        ['EUR', ' eur ', 'invalid'],
+        '2026-11-13',
+      ),
+    ).resolves.toEqual(new Map());
+    expect(fromMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 });
