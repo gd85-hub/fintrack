@@ -22,6 +22,7 @@ import { ListRow } from '../../components/ds/ListRow';
 import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useHomeCurrency } from '../../contexts/HomeCurrencyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useSecondaryCurrency } from '../../contexts/SecondaryCurrencyContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
@@ -515,6 +516,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { t, locale } = useLanguage();
   const { homeCurrency, loading: homeCurrencyLoading } = useHomeCurrency();
+  const { secondaryCurrency } = useSecondaryCurrency();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
   const toast = useToast();
@@ -548,6 +550,12 @@ export default function HomeScreen() {
     rates: [],
   });
   const [anchorRatesLoading, setAnchorRatesLoading] = useState(false);
+  const [secondaryRateCache, setSecondaryRateCache] =
+    useState<AnchorRateCache>({
+      key: '',
+      rates: [],
+    });
+  const [secondaryRatesLoading, setSecondaryRatesLoading] = useState(false);
 
   useEffect(() => {
     if (requestedMonth) {
@@ -636,6 +644,73 @@ export default function HomeScreen() {
     needsAnchorRates,
   ]);
 
+  const showSecondaryCurrency =
+    ANCHOR_DISPLAY &&
+    secondaryCurrency !== null &&
+    secondaryCurrency !== homeCurrency;
+  const secondaryRateKey = `${visibleMonth}:${secondaryCurrency ?? 'off'}`;
+  const neededSecondaryRateDates = useMemo(() => {
+    if (!secondaryCurrency) {
+      return [];
+    }
+
+    return [
+      ...new Set(
+        expenses
+          .filter((expense) =>
+            expensesNeedAnchorRate([expense], secondaryCurrency),
+          )
+          .map((expense) => expense.occurredOn),
+      ),
+    ];
+  }, [expenses, secondaryCurrency]);
+  const neededSecondaryRateDatesKey = neededSecondaryRateDates.join(',');
+  const needsSecondaryRates =
+    showSecondaryCurrency &&
+    secondaryCurrency !== ANCHOR_CURRENCY &&
+    neededSecondaryRateDates.length > 0;
+
+  useEffect(() => {
+    if (!needsSecondaryRates || !secondaryCurrency) {
+      setSecondaryRatesLoading(false);
+      return;
+    }
+
+    let active = true;
+    setSecondaryRateCache({ key: '', rates: [] });
+    setSecondaryRatesLoading(true);
+
+    void ensureAnchorRatesForRange(
+      secondaryCurrency,
+      neededSecondaryRateDates,
+    )
+      .then((rates) => {
+        if (active) {
+          setSecondaryRateCache({ key: secondaryRateKey, rates });
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to load secondary Home FX rates:', error);
+        if (active) {
+          setSecondaryRateCache({ key: secondaryRateKey, rates: [] });
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setSecondaryRatesLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    neededSecondaryRateDatesKey,
+    needsSecondaryRates,
+    secondaryCurrency,
+    secondaryRateKey,
+  ]);
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -685,6 +760,22 @@ export default function HomeScreen() {
         dateISO,
       )?.ratePerEur ?? null;
   }, [anchorRateCache, anchorRateKey, homeCurrency]);
+  const secondaryRateAt = useMemo<RateLookup>(() => {
+    if (
+      secondaryCurrency === null ||
+      secondaryCurrency === ANCHOR_CURRENCY ||
+      secondaryRateCache.key !== secondaryRateKey
+    ) {
+      return () => null;
+    }
+
+    return (dateISO) =>
+      pickRateOnOrBefore(
+        secondaryRateCache.rates,
+        secondaryCurrency,
+        dateISO,
+      )?.ratePerEur ?? null;
+  }, [secondaryCurrency, secondaryRateCache, secondaryRateKey]);
   const sections = useMemo(
     () => {
       if (!ANCHOR_DISPLAY) {
@@ -732,6 +823,26 @@ export default function HomeScreen() {
         : null,
     [expenses, homeCurrency, rateAt],
   );
+  const secondaryMonthTotal = useMemo(
+    () =>
+      showSecondaryCurrency && secondaryCurrency
+        ? sumExpenseDisplayAmounts(
+            expenses,
+            secondaryCurrency,
+            secondaryRateAt,
+          )
+        : null,
+    [
+      expenses,
+      secondaryCurrency,
+      secondaryRateAt,
+      showSecondaryCurrency,
+    ],
+  );
+  const secondaryRatesPending =
+    needsSecondaryRates &&
+    (secondaryRatesLoading ||
+      secondaryRateCache.key !== secondaryRateKey);
   const monthName = formatMonthName(visibleMonth, locale);
   const monthPrepositional = formatMonthPrepositional(visibleMonth, locale);
 
@@ -790,6 +901,17 @@ export default function HomeScreen() {
                 <Text numberOfLines={1} style={styles.heroEquivalents}>
                   {`≈ ${formatMoney(monthTotals.eur)} €   ·   ≈ ${formatMoney(monthTotals.usd)} $`}
                 </Text>
+              ) : showSecondaryCurrency ? (
+                secondaryRatesPending ? (
+                  <ActivityIndicator
+                    color={colors.icon.secondary}
+                    size="small"
+                  />
+                ) : secondaryMonthTotal !== null ? (
+                  <Text numberOfLines={1} style={styles.heroEquivalents}>
+                    {formatMoney(secondaryMonthTotal)} {secondaryCurrency}
+                  </Text>
+                ) : null
               ) : null}
             </View>
           </View>
@@ -851,6 +973,10 @@ export default function HomeScreen() {
       needsAttentionExpenses.length,
       needsAttentionOnly,
       purchaseErrorMessage,
+      secondaryCurrency,
+      secondaryMonthTotal,
+      secondaryRatesPending,
+      showSecondaryCurrency,
       colors.icon.primary,
       colors.icon.secondary,
       styles,

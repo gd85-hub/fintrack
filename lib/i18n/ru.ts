@@ -89,6 +89,18 @@ export const ru = {
       versionLabel: 'Версия {{version}}',
     },
   },
+  manageCurrency: {
+    primary: {
+      row: 'Основная валюта',
+      title: 'Основная валюта',
+    },
+    secondary: {
+      row: 'Вторая валюта',
+      title: 'Вторая валюта',
+      hint: 'Показывается на главной рядом с основной суммой',
+    },
+    off: 'Выкл.',
+  },
   common: {
     cancel: 'Отмена',
     delete: 'Удалить',

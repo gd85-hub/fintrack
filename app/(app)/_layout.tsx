@@ -17,13 +17,22 @@ import {
   useHomeCurrency,
 } from '../../contexts/HomeCurrencyContext';
 import { ReceiptDraftProvider } from '../../contexts/ReceiptDraftContext';
+import {
+  SecondaryCurrencyProvider,
+  useSecondaryCurrency,
+} from '../../contexts/SecondaryCurrencyContext';
 
 function AppNavigator() {
   const { loading: displayCurrencyLoading } = useDisplayCurrency();
   const { loading: homeCurrencyLoading } = useHomeCurrency();
+  const { loading: secondaryCurrencyLoading } = useSecondaryCurrency();
   const isDesktopWeb = useIsDesktopWeb();
 
-  if (displayCurrencyLoading || homeCurrencyLoading) {
+  if (
+    displayCurrencyLoading ||
+    homeCurrencyLoading ||
+    secondaryCurrencyLoading
+  ) {
     return <LoadingScreen />;
   }
 
@@ -49,6 +58,7 @@ function AppNavigator() {
         <Tabs.Screen name="merchants" options={{ href: null }} />
         <Tabs.Screen name="categories" options={{ href: null }} />
         <Tabs.Screen name="feedback" options={{ href: null }} />
+        <Tabs.Screen name="manage-currency" options={{ href: null }} />
         <Tabs.Screen name="menu" options={{ href: null }} />
       </Tabs>
     </View>
@@ -69,9 +79,11 @@ export default function AppLayout() {
   return (
     <DisplayCurrencyProvider>
       <HomeCurrencyProvider>
-        <ReceiptDraftProvider>
-          <AppNavigator />
-        </ReceiptDraftProvider>
+        <SecondaryCurrencyProvider>
+          <ReceiptDraftProvider>
+            <AppNavigator />
+          </ReceiptDraftProvider>
+        </SecondaryCurrencyProvider>
       </HomeCurrencyProvider>
     </DisplayCurrencyProvider>
   );

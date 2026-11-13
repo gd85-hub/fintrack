@@ -89,6 +89,18 @@ export const en = {
       versionLabel: 'Version {{version}}',
     },
   },
+  manageCurrency: {
+    primary: {
+      row: 'Primary currency',
+      title: 'Primary currency',
+    },
+    secondary: {
+      row: 'Secondary currency',
+      title: 'Secondary currency',
+      hint: 'Shown on Home below the main total',
+    },
+    off: 'Off',
+  },
   common: {
     cancel: 'Cancel',
     delete: 'Delete',
