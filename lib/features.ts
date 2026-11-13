@@ -11,7 +11,7 @@ export const PASSWORD_RESET_UI = false;
 
 // ANCHOR_DISPLAY: display amounts computed from the frozen EUR anchor
 // (amount_eur) + historical EUR-base rates, instead of the stored
-// amount_rsd/usd/eur triple. Home and analytics are wired behind the flag;
-// keep it false until FX-16c device verification. While false, nothing in
-// production reads EUR-base fx_rates rows.
-export const ANCHOR_DISPLAY = false;
+// amount_rsd/usd/eur triple. Enabled 2026-11-13 after FX-16a/16b wiring;
+// complete on-device verification before tester rollout. Legacy triple is
+// still written in parallel, so false fully reverts display (design §5.5).
+export const ANCHOR_DISPLAY = true;
