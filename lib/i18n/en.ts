@@ -139,6 +139,7 @@ export const en = {
     selectMonth: 'Select month',
     spentIn: 'Spent in {{month}}',
     needsReview: 'Needs review: {{count}}',
+    unconverted: 'Some expenses not converted — no rate ({{count}})',
     errorLoad: "Couldn't load your expenses. Try again.",
     retry: 'Retry',
     emptyTitle: 'No expenses this month',

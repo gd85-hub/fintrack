@@ -1,12 +1,13 @@
 import type { AnalyticsExpense, ExpenseCategoryType } from './db';
 import {
+  aggregateDisplayAmounts,
   displayAmountForExpense,
-  sumExpenseDisplayAmounts,
+  type DisplayAggregate,
   type RateLookup,
 } from './homeDisplay';
 
 export type DisplayCategory = {
-  amount: number | null;
+  amount: number;
   categoryId: string;
   count: number;
   emoji: string;
@@ -16,11 +17,12 @@ export type DisplayCategory = {
 
 export type DisplayCategoryBreakdown = {
   categories: DisplayCategory[];
-  total: number | null;
+  total: number;
+  unavailable: number;
 };
 
 export type DisplayMerchant = {
-  amount: number | null;
+  amount: number;
   count: number;
   merchantId: string | null;
   name: string | null;
@@ -28,11 +30,12 @@ export type DisplayMerchant = {
 
 export type DisplayMerchantBreakdown = {
   merchants: DisplayMerchant[];
-  total: number | null;
+  total: number;
+  unavailable: number;
 };
 
 export type DisplayFixedVariableCategory = {
-  amount: number | null;
+  amount: number;
   categoryId: string;
   count: number;
   emoji: string;
@@ -40,7 +43,7 @@ export type DisplayFixedVariableCategory = {
 };
 
 export type DisplayFixedVariableBucket = {
-  amount: number | null;
+  amount: number;
   categories: DisplayFixedVariableCategory[];
   count: number;
   type: ExpenseCategoryType;
@@ -48,7 +51,8 @@ export type DisplayFixedVariableBucket = {
 
 export type DisplayFixedVariableBreakdown = {
   buckets: DisplayFixedVariableBucket[];
-  total: number | null;
+  total: number;
+  unavailable: number;
 };
 
 function displaySource(expense: AnalyticsExpense) {
@@ -76,8 +80,8 @@ export function displayTotal(
   expenses: readonly AnalyticsExpense[],
   displayCurrency: string,
   rateAt: RateLookup,
-): number | null {
-  return sumExpenseDisplayAmounts(
+): DisplayAggregate {
+  return aggregateDisplayAmounts(
     expenses.map(displaySource),
     displayCurrency,
     rateAt,
@@ -103,16 +107,19 @@ export function displayCategoryBreakdown(
     }
   }
 
+  const total = displayTotal(expenses, displayCurrency, rateAt);
+
   return {
     categories: [...groups.values()].map(({ expenses: rows, first }) => ({
-      amount: displayTotal(rows, displayCurrency, rateAt),
+      amount: displayTotal(rows, displayCurrency, rateAt).cents,
       categoryId: first.categoryId,
       count: rows.length,
       emoji: first.categoryEmoji,
       group: first.categoryGroup,
       name: first.categoryName,
     })),
-    total: displayTotal(expenses, displayCurrency, rateAt),
+    total: total.cents,
+    unavailable: total.unavailable,
   };
 }
 
@@ -136,14 +143,17 @@ export function displayMerchantBreakdown(
     }
   }
 
+  const total = displayTotal(expenses, displayCurrency, rateAt);
+
   return {
     merchants: [...groups.values()].map(({ expenses: rows, first }) => ({
-      amount: displayTotal(rows, displayCurrency, rateAt),
+      amount: displayTotal(rows, displayCurrency, rateAt).cents,
       count: rows.length,
       merchantId: first.merchantId,
       name: first.merchantName,
     })),
-    total: displayTotal(expenses, displayCurrency, rateAt),
+    total: total.cents,
+    unavailable: total.unavailable,
   };
 }
 
@@ -165,7 +175,7 @@ export function displayFixedVariableBreakdown(
     const rows = bucketRows[type];
     const categories = displayCategoryBreakdown(rows, displayCurrency, rateAt);
     return {
-      amount: displayTotal(rows, displayCurrency, rateAt),
+      amount: displayTotal(rows, displayCurrency, rateAt).cents,
       categories: categories.categories.map((category) => ({
         amount: category.amount,
         categoryId: category.categoryId,
@@ -178,8 +188,11 @@ export function displayFixedVariableBreakdown(
     };
   });
 
+  const total = displayTotal(expenses, displayCurrency, rateAt);
+
   return {
     buckets,
-    total: displayTotal(expenses, displayCurrency, rateAt),
+    total: total.cents,
+    unavailable: total.unavailable,
   };
 }

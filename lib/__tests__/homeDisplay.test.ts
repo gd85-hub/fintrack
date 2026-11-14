@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from '@jest/globals';
 
 import {
+  aggregateDisplayAmounts,
   displayAmountForExpense,
   sumExpenseDisplayAmounts,
 } from '../homeDisplay';
@@ -13,6 +14,13 @@ const expense = {
 };
 
 describe('Home anchor display amounts', () => {
+  test('an empty aggregate is zero with no unavailable rows', () => {
+    expect(aggregateDisplayAmounts([], 'RSD', () => null)).toEqual({
+      cents: 0,
+      unavailable: 0,
+    });
+  });
+
   test('passes through original and EUR amounts without looking up a rate', () => {
     const rateAt = jest.fn<(dateISO: string) => number | null>(() => 999);
 
@@ -53,5 +61,43 @@ describe('Home anchor display amounts', () => {
         () => 1.05,
       ),
     ).toBeNull();
+  });
+
+  test('aggregates rounded displayable rows and counts unavailable rows', () => {
+    const rows = [
+      { ...expense, originalCurrency: 'EUR', originalAmountCents: 10 },
+      { ...expense, originalCurrency: 'EUR', originalAmountCents: 10 },
+      { ...expense, originalCurrency: 'EUR', originalAmountCents: 10 },
+      {
+        ...expense,
+        amountEurCents: null,
+        originalAmountCents: 5_000,
+        originalCurrency: 'KZT',
+      },
+    ];
+
+    expect(aggregateDisplayAmounts(rows, 'USD', () => 1.05)).toEqual({
+      cents: 33,
+      unavailable: 1,
+    });
+    expect(Math.round(30 * 1.05)).toBe(32);
+  });
+
+  test('passthrough rows stay available without rates', () => {
+    const withoutAnchor = { ...expense, amountEurCents: null };
+    const rateAt = jest.fn<(dateISO: string) => number | null>(() => null);
+
+    expect(aggregateDisplayAmounts([withoutAnchor], 'RSD', rateAt)).toEqual({
+      cents: 1_200,
+      unavailable: 0,
+    });
+    expect(
+      aggregateDisplayAmounts(
+        [{ ...expense, originalCurrency: 'EUR', originalAmountCents: 10 }],
+        'EUR',
+        rateAt,
+      ),
+    ).toEqual({ cents: 10, unavailable: 0 });
+    expect(rateAt).not.toHaveBeenCalled();
   });
 });

@@ -75,24 +75,24 @@ type AnalyticsTab = 'categories' | 'merchants' | 'fixedVariable';
 type SortMode = 'amount' | 'count' | 'name';
 
 type RankedCategory = {
-  amount: number | null;
+  amount: number;
   category: CategoryBreakdown;
   color: string;
   share: number;
 };
 
 type RankedMerchant = {
-  amount: number | null;
+  amount: number;
   color: string;
   merchant: MerchantBreakdown;
   share: number;
 };
 
 type RankedFixedVariableBucket = {
-  amount: number | null;
+  amount: number;
   bucket: FixedVariableBucketBreakdown;
   categories: Array<{
-    amount: number | null;
+    amount: number;
     category: FixedVariableCategoryBreakdown;
   }>;
   color: string;
@@ -580,12 +580,15 @@ export default function AnalyticsScreen() {
     [analyticsExpenses, displayCurrency, rateAt],
   );
   const monthTotal = ANCHOR_DISPLAY
-    ? anchorCategoryData?.total ?? null
+    ? anchorCategoryData?.total ?? 0
     : breakdown
       ? amountForCurrency(breakdown, legacyDisplayCurrency)
       : 0;
+  const unavailableTotal = ANCHOR_DISPLAY
+    ? anchorCategoryData?.unavailable ?? 0
+    : 0;
   const spendingPace = useMemo(() => {
-    if (monthTotal === null || monthTotal <= 0) {
+    if (monthTotal <= 0) {
       return null;
     }
 
@@ -617,7 +620,7 @@ export default function AnalyticsScreen() {
     if (
       ANCHOR_DISPLAY
         ? !anchorCategoryData
-        : !breakdown || monthTotal === null || monthTotal <= 0
+        : !breakdown || monthTotal <= 0
     ) {
       return [];
     }
@@ -642,16 +645,12 @@ export default function AnalyticsScreen() {
         }));
 
     return rows
-      .filter(({ amount }) =>
-        ANCHOR_DISPLAY
-          ? amount === null || amount > 0
-          : (amount ?? 0) > 0,
-      )
+      .filter(({ amount }) => amount > 0)
       .sort((left, right) => {
         if (sortMode === 'count') {
           return (
             right.category.count - left.category.count ||
-            (right.amount ?? -1) - (left.amount ?? -1)
+            right.amount - left.amount
           );
         }
 
@@ -661,7 +660,7 @@ export default function AnalyticsScreen() {
           return leftName.localeCompare(rightName, locale);
         }
 
-        return (right.amount ?? -1) - (left.amount ?? -1);
+        return right.amount - left.amount;
       })
       .map((category, index) => ({
         ...category,
@@ -670,7 +669,7 @@ export default function AnalyticsScreen() {
             ? colors.data.categorical[index] ?? colors.data.muted
             : colors.data.muted,
         share:
-          category.amount !== null && monthTotal !== null && monthTotal > 0
+          monthTotal > 0
             ? (category.amount / monthTotal) * 100
             : 0,
       }));
@@ -696,7 +695,7 @@ export default function AnalyticsScreen() {
     [analyticsExpenses, displayCurrency, rateAt],
   );
   const merchantTotal = ANCHOR_DISPLAY
-    ? anchorMerchantData?.total ?? null
+    ? anchorMerchantData?.total ?? 0
     : merchantBreakdown
       ? amountForCurrency(merchantBreakdown, legacyDisplayCurrency)
       : 0;
@@ -704,7 +703,7 @@ export default function AnalyticsScreen() {
     if (
       ANCHOR_DISPLAY
         ? !anchorMerchantData
-        : !merchantBreakdown || merchantTotal === null || merchantTotal <= 0
+        : !merchantBreakdown || merchantTotal <= 0
     ) {
       return [];
     }
@@ -727,16 +726,12 @@ export default function AnalyticsScreen() {
         }));
 
     return rows
-      .filter(({ amount }) =>
-        ANCHOR_DISPLAY
-          ? amount === null || amount > 0
-          : (amount ?? 0) > 0,
-      )
+      .filter(({ amount }) => amount > 0)
       .sort((left, right) => {
         if (sortMode === 'count') {
           return (
             right.merchant.count - left.merchant.count ||
-            (right.amount ?? -1) - (left.amount ?? -1)
+            right.amount - left.amount
           );
         }
 
@@ -757,7 +752,7 @@ export default function AnalyticsScreen() {
           return leftName.localeCompare(rightName, locale);
         }
 
-        return (right.amount ?? -1) - (left.amount ?? -1);
+        return right.amount - left.amount;
       })
       .map((merchant, index) => ({
         ...merchant,
@@ -766,8 +761,6 @@ export default function AnalyticsScreen() {
             ? colors.data.categorical[index] ?? colors.data.muted
             : colors.data.muted,
         share:
-          merchant.amount !== null &&
-          merchantTotal !== null &&
           merchantTotal > 0
             ? (merchant.amount / merchantTotal) * 100
             : 0,
@@ -798,7 +791,7 @@ export default function AnalyticsScreen() {
     [analyticsExpenses, displayCurrency, rateAt],
   );
   const fixedVariableTotal = ANCHOR_DISPLAY
-    ? anchorFixedVariableData?.total ?? null
+    ? anchorFixedVariableData?.total ?? 0
     : amountForCurrency(fixedVariableBreakdown, legacyDisplayCurrency);
   const rankedFixedVariableBuckets = useMemo<
     RankedFixedVariableBucket[]
@@ -850,18 +843,16 @@ export default function AnalyticsScreen() {
           categories: bucket.categories
             .map((category) => ({
               amount: ANCHOR_DISPLAY
-                ? categoryAmounts?.get(category.categoryId) ?? null
+                ? categoryAmounts?.get(category.categoryId) ?? 0
                 : amountForCurrency(category, legacyDisplayCurrency),
               category,
             }))
             .sort(
               (left, right) =>
-                (right.amount ?? -1) - (left.amount ?? -1),
+                right.amount - left.amount,
             ),
           ...presentation,
           share:
-            amount !== null &&
-            fixedVariableTotal !== null &&
             fixedVariableTotal > 0
               ? (amount / fixedVariableTotal) * 100
               : 0,
@@ -913,15 +904,12 @@ export default function AnalyticsScreen() {
     }
 
     return remainder.reduce<{
-      amount: number | null;
+      amount: number;
       count: number;
       share: number;
     }>(
       (summary, row) => ({
-        amount:
-          summary.amount === null || row.amount === null
-            ? null
-            : summary.amount + row.amount,
+        amount: summary.amount + row.amount,
         count: summary.count + row.category.count,
         share: summary.share + row.share,
       }),
@@ -936,15 +924,12 @@ export default function AnalyticsScreen() {
     }
 
     return remainder.reduce<{
-      amount: number | null;
+      amount: number;
       count: number;
       share: number;
     }>(
       (summary, row) => ({
-        amount:
-          summary.amount === null || row.amount === null
-            ? null
-            : summary.amount + row.amount,
+        amount: summary.amount + row.amount,
         count: summary.count + row.merchant.count,
         share: summary.share + row.share,
       }),
@@ -953,53 +938,43 @@ export default function AnalyticsScreen() {
   }, [rankedMerchants]);
   const categoryShareSegments = useMemo(
     () =>
-      ANCHOR_DISPLAY && monthTotal === null
-        ? []
-        : [
-            ...topCategories.flatMap(({ amount, category, color }) =>
-              amount === null
-                ? []
-                : [{ id: category.categoryId, amount, color }],
-            ),
-            ...(otherCategories && otherCategories.amount !== null
-              ? [
-                  {
-                    id: 'category-other',
-                    amount: otherCategories.amount,
-                    color: colors.data.muted,
-                  },
-                ]
-              : []),
-          ],
-    [colors.data.muted, monthTotal, otherCategories, topCategories],
+      [
+        ...topCategories.map(({ amount, category, color }) => ({
+          id: category.categoryId,
+          amount,
+          color,
+        })),
+        ...(otherCategories
+          ? [
+              {
+                id: 'category-other',
+                amount: otherCategories.amount,
+                color: colors.data.muted,
+              },
+            ]
+          : []),
+      ],
+    [colors.data.muted, otherCategories, topCategories],
   );
   const merchantShareSegments = useMemo(
     () =>
-      ANCHOR_DISPLAY && merchantTotal === null
-        ? []
-        : [
-            ...topMerchants.flatMap(({ amount, color, merchant }) =>
-              amount === null
-                ? []
-                : [
-                    {
-                      id: merchant.merchantId ?? unknownMerchantKey,
-                      amount,
-                      color,
-                    },
-                  ],
-            ),
-            ...(otherMerchants && otherMerchants.amount !== null
-              ? [
-                  {
-                    id: 'merchant-other',
-                    amount: otherMerchants.amount,
-                    color: colors.data.muted,
-                  },
-                ]
-              : []),
-          ],
-    [colors.data.muted, merchantTotal, otherMerchants, topMerchants],
+      [
+        ...topMerchants.map(({ amount, color, merchant }) => ({
+          id: merchant.merchantId ?? unknownMerchantKey,
+          amount,
+          color,
+        })),
+        ...(otherMerchants
+          ? [
+              {
+                id: 'merchant-other',
+                amount: otherMerchants.amount,
+                color: colors.data.muted,
+              },
+            ]
+          : []),
+      ],
+    [colors.data.muted, otherMerchants, topMerchants],
   );
   const visibleCategories = showAllCategories
     ? rankedCategories
@@ -1166,6 +1141,14 @@ export default function AnalyticsScreen() {
                   })}`
                 : ''}{' '}
               {displayCurrency}
+            </Text>
+          ) : null}
+          {ANCHOR_DISPLAY &&
+          !analyticsLoading &&
+          !errorMessage &&
+          unavailableTotal > 0 ? (
+            <Text style={styles.paceLine}>
+              {t('home.unconverted', { count: unavailableTotal })}
             </Text>
           ) : null}
         </View>
@@ -1531,16 +1514,13 @@ export default function AnalyticsScreen() {
               </Text>
               <ShareBar
                 accessibilityLabel={t('analytics.byTypeA11y')}
-                segments={
-                  ANCHOR_DISPLAY && fixedVariableTotal === null
-                    ? []
-                    : rankedFixedVariableBuckets.flatMap(
-                        ({ amount, bucket, color }) =>
-                          amount === null
-                            ? []
-                            : [{ id: bucket.type, amount, color }],
-                      )
-                }
+                segments={rankedFixedVariableBuckets.map(
+                  ({ amount, bucket, color }) => ({
+                    id: bucket.type,
+                    amount,
+                    color,
+                  }),
+                )}
               />
 
               <View style={styles.categoryList}>

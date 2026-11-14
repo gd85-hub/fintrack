@@ -47,7 +47,7 @@ import {
 import { ANCHOR_DISPLAY } from '../../lib/features';
 import { ANCHOR_CURRENCY } from '../../lib/fxDisplay';
 import {
-  sumExpenseDisplayAmounts,
+  aggregateDisplayAmounts,
   type RateLookup,
 } from '../../lib/homeDisplay';
 import {
@@ -72,7 +72,7 @@ export type PurchaseUnit = {
 export type HomeDaySection = {
   data: PurchaseUnit[];
   date: string;
-  dayTotal: number | null;
+  dayTotal: number;
   units: PurchaseUnit[];
 };
 
@@ -217,42 +217,12 @@ function anchorPurchaseDisplayAmount(
   displayCurrency: string,
   rateAt: RateLookup,
 ) {
-  const firstExpense = expenses[0];
-  const usesOneUnconvertedCurrency =
-    firstExpense !== undefined &&
-    expenses.every(
-      (expense) =>
-        expense.amountEurCents === null &&
-        expense.fxRateDate === null &&
-        expense.originalCurrency === firstExpense.originalCurrency,
-    );
-
-  if (usesOneUnconvertedCurrency) {
-    return {
-      amountCents: expenses.reduce(
-        (sum, expense) => sum + expense.originalAmountCents,
-        0,
-      ),
-      currency: firstExpense.originalCurrency,
-    };
-  }
-
-  const amountCents = sumExpenseDisplayAmounts(
+  const amount = aggregateDisplayAmounts(
     expenses,
     displayCurrency,
     rateAt,
   );
-  if (amountCents !== null) {
-    return { amountCents, currency: displayCurrency };
-  }
-
-  return {
-    amountCents: expenses.reduce(
-      (sum, expense) => sum + expense.originalAmountCents,
-      0,
-    ),
-    currency: firstExpense?.originalCurrency ?? displayCurrency,
-  };
+  return { amountCents: amount.cents, currency: displayCurrency };
 }
 
 export function purchaseCategoryHint(expenses: readonly Expense[]): string {
@@ -787,11 +757,11 @@ export default function HomeScreen() {
         return {
           data: collapsedDays.has(group.date) ? [] : units,
           date: group.date,
-          dayTotal: sumExpenseDisplayAmounts(
+          dayTotal: aggregateDisplayAmounts(
             group.expenses,
             homeCurrency,
             rateAt,
-          ),
+          ).cents,
           units,
         };
       });
@@ -819,18 +789,18 @@ export default function HomeScreen() {
   const anchorMonthTotal = useMemo(
     () =>
       ANCHOR_DISPLAY
-        ? sumExpenseDisplayAmounts(expenses, homeCurrency, rateAt)
-        : null,
+        ? aggregateDisplayAmounts(expenses, homeCurrency, rateAt)
+        : { cents: 0, unavailable: 0 },
     [expenses, homeCurrency, rateAt],
   );
   const secondaryMonthTotal = useMemo(
     () =>
       showSecondaryCurrency && secondaryCurrency
-        ? sumExpenseDisplayAmounts(
+        ? aggregateDisplayAmounts(
             expenses,
             secondaryCurrency,
             secondaryRateAt,
-          )
+          ).cents
         : null,
     [
       expenses,
@@ -888,9 +858,7 @@ export default function HomeScreen() {
                   style={styles.heroAmount}
                 >
                   {ANCHOR_DISPLAY
-                    ? anchorMonthTotal === null
-                      ? '—'
-                      : formatMoney(anchorMonthTotal)
+                    ? formatMoney(anchorMonthTotal.cents)
                     : formatMoney(monthTotals.rsd)}
                   <Text style={styles.heroCurrency}>
                     {ANCHOR_DISPLAY ? ` ${homeCurrency}` : ' RSD'}
@@ -912,6 +880,15 @@ export default function HomeScreen() {
                     {formatMoney(secondaryMonthTotal)} {secondaryCurrency}
                   </Text>
                 ) : null
+              ) : null}
+              {ANCHOR_DISPLAY &&
+              !anchorRatesLoading &&
+              anchorMonthTotal.unavailable > 0 ? (
+                <Text style={styles.heroEquivalents}>
+                  {t('home.unconverted', {
+                    count: anchorMonthTotal.unavailable,
+                  })}
+                </Text>
               ) : null}
             </View>
           </View>
@@ -1146,11 +1123,9 @@ export default function HomeScreen() {
                   <Text numberOfLines={1} style={styles.dayTotal}>
                     {ANCHOR_DISPLAY
                       ? `${
-                          section.dayTotal === null
-                            ? '—'
-                            : formatMoney(section.dayTotal)
+                          formatMoney(section.dayTotal)
                         } ${homeCurrency}`
-                      : `${formatMoney(section.dayTotal ?? 0)} RSD`}
+                      : `${formatMoney(section.dayTotal)} RSD`}
                   </Text>
                 )}
               </Pressable>

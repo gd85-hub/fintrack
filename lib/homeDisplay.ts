@@ -7,13 +7,18 @@ import {
 
 export type RateLookup = (dateISO: string) => number | null;
 
-type HomeDisplayExpense = Pick<
+export type HomeDisplayExpense = Pick<
   Expense,
   | 'amountEurCents'
   | 'occurredOn'
   | 'originalAmountCents'
   | 'originalCurrency'
 >;
+
+export type DisplayAggregate = {
+  cents: number;
+  unavailable: number;
+};
 
 function normalizedCode(value: string): string {
   return value.trim().toUpperCase();
@@ -57,4 +62,29 @@ export function sumExpenseDisplayAmounts(
       displayAmountForExpense(expense, displayCurrency, rateAt),
     ),
   );
+}
+
+export function aggregateDisplayAmounts(
+  expenses: readonly HomeDisplayExpense[],
+  displayCurrency: string,
+  rateAt: RateLookup,
+): DisplayAggregate {
+  let cents = 0;
+  let unavailable = 0;
+
+  for (const expense of expenses) {
+    const value = displayAmountForExpense(
+      expense,
+      displayCurrency,
+      rateAt,
+    );
+    if (value === null) {
+      unavailable += 1;
+    } else {
+      // Values are rounded at the row boundary; aggregates only add cents.
+      cents += value;
+    }
+  }
+
+  return { cents, unavailable };
 }

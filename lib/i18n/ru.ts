@@ -139,6 +139,7 @@ export const ru = {
     selectMonth: 'Выбрать месяц',
     spentIn: 'Потрачено в {{month}}',
     needsReview: 'Требуют внимания: {{count}}',
+    unconverted: 'Часть трат без курса не учтена ({{count}})',
     errorLoad: 'Не удалось загрузить траты. Попробуйте ещё раз.',
     retry: 'Повторить',
     emptyTitle: 'Пока нет трат за этот месяц',

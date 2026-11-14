@@ -41,6 +41,7 @@ describe('analytics anchor display aggregation', () => {
 
     expect(result.categories[0]?.amount).toBe(33);
     expect(result.total).toBe(33);
+    expect(result.unavailable).toBe(0);
     expect(roundHalfUp(30 * 1.05)).toBe(32);
   });
 
@@ -65,19 +66,19 @@ describe('analytics anchor display aggregation', () => {
       () => 1.05,
     );
 
-    expect(total).toBe(33);
+    expect(total).toEqual({ cents: 33, unavailable: 0 });
     expect(categories.categories.reduce(
       (sum, category) => sum + (category.amount ?? 0),
       0,
-    )).toBe(total);
+    )).toBe(total.cents);
     expect(merchants.merchants.reduce(
       (sum, merchant) => sum + (merchant.amount ?? 0),
       0,
-    )).toBe(total);
+    )).toBe(total.cents);
     expect(fixedVariable.buckets.reduce(
       (sum, bucket) => sum + (bucket.amount ?? 0),
       0,
-    )).toBe(total);
+    )).toBe(total.cents);
   });
 
   test('original and EUR passthrough do not resolve a rate', () => {
@@ -90,24 +91,62 @@ describe('analytics anchor display aggregation', () => {
       }),
     ];
 
-    expect(displayTotal(originalRows, 'RSD', rateAt)).toBe(10_000);
-    expect(displayTotal(originalRows, 'EUR', rateAt)).toBe(90);
+    expect(displayTotal(originalRows, 'RSD', rateAt)).toEqual({
+      cents: 10_000,
+      unavailable: 0,
+    });
+    expect(displayTotal(originalRows, 'EUR', rateAt)).toEqual({
+      cents: 90,
+      unavailable: 0,
+    });
     expect(rateAt).not.toHaveBeenCalled();
   });
 
-  test('a missing anchor makes its group and every containing total unavailable', () => {
-    const rows = [expense('known'), expense('missing', { amountEur: null })];
+  test('a dirty mixed set keeps usable totals and one shared unavailable count', () => {
+    const rows = [
+      expense('rsd', {
+        amountEur: 10,
+        categoryId: 'transport',
+        categoryType: 'fixed',
+        merchantId: 'station',
+        occurredOn: '2026-08-01',
+        originalAmountCents: 1_200,
+        originalCurrency: 'RSD',
+      }),
+      expense('eur', {
+        amountEur: 10,
+        occurredOn: '2026-08-02',
+      }),
+      expense('missing', {
+        amountEur: null,
+        categoryId: 'other',
+        merchantId: 'kiosk',
+        occurredOn: '2026-08-03',
+        originalAmountCents: 5_000,
+        originalCurrency: 'KZT',
+      }),
+    ];
+    const total = displayTotal(rows, 'RSD', () => 120);
+    const categories = displayCategoryBreakdown(rows, 'RSD', () => 120);
+    const merchants = displayMerchantBreakdown(rows, 'RSD', () => 120);
+    const fixedVariable = displayFixedVariableBreakdown(
+      rows,
+      'RSD',
+      () => 120,
+    );
 
-    expect(displayTotal(rows, 'USD', () => 1.05)).toBeNull();
+    expect(total).toEqual({ cents: 2_400, unavailable: 1 });
+    expect(categories.unavailable).toBe(1);
+    expect(merchants.unavailable).toBe(1);
+    expect(fixedVariable.unavailable).toBe(1);
     expect(
-      displayCategoryBreakdown(rows, 'USD', () => 1.05).categories[0]?.amount,
-    ).toBeNull();
+      categories.categories.reduce((sum, row) => sum + row.amount, 0),
+    ).toBe(total.cents);
     expect(
-      displayMerchantBreakdown(rows, 'USD', () => 1.05).merchants[0]?.amount,
-    ).toBeNull();
+      merchants.merchants.reduce((sum, row) => sum + row.amount, 0),
+    ).toBe(total.cents);
     expect(
-      displayFixedVariableBreakdown(rows, 'USD', () => 1.05).buckets[1]
-        ?.amount,
-    ).toBeNull();
+      fixedVariable.buckets.reduce((sum, row) => sum + row.amount, 0),
+    ).toBe(total.cents);
   });
 });
