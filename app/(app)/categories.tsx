@@ -26,6 +26,7 @@ import {
   listCategoriesForManagement,
   type ManagedCategory,
   mergeCategories,
+  UncategorizedCategoryProtectedError,
   updateCategory,
 } from '../../lib/db';
 import { theme, type Colors } from '../../lib/theme';
@@ -136,6 +137,7 @@ export default function CategoriesScreen() {
       categories.filter(
         (category) =>
           category.isOwnedByCurrentUser &&
+          category.slug !== 'uncategorized' &&
           category.id !== mergeTargetId,
       ),
     [categories, mergeTargetId],
@@ -344,7 +346,9 @@ export default function CategoriesScreen() {
       const actionKind = pendingAction.kind;
       setPendingAction(null);
       toast.error(
-        actionKind === 'merge'
+        error instanceof UncategorizedCategoryProtectedError
+          ? t('cat.cannotDeleteUncategorized')
+          : actionKind === 'merge'
           ? t('cat.mergeFailed')
           : actionKind === 'delete'
             ? t('cat.deleteFailed')
@@ -716,7 +720,11 @@ export default function CategoriesScreen() {
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => startMerge(category)}
+                      onPress={() =>
+                        category.slug === 'uncategorized'
+                          ? toast.error(t('cat.cannotDeleteUncategorized'))
+                          : startMerge(category)
+                      }
                       style={({ pressed }) => pressed && styles.pressed}
                     >
                       <Text style={styles.actionText}>{t('cat.merge')}</Text>
@@ -724,7 +732,9 @@ export default function CategoriesScreen() {
                     <Pressable
                       accessibilityRole="button"
                       onPress={() =>
-                        setPendingAction({ category, kind: 'delete' })
+                        category.slug === 'uncategorized'
+                          ? toast.error(t('cat.cannotDeleteUncategorized'))
+                          : setPendingAction({ category, kind: 'delete' })
                       }
                       style={({ pressed }) => pressed && styles.pressed}
                     >

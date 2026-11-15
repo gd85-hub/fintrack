@@ -354,6 +354,8 @@ export const en = {
       "Couldn't merge the categories. Changes were rolled back; try again.",
     deleteFailed:
       "Couldn't delete the category. Changes were rolled back; try again.",
+    cannotDeleteUncategorized:
+      "This category can't be deleted — unrecognized expenses go here. You can rename it.",
     typeChangeFailed: "Couldn't change the category type. Try again.",
     confirmMerge:
       'Merge the selected categories into "{{target}}"? {{count}} expenses will be moved. The selected custom categories will be deleted.',

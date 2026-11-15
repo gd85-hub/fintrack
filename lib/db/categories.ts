@@ -38,9 +38,15 @@ type CategoryReferenceRow = {
   user_id: string;
 };
 
-
 const CATEGORY_MANAGEMENT_SELECT =
   'id,slug,emoji,name,group,type,is_system,user_id,active,sort';
+
+export class UncategorizedCategoryProtectedError extends Error {
+  constructor() {
+    super('The uncategorized category cannot be deleted.');
+    this.name = 'UncategorizedCategoryProtectedError';
+  }
+}
 
 function cleanCategoryInput(input: CategoryInput): CategoryInput {
   const cleaned = {
@@ -58,10 +64,12 @@ function cleanCategoryInput(input: CategoryInput): CategoryInput {
 }
 
 export async function listCategories(): Promise<Category[]> {
+  const userId = await authenticatedUserId();
   const { data, error } = await supabase
     .from('categories')
     .select('id,slug,emoji,name,group,sort')
     .eq('active', true)
+    .eq('user_id', userId)
     .order('sort', { ascending: true });
 
   if (error) {
@@ -86,6 +94,7 @@ export async function listCategoriesForManagement(): Promise<
     supabase
       .from('categories')
       .select(CATEGORY_MANAGEMENT_SELECT)
+      .eq('user_id', userId)
       .order('sort', { ascending: true }),
     supabase
       .from('expenses')
@@ -113,11 +122,8 @@ export async function listCategoriesForManagement(): Promise<
     emoji: row.emoji,
     group: row.group,
     id: row.id,
-    isOwnedByCurrentUser: isCategoryOwnedByUser(
-      { isSystem: row.is_system, userId: row.user_id },
-      userId,
-    ),
-    isSystem: row.user_id === null || row.is_system,
+    isOwnedByCurrentUser: true,
+    isSystem: false,
     name: row.name,
     slug: row.slug,
     sort: row.sort,
@@ -177,15 +183,14 @@ export async function updateCategory(
       userId,
     )
   ) {
-    throw new Error('Системную категорию нельзя изменить.');
+    throw new Error('Категория не найдена.');
   }
 
   const { error: updateError } = await supabase
     .from('categories')
     .update(cleaned)
     .eq('id', categoryId)
-    .eq('user_id', userId)
-    .eq('is_system', false);
+    .eq('user_id', userId);
   if (updateError) {
     throw updateError;
   }
@@ -283,8 +288,7 @@ async function moveCategoryReferencesAndDelete(
       .from('categories')
       .delete()
       .in('id', [...sourceIds])
-      .eq('user_id', userId)
-      .eq('is_system', false);
+      .eq('user_id', userId);
     if (deleteError) {
       throw deleteError;
     }
@@ -333,15 +337,15 @@ export async function mergeCategories(
     categories.map((category) => [category.id, category]),
   );
   const target = categoryById.get(targetId);
-  if (
-    !target ||
-    (target.user_id !== null && target.user_id !== userId)
-  ) {
+  if (!target || target.user_id !== userId) {
     throw new Error('Целевая категория не найдена.');
   }
   const sources = uniqueSourceIds.map((sourceId) =>
     categoryById.get(sourceId),
   );
+  if (sources.some((source) => source?.slug === 'uncategorized')) {
+    throw new UncategorizedCategoryProtectedError();
+  }
   if (
     sources.some(
       (source) =>
@@ -355,9 +359,7 @@ export async function mergeCategories(
         ),
     )
   ) {
-    throw new Error(
-      'Системную категорию нельзя удалить при объединении.',
-    );
+    throw new Error('Категория для объединения не найдена.');
   }
 
   return moveCategoryReferencesAndDelete(
@@ -382,7 +384,7 @@ export async function deleteCategory(
       .from('categories')
       .select(CATEGORY_MANAGEMENT_SELECT)
       .eq('slug', 'uncategorized')
-      .is('user_id', null)
+      .eq('user_id', userId)
       .single(),
   ]);
   if (sourceResult.error) {
@@ -401,7 +403,10 @@ export async function deleteCategory(
       userId,
     )
   ) {
-    throw new Error('Системную категорию нельзя удалить.');
+    throw new Error('Категория не найдена.');
+  }
+  if (source.slug === 'uncategorized') {
+    throw new UncategorizedCategoryProtectedError();
   }
   const uncategorized =
     uncategorizedResult.data as unknown as CategoryManagementQueryRow;

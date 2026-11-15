@@ -17,11 +17,7 @@ export function isCategoryOwnedByUser(
   category: CategoryOwnershipCandidate,
   userId: string,
 ): boolean {
-  return (
-    Boolean(userId) &&
-    category.userId === userId &&
-    !category.isSystem
-  );
+  return Boolean(userId) && category.userId === userId;
 }
 
 export function categoryUsageCounts(
