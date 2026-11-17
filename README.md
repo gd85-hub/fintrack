@@ -1,178 +1,199 @@
 # Fintrack
 
-A personal expense tracker. Expo (React Native) + TypeScript, one codebase for **Android** and **Web**, backed by **Supabase** (Postgres, Auth, Edge Functions).
+Fintrack is a personal, account-based expense tracker built with Expo, React Native, TypeScript, and Supabase. One codebase targets Android and responsive Web/PWA.
 
-Every expense is stored in its original currency and converted into **RSD, USD, and EUR** using the National Bank of Serbia rate for the date the expense occurred. Conversions are frozen at write time, so past totals never drift when rates change.
+The product is now global and multi-currency. Every expense keeps its original amount and currency. When a rate or manual equivalent is available, writes also freeze an EUR anchor for the expense date; Home and Analytics convert that frozen anchor into the selected display currency using historical EUR-base rates. Honest-null legacy/unreadable rows remain possible and are surfaced as unavailable instead of silently invented. The legacy RSD/USD/EUR snapshot is still written in parallel for rollback and compatibility.
 
-Replaces a Google Sheets tracker whose main problem was manual data entry.
+> Coding agents must read [`AGENTS.md`](./AGENTS.md) before changing the repository. Confirmed defects live in [`BUGS.md`](./BUGS.md); product ideas live in [`BACKLOG.md`](./BACKLOG.md).
 
-> Working in this repo with a coding agent? Read [`AGENTS.md`](./AGENTS.md) first - it holds the non-negotiable rules (money in integer cents, local dates, RLS, theme tokens, device-fetch, scope discipline).
+## Current state
 
-## Status
+The following capabilities are implemented in `main`. Presence in `main` does not prove that the matching migration, Edge Function, web deploy, or Android build has reached production. The last explicitly stamped release in [`CHANGELOG.md`](./CHANGELOG.md) is **2026-10-27**; later entries remain under **Unreleased**.
 
-| Phase | Scope | State |
+| Area | Implemented in `main` | Operational note |
 |---|---|---|
-| 0 | Scaffolding, DB schema, RLS, email auth | Done |
-| 1 | Manual expenses in 3 currencies, NBS rates, month list, edit/delete | Done |
-| 2 | Serbian fiscal receipt scanning (QR) -> itemized expenses + whole-purchase editing | Done (tested on device) |
-| 3 | Photo / email-screenshot receipts (any country) via vision model + text categorization | Done |
-| 4 | Analytics: categories + merchants + drilldown | Done; trends / fixed-vs-variable / subscription analytics pending |
-| 5 | Home feed UX pass: `SectionList` with sticky day headers, collapsible days, unified expandable purchase rows; per-user categorization dictionary | Done |
-| 6 | Distribution: Android preview build (EAS) + web deploy (EAS Hosting) | Done |
+| Auth | Email/password sign-in and sign-up, persisted session, account name, account deletion | Self-service password reset exists but `PASSWORD_RESET_UI=false` until a sending domain and custom SMTP are configured |
+| Manual expenses | Add/edit/delete expenses in supported and arbitrary ISO currencies | Covered currencies convert automatically; unsupported ISO codes require a manual RSD equivalent |
+| FX | Frozen EUR anchor, historical Frankfurter rates, selectable primary/secondary display currencies | `sync-fx` and the RSD/USD/EUR snapshot remain as a legacy rollback path |
+| Home | Month picker, balance hero, per-day cards, collapsible days, expandable purchases | Totals use the selected home currency; an optional secondary currency is shown in the hero |
+| Receipts | Android SUF QR scanning; photo/email-screenshot recognition on Android and Web; multi-photo overlap handling | SUF QR/link fetching is native-only because browsers are blocked by CORS |
+| Categorization | Personal dictionary, model fallback, editable item names, merchant normalization | Per-account default-category migration is in `main`; production application is not confirmed |
+| Management | Full category and place create/edit/merge/delete flows with compensating cleanup | Each account owns its category copies; its `uncategorized` row is the protected fallback |
+| Analytics | Custom/preset periods, category/place/fixed-variable tabs, drilldown, sorting, averages, pace/forecast, display-currency picker | Read-only; trends across periods and subscription forecasting remain backlog work |
+| Export | Monthly CSV, Excel, and styled PDF with native/Web delivery | Export still has known currency/null limitations; see [`BUGS.md`](./BUGS.md) |
+| UI | RU/EN, light/dark/system themes, responsive sidebar/bottom tabs, toasts and status components | User-created content must remain untranslated |
+| Distribution | Android EAS profiles, EAS Hosting configuration, installable iOS-oriented PWA shell | No deploy is performed by repository changes alone |
+| Support | In-app feedback with app version/platform metadata | Requires the feedback migration in the target Supabase project |
 
-### Known open items
-- **Analytics depth pending**: trends over time, fixed-vs-variable split, and subscription forecasting are not built yet.
-- **Web is view + manual entry only.** QR scanning is native-only (the tax page can't be fetched from a browser due to CORS), so the deployed web build shows a placeholder for scanning.
-- **Deferred niceties** tracked in [`BACKLOG.md`](./BACKLOG.md): duplicate-scan (QR + photo) detection, refunds/negative amounts, quick-repeat/templates, CSV export, budgets, and more.
-- The date field in the expense editor still shows a raw ISO date (`2026-07-30`) instead of a formatted one.
+## Platform capabilities
 
-## Prerequisites
+### Android
 
-- Node.js (LTS) and npm
-- A Supabase project
-- For device testing: an Android device (a development build; public Expo Go is incompatible with SDK 57). Web needs nothing extra.
+- Manual expenses and full browsing/analytics/export.
+- Live SUF QR scanning with the device fetching the Serbian tax page.
+- Camera/gallery receipt photos and multi-image recognition.
+- Internal preview APK through EAS Build.
+
+### Web / PWA
+
+- Responsive desktop sidebar and phone-width bottom navigation.
+- Manual expenses, Home, Analytics, Reports, Settings, management screens, and account actions.
+- Receipt-image upload/paste and vision recognition.
+- Manifest, icons, safe-area metadata, and standalone PWA behavior for iPhone testers.
+- No SUF QR/link parsing: browser access to the tax page is blocked by CORS. Web uses the photo flow instead.
 
 ## Setup
 
-### 1. Environment variables
+### Prerequisites
 
-Copy `.env.example` to `.env` and fill both values from Supabase (**Settings -> API Keys**, or the **Connect** button):
+- Node.js LTS and npm.
+- A Supabase project.
+- Android Studio/device tooling only when running Android locally.
+- A development build for native SDK 57 testing; public Expo Go is not sufficient for this project.
+
+### 1. Environment
+
+Copy `.env.example` to `.env`:
 
 ```dotenv
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 ```
 
-Use the **public** key (publishable/anon) only. The service-role key never goes in the app or any `EXPO_PUBLIC_*` var - it belongs only in Edge Functions, where Supabase provides it automatically.
+Only public Supabase client values belong in `EXPO_PUBLIC_*`. The service-role key is server-only. Restart Expo with `npx expo start -c` after changing `.env`.
 
-Expo reads `.env` at startup only. After changing it, restart with `npx expo start -c`.
+Standalone builds do not read the local `.env`; configure the two public values for the relevant EAS environments. They are public bundle configuration, not secrets.
 
 ### 2. Database
 
-Apply the migration in `supabase/migrations/` **once** on a fresh project (SQL Editor paste, or `supabase db push`). Never re-run an applied migration; new changes go in a new migration file.
+Apply the files in `supabase/migrations/` in timestamp order. Never edit or replay an already-applied migration; add a new timestamped migration instead.
 
-Existing projects must apply `20260802000000_item_categorization.sql`, `20260802010000_item_display_names.sql`, and then `20260803000000_merchant_brand_labels.sql`. The first creates the per-user dictionary with RLS; the second adds nullable raw/display-name columns; the third adds the nullable original merchant label to receipts. None backfill existing receipt data.
+Current additive migrations cover:
 
-For development, turn **off** email confirmation (Supabase -> Authentication -> Sign In / Providers -> Email -> *Confirm email*). With it on, sign-up returns no session and the app shows a "check your email" state instead of logging you in.
+- the Phase 0 tables, constraints, and RLS;
+- the personal item-category dictionary;
+- raw/display item names and original merchant labels;
+- in-app feedback;
+- per-account editable copies of default categories.
+
+`20261115000000_per_account_categories.sql` remains operationally important: its application to production is not confirmed. It seeds defaults for new users, backfills existing accounts, and re-points category references. Run the verification queries at the end of that migration after applying it.
 
 ### 3. Edge Functions
 
-Sources live in `supabase/functions/<name>/index.ts`. They use `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`, which Supabase injects automatically - **do not create these as custom secrets** (the dashboard rejects the `SUPABASE_` prefix; they already exist).
+Sources live in `supabase/functions/`:
 
-Keep **Verify JWT** enabled on every function.
+- `sync-rates` — EUR-base historical rates from Frankfurter; insert-only semantics for settled dates.
+- `sync-fx` — legacy NBS rates retained for the compatibility snapshot.
+- `parse-receipt` — validates the SUF URL and parses device-supplied HTML; it never fetches the tax page server-side.
+- `analyze-receipt-image` — structured vision extraction from one to five receipt images.
+- `categorize-items` — text categorization only for dictionary misses.
+- `delete-account` — authenticates the bearer token itself and deletes the calling user through the service role.
 
-Deploy via the dashboard (Edge Functions -> *Deploy a new function* -> **Via Editor**; set the function name **before** deploying, since renaming later changes the display name but not the URL slug, and the app calls functions by slug). For `parse-receipt`, add both files in the editor's FILES panel: `index.ts` and `parser.ts`. Or via CLI: `supabase functions deploy <name>`.
+`sync-rates`, `sync-fx`, `parse-receipt`, `analyze-receipt-image`, and `categorize-items` use Supabase JWT verification. `delete-account` intentionally has gateway `verify_jwt=false` and validates the JWT with `auth.getUser` inside the function so it can return its documented JSON errors.
 
-Functions:
+Supabase injects `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; do not add them as custom secrets. Receipt AI functions additionally require server-side `OPENAI_API_KEY` and `OPENAI_MODEL`. `sync-rates` optionally reads `FX_SOURCE` and defaults to `frankfurter`.
 
-- **`sync-fx`** - fetches official NBS USD/RSD and EUR/RSD rates for given dates and upserts them into `fx_rates`. Called automatically on app start (today) and whenever an expense date lacks a rate. Idempotent.
-- **`parse-receipt`** - **parses** the HTML of a Serbian SUF verification page and returns the itemized receipt. It does **not** fetch anything: the tax site blocks Supabase servers, so the **device downloads the page HTML** and sends it in the request body (`{ html, sourceUrl }`). The function validates `sourceUrl` against a hostname allowlist, then parses the `<pre>` journal block (the on-page item table is rendered client-side by JS and is empty in raw HTML).
-- **`analyze-receipt-image`** - sends one to five compressed receipt images to an OpenAI vision model and returns schema-validated merchant, date, currency, totals, line items, and suggestions restricted to the app's existing categories and merchant types. Images are processed in memory and are never stored or returned.
-- **`categorize-items`** - sends only unresolved item names and the user's available category labels to a text model. It returns schema-validated Russian display names plus category names, stores nothing, and is skipped entirely for personal-dictionary hits.
-
-Image recognition and text-only item categorization reuse the same two function secrets from **Supabase Dashboard -> Edge Functions -> Secrets**:
-
-```text
-OPENAI_API_KEY=your-server-only-key
-OPENAI_MODEL=a-vision-model-that-supports-structured-outputs
-```
-
-The key and model name must never use an `EXPO_PUBLIC_*` variable. In the dashboard editor, deploy functions whose slugs are exactly `analyze-receipt-image` and `categorize-items`, using their respective `index.ts` files. Keep **Verify JWT** enabled for both.
-
-CLI equivalent:
+Deploy only the functions needed by the target environment, for example:
 
 ```bash
-supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=...
+supabase functions deploy sync-rates
+supabase functions deploy parse-receipt
 supabase functions deploy analyze-receipt-image
 supabase functions deploy categorize-items
+supabase functions deploy delete-account --no-verify-jwt
 ```
 
-### 4. Distribution (standalone build + web)
+Deployment status is environment state and is not inferred from the source tree.
 
-Standalone builds do **not** read the local `.env`. Set the two public vars as **EAS Environment Variables** (visibility **Plain text**, assigned to development/preview/production). Never mark them `Secret` — secret vars are not readable outside EAS servers and won't be inlined into the client bundle.
+### 4. Run and verify
 
 ```bash
-eas env:create   # EXPO_PUBLIC_SUPABASE_URL, then run again for EXPO_PUBLIC_SUPABASE_ANON_KEY
-eas env:list --environment preview   # verify both landed
+npm install
+npx expo start          # press a for Android, w for Web
+npx expo start -c       # clear Metro cache after environment changes
+npm run typecheck
+npm test
+npx expo install --check
 ```
 
-Android preview APK (installable, internal distribution):
+Unit tests cover pure money/date/period logic, FX selection and display calculations, receipt parsing/review, categorization, analytics invariants, export builders, and data-layer helpers. UI, network, native camera, Edge Function deployment, and migrations require manual/integration verification.
+
+### 5. Distribution
+
+Android internal APK:
 
 ```bash
 eas build --profile preview --platform android
 ```
 
-Web (EAS Hosting). This is a client-only app, so use single-page output — set `expo.web.output` to `"single"` in `app.json`, then:
+Web uses SPA output (`expo.web.output: "single"`):
 
 ```bash
-npx expo export --platform web   # inlines EXPO_PUBLIC_* from .env into dist/
-eas deploy                       # preview URL; `eas deploy --prod` for the stable URL
+npx expo export --platform web
+eas deploy              # preview
+eas deploy --prod       # stable URL
 ```
 
-Web is **view + manual entry only** — QR scanning is native-only.
-
-## Run
-
-```bash
-npm install
-npx expo start        # "a" = Android, "w" = Web
-```
-
-Day-to-day development happens in the browser (fast reload). Photo/email receipt upload works on Web. QR scanning is Android-only; native photo capture/gallery selection uses `expo-image-picker` and requires a new development build after installing the native modules.
-
-## Verify
-
-```bash
-npm run typecheck        # tsc --noEmit
-npm test                 # jest - money, dates, receipt parsing, analytics aggregation
-npx expo install --check
-```
+Do not stamp a release in `CHANGELOG.md` until the intended web and Android artifacts have actually been deployed.
 
 ## Architecture
 
-```
-app/(auth)/           sign-in, sign-up
-app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
-components/           Shared UI plus platform receipt camera/image inputs
-contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
-lib/                  money, dates, fx, db, receipts, itemCategorization, theme, supabase, authErrors
-  __tests__/          unit tests
+```text
+app/                    Expo Router screens: auth, tabs, receipts, settings, reports
+components/             Shared inputs, pickers, navigation, receipt inputs, DS feedback/surface components
+contexts/               Auth, language, theme, toast, receipt draft, display/home/secondary currency
+lib/
+  db/                   Domain data modules (expenses, receipts, analytics, categories, merchants, feedback)
+  i18n/                 RU/EN dictionaries
+  __tests__/             Jest tests for pure/domain logic
+  anchorRates.ts         EUR-base historical rate resolution and on-demand sync
+  fxDisplay.ts           Frozen EUR-anchor -> display-currency math
+  fx.ts                  Legacy NBS USD/EUR pair resolution
+  export*.ts             CSV/XLSX/PDF builders and platform delivery
+  money.ts               Integer-cent parsing, rounding, conversion, formatting
 supabase/
-  migrations/         SQL foundation plus additive schema changes
-  functions/          sync-fx, parse-receipt, analyze-receipt-image, categorize-items (Deno)
+  migrations/           Additive SQL migrations
+  functions/            Deno Edge Functions
+public/                  PWA manifest and icons
+scripts/                 Receipt-recognition evaluation harness
 ```
 
-### Data model
+## Data model
 
-- **`expenses`** - one row per expense. `original_amount` + `original_currency` plus frozen `amount_rsd/usd/eur` and the `fx_rate_date` used. A scanned receipt produces **one expense per line item**, sharing a `receipt_id`; its editable human label is stored in `description` and the original receipt text in nullable `raw_name`.
-- **`receipts`** - one row per scanned receipt (merchant, original `merchant_label`, tax id, timestamp, total, parsed payload). Home groups every non-null `receipt_id` as one editable purchase, including receipts with only one remaining item. Receipt **images are never stored**.
-- **`categories`** - what money was spent on (group + fixed/variable type). Includes the system category "Не распознано" (`slug='uncategorized'`) for unrecognized items awaiting triage.
-- **`item_category_rules`** - a private per-user dictionary from normalized raw item names to a category or routine exclusion, with the learned human label in `display_name`. Final review choices overwrite older rules and increment their hit count.
-- **`merchants`** / **`merchant_types`** - *where* it was spent and the kind of place. A second axis, independent of category.
-- **`fx_rates`** - daily NBS rates, server-written, client-read-only.
-- **`subscriptions`** - recurring payments (explicit, not guessed).
+- `expenses` — one row per manual expense or receipt line. Stores original amount/currency, nullable frozen EUR anchor (`amount_eur`), legacy RSD/USD values where available, legacy `fx_rate_date`, category, merchant, and optional receipt link.
+- `receipts` — purchase-level fiscal/photo metadata and parsed payload. Images are processed in memory and are not persisted.
+- `fx_rates` — server-written historical rates. Frankfurter rows use `base_currency='EUR'`; legacy NBS rows use the source currency with `quote_currency='RSD'`.
+- `categories` — per-account editable categories. NULL-user rows remain templates for the registration trigger; clients list only their own copies. Each account must have exactly one protected `slug='uncategorized'` fallback.
+- `item_category_rules` — per-user normalized item-name dictionary with category/exclude action and optional display name.
+- `merchants` — user places/brands. Merchant type remains schema/reference history but is no longer a primary client editing axis.
+- `subscriptions` — schema support for explicit recurring payments; no complete subscription product flow yet.
+- `feedback` — user report text plus app version and platform.
 
-Reference tables use `user_id IS NULL` for shared system defaults and a non-null `user_id` for user-created rows.
+RLS protects user-owned tables. Client inserts set `user_id` explicitly. `fx_rates` is client-read-only and server-written.
 
-### Key decisions
+## Core invariants
 
-- **Rate snapshot at write time.** Weekends/holidays fall back to the most recent earlier rate.
-- **Integer cents everywhere.** No floating-point money math.
-- **Local calendar dates.** Never derived via UTC.
-- **Whole-purchase date edits follow the existing schema.** Every receipt expense gets the new canonical `occurred_on`; because `receipts` has `occurred_at` rather than `occurred_on`, its timestamp keeps the original time/offset and replaces only the local date portion. Raw parsed JSON remains the immutable source payload.
-- **Receipt line item = expense.** One table drives all analytics: by category, by merchant, or by product name.
-- **Unrecognized -> "Не распознано", not a guess.** Surfaced on Home for manual triage.
-- **Receipt categorization is dictionary-first.** Known item names resolve locally from the user's RLS-protected rules; only unknown names use the text-only model, and final review choices teach the next receipt.
-- **Merchant brands are shared across branches.** A generic store-code rule turns an incoming printed branch label into the initial merchant brand, while `receipts.merchant_label` keeps the full original text. Explicit user selections and edited merchant names always win and existing merchants are never renamed automatically.
-- **Device fetches the tax page; server only parses.** The tax site blocks cloud servers but serves the device; parsing lives server-side (with a hostname allowlist) so fixes don't require a new app build.
-- **SUF QR scanning is native-only.** Browsers can't fetch the Serbian tax page (CORS). Photo and email-screenshot receipt upload remains available on Web.
-- **No image storage.** Receipt photos/pages are parsed and discarded.
-- **Unsupported receipt currencies stay original-only.** RSD/USD/EUR use the frozen NBS conversion path. Other ISO currencies keep nullable conversions and appear in Home's attention filter until arbitrary-currency FX is implemented.
-- **Analytics is read-only and reuses stored conversions** - it never recomputes FX; a month's expenses are fetched once and grouped in memory.
+- Money calculations use integer cents and half-up rounding.
+- `occurred_on` is a local calendar date, never a UTC-derived date shortcut.
+- Expense originals and frozen EUR anchors do not drift after save; display conversion uses historical rates on or before the expense date.
+- Receipt multi-row writes use explicit compensating cleanup when a later write fails.
+- SUF HTML is fetched by the native device and parsed by the server with strict URL/input validation.
+- Receipt categorization is dictionary-first; only unresolved names reach the text model.
+- User-created names are content, not translation keys.
 
-## Security notes
+## Known limitations
 
-- RLS on every user table, both `using` and `with check`.
-- `.env` is gitignored; only `.env.example` is committed.
-- The repository is public - no secrets belong in it. All data lives in Supabase.
-- Edge Functions validate and cap client input. `parse-receipt` additionally validates `sourceUrl` against a hostname allowlist.
+- The category migration in `main` still needs confirmed production application and SQL verification.
+- Password-reset routes exist, but the sign-in entry point is disabled until custom SMTP/domain/redirect configuration is ready.
+- Export is still tied to RSD/EUR/USD columns and currently turns a missing EUR value into `0`; see [`BUGS.md`](./BUGS.md).
+- The amount parser accepts plain decimal comma/dot input but not grouped thousands such as `1.234,56`.
+- Cross-period trends, budgets, search, duplicate-receipt protection, and subscription forecasting remain backlog items.
+
+## Documentation ownership
+
+- [`README.md`](./README.md) — product, implemented architecture, setup, and limitations.
+- [`AGENTS.md`](./AGENTS.md) — mandatory engineering rules.
+- [`HANDOFF.md`](./HANDOFF.md) — current operational state and next action.
+- [`CHANGELOG.md`](./CHANGELOG.md) — append-only history and release stamps.
+- [`BUGS.md`](./BUGS.md) — confirmed defects and fixed-bug history.
+- [`BACKLOG.md`](./BACKLOG.md) — future product work and consciously deferred ideas.

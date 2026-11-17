@@ -1,157 +1,161 @@
 # AGENTS.md
 
-Rules for any coding agent working in this repository. Read this before writing code.
-These are constraints, not suggestions. When a task prompt and this file disagree, follow the task prompt and note the conflict in your summary.
+Mandatory rules for coding agents working in Fintrack. Read this file before changing the repository. A task prompt may narrow or override these rules; report any conflict.
 
-## What this project is
+## Product and sources of truth
 
-Fintrack — a personal expense tracker for one user. Expo (React Native) + TypeScript, one codebase targeting **Android** (primary) and **Web** (development testing + desktop view). Backend is **Supabase**: Postgres, Auth, Edge Functions.
+Fintrack is an account-based expense tracker built with Expo/React Native + TypeScript for Android and responsive Web/PWA, backed by Supabase Postgres, Auth, and Edge Functions.
 
-Core domain rule: every expense is stored in its original currency **and** converted into RSD, USD, and EUR using the National Bank of Serbia rate **for the date the expense occurred**. Conversions are frozen at write time and must not silently change later.
+Documentation roles:
 
-Two independent axes describe an expense: **category** (what the money was for — Продукты, Кафе…) and **merchant** (where — Lidl, a café…), and each merchant has a **type** (shop/café/restaurant/online/other). A single shop trip can span several categories.
+- `README.md` — product, implemented architecture, setup, and known limitations.
+- `AGENTS.md` — non-negotiable engineering rules.
+- `HANDOFF.md` — current operational state, risks, and next action.
+- `CHANGELOG.md` — append-only history and release stamps.
+- `BUGS.md` — confirmed defects and fixed-bug history.
+- `BACKLOG.md` — future product functionality and consciously deferred ideas.
 
-## Working features (do not regress)
+Current code is the implementation source of truth. Source in `main` does **not** prove that a migration, Edge Function, web deploy, or Android build is live in production.
 
-- Email/password auth with persisted session.
-- Manual expense entry in RSD/USD/EUR with NBS conversion and a live 3-currency preview; exotic currencies (KZT/RUB/TRY/other) via a manual RSD equivalent.
-- Home feed as a `FlatList` of **per-day cards** (`surface/raised` on the `bg/base` backdrop): each day is a card holding a **non-sticky** day header (date + day total) and that day's rows, with collapsible days (in-memory, reset on month change). Every purchase renders as a unified, expandable DS `List Row` (single-item and manual expenses included) with inset hairline dividers between rows; expansion shows the line item(s) and edit/delete actions. Above the feed: a **hero balance card** (RSD primary at `Display/Hero`, with EUR and USD equivalents), and a **month picker** (header month + chevron) in place of prev/next arrows. There are no in-feed add buttons — adding is via the **+** menu in the navigation.
-- Fiscal receipt scanning (Serbian SUF QR): **native-only** (see CORS note); the device downloads the page HTML, the Edge Function parses the journal; one receipt -> one `receipts` row + one `expenses` row per line item.
-- Photo / email-screenshot receipt recognition via a vision model (`analyze-receipt-image`): merchant, date, currency, totals, human item names.
-- Per-user categorization dictionary (`item_category_rules`), **dictionary-first**; unknown item names go to the text model (`categorize-items`); final review choices teach the dictionary.
-- Merchant brand normalization (shared across branches) with the full original label kept in `receipts.merchant_label`.
-- Places / categories management (rename, merge, delete) with reference re-pointing before delete; system rows read-only; "Не распознано" protected.
-- Analytics screen (read-only): category and merchant/merchant-type breakdowns, in-place drilldown with "show more", on-screen currency toggle.
+## Architecture that must not regress
 
-## Non-negotiable rules
+- Email/password auth with persisted sessions, RU/EN interface, light/dark/system themes, account name, feedback, and account deletion.
+- Password-reset routes and logic exist, but the sign-in entry point is gated by `PASSWORD_RESET_UI=false` until domain + custom SMTP + redirect configuration are ready.
+- Home uses a `FlatList` of non-sticky per-day cards. Each card owns its day header, purchase rows, inset dividers, and expansions. Month selection uses `MonthPicker`.
+- Wide Web uses a fixed left sidebar; native and phone-width Web use bottom tabs. All creation routes through the navigation `+` menu.
+- Android supports native SUF QR scanning and receipt photos. Web supports receipt-image upload/paste and vision recognition, but not SUF QR/link fetching.
+- Analytics is read-only and supports preset/custom ranges, category/place/fixed-variable tabs, capped drilldowns, sorting, averages, pace/forecast, and a display-currency picker.
+- Reports export the selected month as CSV/XLSX/PDF. Known export defects belong in `BUGS.md`; do not silently redefine the format while fixing unrelated work.
+- `lib/db/` is split by domain and re-exported through `lib/db/index.ts`. Keep screen components thin and business/data logic in `lib/`.
 
-### Money
-- All money math uses **integer cents**. Multiply -> round -> divide. Never chain floating-point arithmetic on raw amounts.
-- Rounding is **half-up** to 2 decimals.
-- Use the helpers in `lib/money.ts` (`parseAmountInput`, `convertAll`, `formatMoney`, cents conversion). Do not re-implement.
-- Input parsing accepts both `12,5` and `12.5`. Serbian numbers use `.` for thousands and `,` for decimal: `1.234,56` -> `123456` cents.
+## Money and dates
 
-### Dates
-- `occurred_on` is the user's **local calendar date**, computed from `getFullYear/getMonth/getDate`.
-- **Never** use `toISOString().slice(0,10)` or any UTC-based shortcut to derive a calendar date - it shifts evening expenses to the wrong day. This has bitten us before.
-- Use `lib/dates.ts`.
+- Store and calculate app money in **integer cents**. Multiply, half-up round, then divide. Never chain floating-point operations on raw money.
+- Use `lib/money.ts`; do not duplicate parsing, conversion, distribution, or formatting logic.
+- `parseAmountInput` currently accepts unsigned plain values such as `12`, `12,5`, and `12.50`. It does **not** accept grouped thousands (`1.234,56`, `1 234,56`) or negative amounts. The grouped-input gap is tracked in `BUGS.md`; do not claim otherwise.
+- Refunds/negative expenses are not implemented and remain backlog work.
+- `occurred_on` is the user's **local calendar date**. Use `lib/dates.ts`; never derive it with `toISOString().slice(0, 10)` or another UTC shortcut.
 
-### Currency conversion
-- Use `lib/fx.ts` (`ensureRatesFor`, `resolveRates`). Never call the rate API from a screen.
-- Resolve rates **once per save operation** and reuse for all rows (e.g. all line items of a receipt).
-- Rate = newest complete USD/EUR pair on or before the expense date (weekend -> Friday). Store the chosen date as `fx_rate_date`. Never save NULL converted amounts; block and show a retry instead.
-- Analytics reads the **stored** `amount_rsd/usd/eur` - it must never recompute FX.
+## Currency model
 
-### Database and security
-- **RLS is enabled on every user table**, with both `using` and `with check`. Never `using (true)` on a user table.
-- Set `user_id` explicitly on every insert.
-- The service-role key must never appear in the app bundle or any `EXPO_PUBLIC_*` var. It lives only in Edge Functions (Supabase injects `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` automatically).
-- `fx_rates` is server-written, client-read-only.
-- **Do not modify applied migrations.** New schema changes go in a new timestamped migration. (Phases 1-2 required **no** schema changes beyond the Phase 0 foundation - keep it that way unless truly necessary.)
-- Reference tables (`categories`, `merchant_types`) use the `user_id IS NULL = system default` pattern. No per-user copies, no `profiles` triggers.
-- Reference the system "uncategorized" category by `slug='uncategorized'`, never by display name.
+The current model has a canonical write-time anchor plus a temporary compatibility snapshot:
 
-### Multi-row saves
-No client-side transactions exist. When one action writes several rows (receipt + its expenses), implement **explicit compensating cleanup**: if a later insert fails, delete what was already written so no half-saved state remains. See `saveFiscalReceipt` in `lib/db.ts` for the pattern.
+- Always preserve `original_amount` + `original_currency`.
+- New/edited expenses freeze `amount_eur` from the historical rate for the expense date whenever the currency/rate or manual equivalent is available. EUR originals are equality, not conversion. Honest-null legacy/unreadable rows are allowed by the current schema and must be surfaced, never fabricated.
+- Home and Analytics display through `lib/fxDisplay.ts`: frozen EUR cents × a historical EUR-base rate selected on or before the expense date. `ANCHOR_DISPLAY=true` is the active path.
+- Frankfurter EUR-base rows are synchronized by `sync-rates`; only settled dates are written and existing rows are not overwritten.
+- `amount_rsd`, `amount_usd`, and the legacy `fx_rate_date` remain written/read for rollback and compatibility. `sync-fx`/`lib/fx.ts` are the legacy NBS path. Do not remove them without a dedicated migration/rollback task.
+- Covered display/input currencies are declared in `lib/homeCurrency.ts`. A valid ISO currency outside that set may use a manual RSD equivalent; the frozen EUR anchor still derives from that manual equivalent.
+- Resolve rates once per save operation and reuse them for every line of a receipt. Never call an external rate API directly from a screen.
+- Never rewrite frozen expense anchors because newer rates appeared. Missing display rates may be fetched on demand, but saved expense values stay immutable unless the user edits money/date/currency.
+- Totals are sums of individually rounded row amounts. An unconvertible row must not zero or hide the convertible subtotal; surface the unavailable count.
 
-### Server-side fetching & receipt parsing
-- **The device downloads the SUF verification page; the Edge Function only parses the supplied HTML.** The tax site blocks requests from Supabase servers, and it works from the device. Do not reintroduce server-side fetching of the tax page.
-- `parse-receipt` still validates `sourceUrl` against a hostname **allowlist** (`suf.purs.gov.rs` + sandbox/tap variants), requires `https`, path `/v/`, non-empty `vl`, and caps HTML size. This guards against parsing arbitrary attacker HTML.
-- Edge Functions keep `verify_jwt = true`, never throw, always return JSON, and use idempotent upserts.
-- The SUF item table is rendered client-side by JS and is empty in raw HTML - parse the `<pre>` **journal** block instead (merchant, TIN, line items, totals, timestamp). The journal wraps names at ~40 chars, so an item is one-or-more name lines followed by one amounts line.
-- **Item-name dictionary key.** The dictionary key is `normalizeItemName(rawName)`, computed the **same** way on write (learning) and read (resolution). `normalizeItemName` strips size/measure units in **both Cyrillic and Latin** (л/мл/г/кг as well as l/ml/g/kg), normalizes punctuation, and drops leading barcodes — never revert it to Latin-only unit stripping, which caused rescans to miss learned corrections.
+## Categories, merchants, and reference data
 
-### Home feed
-- The feed is a `FlatList` whose items are **per-day cards** (`surface/raised` fill, `radius/lg`, hairline `border/subtle`, on the `bg/base` backdrop, `space/4` gutters and inter-card gaps). Each card holds the day header and that day's rows. **Day headers live inside the card and are NOT sticky** — the earlier `SectionList`/sticky-opaque-header design was intentionally replaced when surfaces/cards were introduced; do not reintroduce `SectionList` or sticky headers. Preserve bottom padding that clears the bottom tab bar.
-- Day-collapse state and per-purchase expansion state are **independent** in-memory sets; both reset on month change. Purchase expansion is keyed by **`unit.key`** (receipt-backed and manual units alike) — do not re-key on `receiptId`, and do not make expandability depend on item count. Every purchase is expandable.
-- Rows render via the DS component `components/ds/ListRow` (category emoji in the circle, place, "N позиций", amount). Between rows within a card is an inset hairline (`separator/inset`, offset past the icon via a token-computed left inset). The expansion block (line items + edit/delete) renders inside the card.
-- Edit routing is by type: receipt-backed unit -> `receipt/review`, manual single -> the expense editor. Delete removes the unit's expenses via `deleteExpense`, and additionally `deleteReceipt` **only** when `receiptId` is non-null.
-- The "В чеке: …" raw-name line is shown only when `rawName` is present; manual expenses have none. Don't force it.
-- **Home currency is fixed to RSD** (hero primary, day totals, row amounts), with EUR and USD shown as equivalents in the hero — all computed from the **stored** per-currency amounts, never recomputed FX. The currency *selector* was removed from Home (it stays for analytics via `DisplayCurrencyContext`); this realizes the "show currencies simultaneously, not a toggle" bet. Do not restore a Home currency selector.
-- The month is chosen via the **month picker** (`components/MonthPicker`) opened from the header; do not restore prev/next month arrows.
+- Categories are per-account editable rows. `20261115000000_per_account_categories.sql` keeps NULL-user rows only as registration templates, seeds/backfills personal copies, and re-points existing references. Its production application is not yet confirmed in repository history.
+- Client category lists must filter `user_id = auth.uid()`; never mix NULL templates into pickers or management screens.
+- Every account must have exactly one personal `slug='uncategorized'`. It can be renamed/re-styled but never deleted or used as a merge source. Deleting another category re-points expenses, subscriptions, and dictionary rules to that personal fallback before deletion.
+- Category/merchant destructive multi-row operations preserve ownership and use compensating cleanup.
+- User-created labels are content and must pass through untranslated. Seeded reference labels may be localized only through an explicit stable mapping (prefer slug/context, not text coincidence). The current text-match collision is tracked in `BUGS.md`.
+- Category and merchant are independent axes. A receipt may contain many categories while sharing one merchant/purchase.
+- `normalizeItemName(rawName)` must be identical on dictionary read/write. Preserve Cyrillic and Latin unit stripping, punctuation normalization, and leading-barcode removal.
 
-### UI
-- Every color, spacing, radius, and font size comes from `lib/theme.ts`. No hardcoded hex/px in screens or components. `grep` for hex outside `lib/theme.ts` must be empty.
-- **Design-system tokens.** Color, typography, and spacing/size/radius/stroke come from `lib/theme.ts` as `theme.color.*`, `theme.type.*` (17 named roles), and `theme.scale.*` (radius/size/space/stroke) — mirroring the Fintrack Figma DS. Inter is bundled via `@expo-google-fonts/inter` and loaded in `app/_layout.tsx`. Prefer the DS components in `components/ds/` (ListRow, DayHeader, Divider, Panel) and these tokens over ad-hoc styles. The legacy flat `theme.colors` / `theme.fontSizes` / `theme.radii` / `theme.spacing` / `theme.sizes` remain for not-yet-migrated screens — don't delete them, but new/redesigned UI uses `theme.color`/`type`/`scale`.
-- **No elevation/shadow tokens exist yet.** Cards use a hairline `border/subtle` as the depth cue. Don't hardcode shadow values; if real elevation is needed it will be added as a token layer first.
-- **Navigation shell is responsive** (`components/TabBar.tsx`): **wide Web (≥ `DESKTOP_MIN_WIDTH`) = a fixed left sidebar** (`SIDEBAR_WIDTH`, with a "Добавить" button at the top; content is offset by `SIDEBAR_WIDTH` in `app/(app)/_layout.tsx`); **native and phone-width Web = the bottom tab bar** with a center **+**. Adding an expense is only via the **+** menu: **Сканировать чек** (QR, native-only — hidden on web), **Загрузить фото** (`receipt/scan?mode=image`), **Добавить вручную** (`expense/new`).
-- All user-facing copy in **Russian**; code, identifiers, comments in **English**.
-- Minimalist: white background, near-black text, one accent color, generous whitespace.
-- **Web/native parity matters.** `flex: 1` does not guarantee full viewport height on react-native-web; absolutely positioned elements can end up off-screen. Floating buttons use `Platform.select({ web: 'fixed', default: 'absolute' })`. Verify every screen on Web, not just Android.
-- Guard native-only modules (camera) behind `Platform.OS !== 'web'`. **Receipt scanning is native-only**: the tax page can't be fetched from a browser (CORS), so hide the scan entry point on Web and show a "use the mobile app" placeholder - never a raw CORS error.
-- Reuse shared components (`ShareBar`, `ExpenseMiniRow`, pickers, `DatePicker`, `CurrencySelector`) instead of new variants.
+## Database and security
 
-### Analytics specifics
-- Read-only. No inserts/updates/deletes on any analytics path.
-- Fetch a month's expenses **once** and group in memory; never one query per row.
-- Long drilldown lists are capped (show first N, "показать ещё") - never render hundreds of rows at once.
-- Any grouping's grand total must equal the month total (same expenses, grouped differently) - assert this in a unit test.
+- RLS stays enabled on every user table. User policies require ownership in both `using` and `with check`; never use `using (true)` for user data.
+- Set `user_id` explicitly on every client insert.
+- The service-role key is server-only and must never enter app code, `.env.example`, or an `EXPO_PUBLIC_*` variable.
+- `fx_rates` is server-written and client-read-only.
+- Never modify an applied migration. Add a later timestamped migration and preserve data.
+- No client transaction spans multi-row saves. Use explicit compensating cleanup; follow the receipt/category/merchant data-layer patterns.
+- Do not infer production schema state from migration files. Record required application/verification in `HANDOFF.md`.
 
-### TypeScript and dependencies
-- `strict` mode. No `any` without an inline justification comment.
-- **Do not add dependencies** unless the task prompt explicitly allows them. Install RN/Expo packages with `npx expo install`, not raw `npm install`.
-- Small focused modules; dumb components, logic in `lib/`.
+## Edge Functions and receipts
 
-### Scope discipline
-- Build exactly what the task specifies. Each prompt has an "Out of scope" list - respect it.
-- If a requirement seems to need a schema change or new dependency, **stop and explain in your summary** rather than doing it.
+- Native device code downloads SUF verification HTML; `parse-receipt` only validates and parses supplied HTML. Never reintroduce server-side fetching of the Serbian tax page.
+- `parse-receipt` requires HTTPS, an allowed SUF hostname, `/v/`, non-empty `vl`, capped HTML, and journal (`<pre>`) parsing. The JS-rendered item table is empty in raw HTML.
+- Edge Functions return structured JSON and catch top-level errors. Rate writers use idempotent/insert-only conflict behavior.
+- Gateway JWT verification stays enabled for `sync-fx`, `sync-rates`, `parse-receipt`, `analyze-receipt-image`, and `categorize-items`.
+- `delete-account` is the documented exception: gateway `verify_jwt=false`, but the function must validate the bearer token itself with `auth.getUser` before service-role deletion.
+- Receipt photos are processed in memory and not stored.
+- Photo analysis may receive one to five overlapping images of one receipt. Preserve overlap-aware deduplication and the honest-null contract: unreadable printed totals/dates/currencies must reach review, not be silently invented from line items.
+- Receipt categorization is dictionary-first; only unresolved item names reach `categorize-items`. Final review teaches the dictionary.
 
-## Project history files (update on every task)
+## Home and navigation
 
-Two files in the repo root record project state and evolution. Updating **both** is part of finishing any task — do it in the **same commit** as the work.
+- Home feed: `FlatList` → per-day raised cards on the base backdrop. Day headers are inside cards and **not sticky**. Do not restore `SectionList` or sticky headers.
+- Day collapse and purchase expansion are independent in-memory sets and reset on month change. Expansion keys use `unit.key`, not `receiptId`; every purchase is expandable.
+- Rows use `components/ds/ListRow`. Preserve token-computed inset dividers and bottom padding above mobile navigation.
+- Receipt-backed rows edit through `receipt/review`; manual rows use the expense editor. Delete receipt metadata only when `receiptId` is non-null.
+- Home primary total/rows use the selected home currency; the hero may show the configured secondary currency. Do not restore the old fixed-RSD or three-currency hero rules.
+- Add menu: native can show SUF scan, image upload, and manual entry; Web hides native QR and keeps image/manual entry.
 
-### HANDOFF.md — current state (rewritten each task)
-Overwrite it so the next agent (Claude Code or Codex) can continue with no questions. Keep these sections: **Где мы** (one-paragraph current focus), **Только что сделано** (this task's commits + what was verified / not verified), **Состояние origin/main**, **Следующий шаг** (and why), **Открытые решения и риски**, **Не трогать**. It is a delta + pointer — do not duplicate long context that lives in `AGENTS.md` or the project context doc.
+## UI, design system, and localization
 
-### CHANGELOG.md — history (append-only, never rewritten)
-Append **one entry per task** under the top `## [Unreleased]` section, in the right bucket — **Added / Changed / Fixed**. Never edit or delete past entries.
-- An entry states the **user-facing change** (not a diff summary), ends with the commit **hash**, and — when the task carried a decision or rationale — a `— why: …` clause (this is what the case study mines). If the task prompt provides a ready-made changelog line, use it verbatim.
-- **Releases.** `[Unreleased]` holds what's merged but not yet in a shipped build. When the app is deployed (EAS web + Android), stamp `[Unreleased]` with the release date → it becomes a dated release block, and open a fresh empty `[Unreleased]` above it. Only do this when a deploy actually happens, or when the task prompt says to.
-- Keep the file's existing header/rules block and section order; only append.
+- Use semantic dynamic colors from `useColors()` and `lib/theme.ts`; dimensions/type come from `theme.type.*` and `theme.scale.*` for new/redesigned UI. Do not hardcode hex colors or ad-hoc shadow values.
+- Inter is bundled in `app/_layout.tsx`. Reuse components in `components/ds/` and existing pickers/chrome before creating variants.
+- RU and EN are supported. Every new user-facing string needs both `lib/i18n/ru.ts` and `lib/i18n/en.ts`; code identifiers/comments stay English.
+- Locale-aware dates and pluralization use the active locale. Never translate user-entered category, merchant, note, or description text.
+- Web/native parity matters. Guard camera/native modules by platform, keep full-height web layouts, and use viewport-safe positioning where required.
+- Wide-Web breakpoint behavior belongs in `TabBar`/app layout; do not branch solely on `Platform.OS === 'web'` for responsive navigation.
 
-## Commands
+## Analytics and export
+
+- Analytics never writes data. Fetch a range once per dataset, aggregate in memory, cap long lists, and preserve `sum(groups) === total` tests.
+- Analytics display uses frozen EUR anchors + historical display rates when `ANCHOR_DISPLAY` is on; do not fall back to silently recomputing saved anchors.
+- Export builders are pure and covered by characterization tests. Current RSD/EUR/USD-column and missing-EUR issues are documented bugs; fix them only in a dedicated task with regression tests.
+
+## TypeScript, dependencies, and scope
+
+- TypeScript strict; no `any` without an inline justification.
+- No new dependency unless the task explicitly allows it. Install Expo/RN packages with `npx expo install`.
+- Preserve unrelated working-tree changes. Never stage `.env` or `supabase/.temp/*`.
+- Build exactly the requested scope. If a requirement needs an unapproved schema/dependency/product decision, stop and report it.
+
+## Project history files
+
+Every task updates both files in the same commit unless the task explicitly says otherwise:
+
+- `HANDOFF.md` is rewritten as a concise delta with: **Где мы**, **Только что сделано**, **Состояние origin/main**, **Следующий шаг**, **Открытые решения и риски**, **Не трогать**.
+- `CHANGELOG.md` is append-only. Add one user-facing entry under the top `## [Unreleased]` bucket; never edit/delete historical entries. Stamp a dated release only after an actual deployment.
+
+## Commands and testing
 
 ```bash
 npm install
-npx expo start          # dev server; "a" = Android, "w" = Web
-npx expo start -c       # same, clearing cache (needed after editing .env)
-npm run android
-npm run web
-npm run typecheck       # tsc --noEmit - zero errors
-npm test                # jest - pure logic (money, dates, parsing, analytics aggregation)
+npx expo start          # a = Android, w = Web
+npx expo start -c       # clear cache after environment changes
+npm run typecheck
+npm test
 npx expo install --check
 ```
 
-`.env` (gitignored) holds `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Expo reads it at startup only - restart with `-c` after changes.
+Pure/domain logic belongs in Jest. UI, native camera, network, migrations, and deployments require manual/integration checks. For documentation-only tasks, validate Markdown diff, links, and consistency instead of running expensive builds/tests when the prompt allows it.
 
-## Testing expectations
+## Repository map
 
-Unit tests (jest-expo) cover **pure logic**: money parsing/conversion/formatting, date utilities, receipt journal parsing (fixture: the UNIVEREXPORT receipt - 7 items, total 124295 cents), and analytics aggregation (including the total-equivalence cross-check). UI and network are verified manually on Web and Android. Don't add heavy UI test infra unless asked.
-
-## Repository layout
-
+```text
+app/                    Expo Router screens
+components/             shared UI, DS components, receipt inputs, responsive nav
+contexts/               auth, language, theme, toast, receipt draft, currency preferences
+lib/db/                 domain data modules and barrel export
+lib/i18n/               RU/EN dictionaries
+lib/__tests__/          Jest suites
+lib/anchorRates.ts      EUR-base rate resolution/on-demand sync
+lib/fxDisplay.ts        frozen EUR anchor -> display currency
+lib/fx.ts               legacy NBS compatibility path
+lib/export*.ts          export builders/delivery
+supabase/migrations/    additive migrations
+supabase/functions/     Deno Edge Functions
+scripts/                receipt-recognition evaluation
 ```
-app/(auth)/           sign-in, sign-up
-app/(app)/            month list (index), expense editor, analytics, receipt/{scan,review}
-components/           ShareBar, ExpenseMiniRow, pickers, DatePicker, CurrencySelector, MonthPicker, TabBar (responsive nav), ReceiptCamera.{native,web}, ds/{ListRow,DayHeader,Divider,Panel}
-contexts/             AuthContext, DisplayCurrencyContext, ReceiptDraftContext
-lib/                  money, dates, fx, db, receipts, itemCategorization, homeRowPresentation, theme (DS color/type/fontFamily/scale + legacy flat maps), supabase, authErrors
-  __tests__/          unit tests
-supabase/
-  migrations/         Phase 0 foundation + additive migrations (item categorization, item display names, merchant brand labels); do not edit applied migrations
-  functions/          sync-fx, parse-receipt (+parser.ts), analyze-receipt-image, categorize-items (Deno)
-```
 
-## Definition of done (every task)
+## Definition of done
 
-- `npm run typecheck` and `npm test` pass
-- app boots on **both** Web and Android with no red screen
-- nothing from the task's "Out of scope" was built
-- no new dependencies beyond those explicitly allowed
-- no hardcoded colors outside `lib/theme.ts`
-- no secrets committed
-- existing working features (list above) still work
-- `HANDOFF.md` rewritten to the current state
-- `CHANGELOG.md` has a new `[Unreleased]` entry for this task (same commit)
-
-When a task is ambiguous, choose the simplest interpretation that satisfies its Definition of Done and record the decision in the README.
+- Requested scope is complete; out-of-scope behavior is untouched.
+- Relevant typecheck/tests pass, or documentation-only verification is performed when explicitly allowed.
+- Web and Android risks are considered; changed UI is manually checked on both when practical.
+- Money/date/ownership/RLS/frozen-anchor invariants remain intact.
+- No secrets, `.env`, temp Supabase state, unrelated changes, or unapproved dependencies are committed.
+- `HANDOFF.md` and `CHANGELOG.md` are updated in the same commit.
+- Commit/push/deploy actions follow the task exactly; a deploy or production migration is never claimed without evidence.
