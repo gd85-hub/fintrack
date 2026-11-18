@@ -315,8 +315,10 @@ export const theme = {
   scale: {
     radius: {
       xs: 6,
-      sm: 10,
-      md: 14,
+      // DS radius scale (Figma "2. Radius"): sm = navigation items and
+      // segmented controls, md = toasts, banners and input fields.
+      sm: 12,
+      md: 16,
       // Explicit Button corners (DS: radius/button/*). The focus variants are
       // the outer radius of the focus ring: corner + 2px gap + 2px outline.
       buttonMedium: 14,

@@ -429,7 +429,7 @@ const makeStyles = (c: Colors) =>
     sidebarAddButton: {
       alignItems: 'center',
       backgroundColor: c.action.primary.fill,
-      borderRadius: theme.scale.radius.md,
+      borderRadius: theme.scale.radius.sm,
       flexDirection: 'row',
       gap: theme.scale.space[2],
       justifyContent: 'center',
@@ -449,7 +449,7 @@ const makeStyles = (c: Colors) =>
     },
     sidebarRouteTab: {
       alignItems: 'center',
-      borderRadius: theme.scale.radius.md,
+      borderRadius: theme.scale.radius.sm,
       flexDirection: 'row',
       gap: theme.scale.space[3],
       minHeight: theme.scale.size.touchTarget,
