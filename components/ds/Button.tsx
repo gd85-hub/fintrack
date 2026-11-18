@@ -1,6 +1,7 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,14 +11,16 @@ import {
 import { useColors } from '../../contexts/ThemeContext';
 import { theme } from '../../lib/theme';
 
-// Fintrack DS · Button (Figma "Components" page, frame 591:1212).
-// Types Primary / Surface / Outline / Ghost / Danger in Medium and Large,
-// with Default, Hover, Pressed, Loading and Disabled states.
-// The DS also defines a Neutral type, which has no action.neutral token in
-// lib/theme.ts yet and is therefore not implemented here.
+// Fintrack DS · Button.
+// Component: Figma "Components" page, frame 591:1212.
+// Token contract: frame 1041:2624 ("Button - frontend token contract").
+// Types Primary / Neutral / Surface / Outline / Ghost / Danger in Medium and
+// Large, with default, hover, pressed, loading and disabled states, plus an
+// independent focused state rendered on web.
 
 export type ButtonVariant =
   | 'primary'
+  | 'neutral'
   | 'surface'
   | 'outline'
   | 'ghost'
@@ -50,14 +53,12 @@ export type ButtonTypography = {
 export type ButtonSizeSpec = {
   height: number;
   radius: number;
+  focusRadius: number;
   paddingHorizontal: number;
   minWidth: number;
   gap: number;
   typography: ButtonTypography;
 };
-
-// The palette the active theme hands out, so light and dark both fit.
-export type ButtonColors = ReturnType<typeof useColors>;
 
 export type ButtonVisualState = {
   disabled?: boolean;
@@ -71,12 +72,16 @@ export type ButtonSurface = {
   content: string;
 };
 
+// The palette the active theme hands out, so light and dark both fit.
+export type ButtonColors = ReturnType<typeof useColors>;
+
 // Medium and Large bind different height, corner and padding tokens.
 export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
   if (size === 'large') {
     return {
       height: theme.scale.size.controlLg,
-      radius: theme.scale.radius.buttonLg,
+      radius: theme.scale.radius.buttonLarge,
+      focusRadius: theme.scale.radius.buttonFocusLarge,
       paddingHorizontal: theme.scale.space[6],
       minWidth: theme.scale.size.controlMinWidth,
       gap: theme.scale.space[2],
@@ -84,8 +89,9 @@ export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
     };
   }
   return {
-    height: theme.scale.size.buttonHeight,
-    radius: theme.scale.radius.md,
+    height: theme.scale.size.controlMd,
+    radius: theme.scale.radius.buttonMedium,
+    focusRadius: theme.scale.radius.buttonFocusMedium,
     paddingHorizontal: theme.scale.space[5],
     minWidth: theme.scale.size.controlMinWidth,
     gap: theme.scale.space[2],
@@ -113,6 +119,23 @@ export function buttonSurface(
   };
 
   switch (variant) {
+    case 'neutral':
+      // Disabled is inherited from primary by the token contract.
+      return state.disabled
+        ? {
+            background: action.primary.disabled,
+            border: null,
+            content: action.primary.disabledContent,
+          }
+        : {
+            background: pick(
+              action.neutral.fill,
+              action.neutral.hover,
+              action.neutral.pressed,
+            ),
+            border: null,
+            content: action.neutral.content,
+          };
     case 'surface':
       return state.disabled
         ? {
@@ -137,11 +160,7 @@ export function buttonSurface(
             content: action.secondary.disabledContent,
           }
         : {
-            background: pick(
-              surface.default,
-              overlay.hover,
-              overlay.pressed,
-            ),
+            background: pick(surface.default, overlay.hover, overlay.pressed),
             border: border.default,
             content: action.secondary.content,
           };
@@ -192,12 +211,50 @@ export function buttonSurface(
   }
 }
 
-// A loading button must not fire again, so it is inert while it works.
+// Focus ring colour per the token contract: Primary and Neutral take the
+// primary focus token, Surface / Outline / Ghost the secondary one, Danger
+// the destructive one.
+export function buttonFocusColor(
+  colors: ButtonColors,
+  variant: ButtonVariant,
+): string {
+  switch (variant) {
+    case 'danger':
+      return colors.action.destructive.focus;
+    case 'surface':
+    case 'outline':
+    case 'ghost':
+      return colors.action.secondary.focus;
+    default:
+      return colors.action.primary.focus;
+  }
+}
+
+// A loading button must not fire again, so activation is blocked while it
+// works - but it stays focusable, so keyboard focus is not lost.
 export function isButtonPressable(state: {
   disabled?: boolean;
   loading?: boolean;
 }): boolean {
   return !state.disabled && !state.loading;
+}
+
+// Disabled can never show the ring; loading still can.
+export function showsFocusRing(state: {
+  disabled?: boolean;
+  focused?: boolean;
+}): boolean {
+  return Boolean(state.focused) && !state.disabled;
+}
+
+// The DS specifies focus as a web interaction (:focus-visible). A touch target
+// has no keyboard ring, and an overlay drawn outside the bounds of a rounded
+// view can clip on Android, so the ring is web-only.
+export function rendersFocusRing(
+  platform: string,
+  state: { disabled?: boolean; focused?: boolean },
+): boolean {
+  return platform === 'web' && showsFocusRing(state);
 }
 
 export function Button({
@@ -216,21 +273,30 @@ export function Button({
 }: ButtonProps) {
   const colors = useColors();
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Approximates :focus-visible - a focus that arrives with a pointer press
+  // does not raise the ring, a focus that arrives from the keyboard does.
+  const pointerFocus = useRef(false);
   const sizeSpec = useMemo(() => buttonSizeSpec(size), [size]);
   const styles = useMemo(() => makeStyles(sizeSpec), [sizeSpec]);
 
   const pressable = isButtonPressable({ disabled, loading });
-  // Loading keeps the disabled look off: the button is busy, not unavailable.
-  const inactive = disabled;
+  const focusRing = rendersFocusRing(Platform.OS, { disabled, focused });
 
   return (
     <Pressable
       accessibilityHint={accessibilityHint}
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
-      accessibilityState={{ busy: loading, disabled: !pressable }}
-      disabled={!pressable}
-      focusable={pressable}
+      accessibilityState={{ busy: loading, disabled }}
+      // Only a disabled button leaves the focus order; a loading one keeps it.
+      disabled={disabled}
+      focusable={!disabled}
+      onBlur={() => {
+        setFocused(false);
+        pointerFocus.current = false;
+      }}
+      onFocus={() => setFocused(!pointerFocus.current)}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={() => {
@@ -239,9 +305,12 @@ export function Button({
         }
         onPress();
       }}
+      onPressIn={() => {
+        pointerFocus.current = true;
+      }}
       style={({ pressed }) => {
         const surface = buttonSurface(colors, variant, {
-          disabled: inactive,
+          disabled,
           hovered: hovered && pressable,
           pressed: pressed && pressable,
         });
@@ -259,7 +328,7 @@ export function Button({
     >
       {({ pressed }) => {
         const surface = buttonSurface(colors, variant, {
-          disabled: inactive,
+          disabled,
           hovered: hovered && pressable,
           pressed: pressed && pressable,
         });
@@ -268,7 +337,10 @@ export function Button({
             {/* Kept mounted while loading so the button does not resize. */}
             <View style={[styles.content, loading && styles.contentHidden]}>
               {icon && iconPosition === 'leading' ? icon : null}
-              <Text numberOfLines={1} style={[styles.label, { color: surface.content }]}>
+              <Text
+                numberOfLines={1}
+                style={[styles.label, { color: surface.content }]}
+              >
                 {label}
               </Text>
               {icon && iconPosition === 'trailing' ? icon : null}
@@ -278,6 +350,15 @@ export function Button({
                 <ActivityIndicator color={surface.content} size="small" />
               </View>
             ) : null}
+            {focusRing ? (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.focusRing,
+                  { borderColor: buttonFocusColor(colors, variant) },
+                ]}
+              />
+            ) : null}
           </>
         );
       }}
@@ -286,6 +367,10 @@ export function Button({
 }
 
 function makeStyles(size: ButtonSizeSpec) {
+  // The ring sits outside the button: a clear gap, then the outline. Both are
+  // absolute, so focus never moves anything around it.
+  const ringOffset = size.focusRadius - size.radius;
+
   return StyleSheet.create({
     base: {
       alignItems: 'center',
@@ -305,6 +390,15 @@ function makeStyles(size: ButtonSizeSpec) {
     },
     contentHidden: {
       opacity: 0,
+    },
+    focusRing: {
+      borderRadius: size.focusRadius,
+      borderWidth: theme.scale.stroke.focusRing,
+      bottom: -ringOffset,
+      left: -ringOffset,
+      position: 'absolute',
+      right: -ringOffset,
+      top: -ringOffset,
     },
     fullWidth: {
       alignSelf: 'stretch',

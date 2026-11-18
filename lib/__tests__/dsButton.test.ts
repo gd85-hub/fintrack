@@ -1,21 +1,50 @@
 import { describe, expect, test } from '@jest/globals';
 
 import {
+  type ButtonColors,
+  type ButtonVariant,
+  buttonFocusColor,
   buttonSizeSpec,
   buttonSurface,
   isButtonPressable,
+  rendersFocusRing,
+  showsFocusRing,
 } from '../../components/ds/Button';
-import { theme } from '../theme';
+import { darkColor, theme } from '../theme';
 
-// Asserts the Figma Button spec (Components page, frame 591:1212) against the
-// tokens it must bind, not against raw hex values.
+// Asserts the Figma Button spec (component 591:1212, token contract 1041:2624)
+// against the tokens it must bind, not against raw hex values.
 const colors = theme.color;
+
+// Every colour rule is checked in both themes: the component reads one palette
+// through useColors() and may not special-case either scheme.
+const themes: [string, ButtonColors][] = [
+  ['light', colors],
+  ['dark', darkColor],
+];
+
+const variants: ButtonVariant[] = [
+  'primary',
+  'neutral',
+  'surface',
+  'outline',
+  'ghost',
+  'danger',
+];
+
+const interactionStates = [
+  {},
+  { hovered: true },
+  { pressed: true },
+  { disabled: true },
+];
 
 describe('buttonSizeSpec', () => {
   test('medium binds the DS medium height, corner and padding', () => {
     expect(buttonSizeSpec('medium')).toMatchObject({
-      height: theme.scale.size.buttonHeight,
-      radius: theme.scale.radius.md,
+      height: theme.scale.size.controlMd,
+      radius: theme.scale.radius.buttonMedium,
+      focusRadius: theme.scale.radius.buttonFocusMedium,
       paddingHorizontal: theme.scale.space[5],
       minWidth: theme.scale.size.controlMinWidth,
       gap: theme.scale.space[2],
@@ -26,89 +55,195 @@ describe('buttonSizeSpec', () => {
   test('large binds the DS large height, corner and padding', () => {
     expect(buttonSizeSpec('large')).toMatchObject({
       height: theme.scale.size.controlLg,
-      radius: theme.scale.radius.buttonLg,
+      radius: theme.scale.radius.buttonLarge,
+      focusRadius: theme.scale.radius.buttonFocusLarge,
       paddingHorizontal: theme.scale.space[6],
       minWidth: theme.scale.size.controlMinWidth,
       gap: theme.scale.space[2],
     });
     expect(buttonSizeSpec('large').typography.fontSize).toBe(16);
   });
+
+  test('large is taller and rounder than medium', () => {
+    const medium = buttonSizeSpec('medium');
+    const large = buttonSizeSpec('large');
+    expect(large.height).toBeGreaterThan(medium.height);
+    expect(large.radius).toBeGreaterThan(medium.radius);
+    expect(large.paddingHorizontal).toBeGreaterThan(medium.paddingHorizontal);
+  });
+
+  test('the focus radius leaves a 2px gap outside a 2px ring', () => {
+    // Contract: 2px clear gap + 2px outline, so the outer corner grows by 4.
+    const ring = theme.scale.stroke.focusRing;
+    for (const size of ['medium', 'large'] as const) {
+      const spec = buttonSizeSpec(size);
+      expect(spec.focusRadius - spec.radius).toBe(ring * 2);
+    }
+  });
 });
 
 describe('buttonSurface', () => {
   test('primary walks fill -> hover -> pressed and has no border', () => {
-    expect(buttonSurface(colors, 'primary')).toEqual({
-      background: colors.action.primary.fill,
-      border: null,
-      content: colors.action.primary.content,
-    });
-    expect(buttonSurface(colors, 'primary', { hovered: true }).background).toBe(
-      colors.action.primary.hover,
-    );
-    expect(buttonSurface(colors, 'primary', { pressed: true }).background).toBe(
-      colors.action.primary.pressed,
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'primary')).toEqual({
+        background: palette.action.primary.fill,
+        border: null,
+        content: palette.action.primary.content,
+      });
+      expect(
+        buttonSurface(palette, 'primary', { hovered: true }).background,
+      ).toBe(palette.action.primary.hover);
+      expect(
+        buttonSurface(palette, 'primary', { pressed: true }).background,
+      ).toBe(palette.action.primary.pressed);
+    }
+  });
+
+  test('neutral walks its own fill -> hover -> pressed', () => {
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'neutral')).toEqual({
+        background: palette.action.neutral.fill,
+        border: null,
+        content: palette.action.neutral.content,
+      });
+      expect(
+        buttonSurface(palette, 'neutral', { hovered: true }).background,
+      ).toBe(palette.action.neutral.hover);
+      expect(
+        buttonSurface(palette, 'neutral', { pressed: true }).background,
+      ).toBe(palette.action.neutral.pressed);
+    }
+  });
+
+  test('neutral disabled is inherited from primary', () => {
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'neutral', { disabled: true })).toEqual(
+        buttonSurface(palette, 'primary', { disabled: true }),
+      );
+    }
+  });
+
+  test('neutral inverts between the themes', () => {
+    // Dark fill in Light, light fill in Dark: the two must not coincide.
+    expect(darkColor.action.neutral.fill).not.toBe(colors.action.neutral.fill);
+    expect(darkColor.action.neutral.content).not.toBe(
+      colors.action.neutral.content,
     );
   });
 
   test('pressed wins over hovered', () => {
-    expect(
-      buttonSurface(colors, 'primary', { hovered: true, pressed: true })
-        .background,
-    ).toBe(colors.action.primary.pressed);
+    for (const [, palette] of themes) {
+      for (const variant of variants) {
+        expect(
+          buttonSurface(palette, variant, { hovered: true, pressed: true }),
+        ).toEqual(buttonSurface(palette, variant, { pressed: true }));
+      }
+    }
   });
 
   test('disabled wins over every interaction state', () => {
-    expect(
-      buttonSurface(colors, 'primary', {
-        disabled: true,
-        hovered: true,
-        pressed: true,
-      }),
-    ).toEqual({
-      background: colors.action.primary.disabled,
-      border: null,
-      content: colors.action.primary.disabledContent,
-    });
+    for (const [, palette] of themes) {
+      for (const variant of variants) {
+        expect(
+          buttonSurface(palette, variant, {
+            disabled: true,
+            hovered: true,
+            pressed: true,
+          }),
+        ).toEqual(buttonSurface(palette, variant, { disabled: true }));
+      }
+    }
+  });
+
+  test('every variant resolves a fill and a content colour in both themes', () => {
+    for (const [, palette] of themes) {
+      for (const variant of variants) {
+        for (const state of interactionStates) {
+          const surface = buttonSurface(palette, variant, state);
+          expect(surface.background.length).toBeGreaterThan(0);
+          expect(surface.content.length).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 
   test('outline is the only variant with a resting border', () => {
-    expect(buttonSurface(colors, 'outline')).toEqual({
-      background: colors.surface.default,
-      border: colors.border.default,
-      content: colors.action.secondary.content,
-    });
-    expect(buttonSurface(colors, 'surface').border).toBeNull();
-    expect(buttonSurface(colors, 'ghost').border).toBeNull();
-    expect(buttonSurface(colors, 'danger').border).toBeNull();
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'outline')).toEqual({
+        background: palette.surface.default,
+        border: palette.border.default,
+        content: palette.action.secondary.content,
+      });
+      expect(buttonSurface(palette, 'primary').border).toBeNull();
+      expect(buttonSurface(palette, 'neutral').border).toBeNull();
+      expect(buttonSurface(palette, 'surface').border).toBeNull();
+      expect(buttonSurface(palette, 'ghost').border).toBeNull();
+      expect(buttonSurface(palette, 'danger').border).toBeNull();
+    }
   });
 
   test('ghost rests transparent and tints with the state overlays', () => {
-    expect(buttonSurface(colors, 'ghost').background).toBe('transparent');
-    expect(buttonSurface(colors, 'ghost', { hovered: true }).background).toBe(
-      colors.state.hover,
-    );
-    expect(buttonSurface(colors, 'ghost', { pressed: true }).background).toBe(
-      colors.state.pressed,
-    );
-    // Disabled ghost stays fill-less: only the label dims.
-    expect(buttonSurface(colors, 'ghost', { disabled: true })).toEqual({
-      background: 'transparent',
-      border: null,
-      content: colors.action.secondary.disabledContent,
-    });
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'ghost').background).toBe('transparent');
+      expect(buttonSurface(palette, 'ghost', { hovered: true }).background).toBe(
+        palette.state.hover,
+      );
+      expect(buttonSurface(palette, 'ghost', { pressed: true }).background).toBe(
+        palette.state.pressed,
+      );
+      // Disabled ghost stays fill-less: only the label dims.
+      expect(buttonSurface(palette, 'ghost', { disabled: true })).toEqual({
+        background: 'transparent',
+        border: null,
+        content: palette.action.secondary.disabledContent,
+      });
+    }
   });
 
   test('surface and danger bind their own action tokens', () => {
-    expect(buttonSurface(colors, 'surface')).toEqual({
-      background: colors.action.secondary.fill,
-      border: null,
-      content: colors.action.secondary.content,
-    });
-    expect(buttonSurface(colors, 'danger')).toEqual({
-      background: colors.action.destructive.fill,
-      border: null,
-      content: colors.action.destructive.content,
-    });
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'surface')).toEqual({
+        background: palette.action.secondary.fill,
+        border: null,
+        content: palette.action.secondary.content,
+      });
+      expect(buttonSurface(palette, 'danger')).toEqual({
+        background: palette.action.destructive.fill,
+        border: null,
+        content: palette.action.destructive.content,
+      });
+    }
+  });
+});
+
+describe('buttonFocusColor', () => {
+  test('primary and neutral share the primary focus token', () => {
+    for (const [, palette] of themes) {
+      expect(buttonFocusColor(palette, 'primary')).toBe(
+        palette.action.primary.focus,
+      );
+      expect(buttonFocusColor(palette, 'neutral')).toBe(
+        palette.action.primary.focus,
+      );
+    }
+  });
+
+  test('surface, outline and ghost share the secondary focus token', () => {
+    for (const [, palette] of themes) {
+      for (const variant of ['surface', 'outline', 'ghost'] as const) {
+        expect(buttonFocusColor(palette, variant)).toBe(
+          palette.action.secondary.focus,
+        );
+      }
+    }
+  });
+
+  test('danger focuses with the destructive token', () => {
+    for (const [, palette] of themes) {
+      expect(buttonFocusColor(palette, 'danger')).toBe(
+        palette.action.destructive.focus,
+      );
+    }
   });
 });
 
@@ -123,5 +258,44 @@ describe('isButtonPressable', () => {
 
   test('disabled blocks presses', () => {
     expect(isButtonPressable({ disabled: true })).toBe(false);
+  });
+});
+
+describe('rendersFocusRing', () => {
+  test('web raises the ring for a focused enabled button', () => {
+    expect(rendersFocusRing('web', { focused: true })).toBe(true);
+  });
+
+  test('web never rings a disabled button', () => {
+    expect(rendersFocusRing('web', { disabled: true, focused: true })).toBe(
+      false,
+    );
+  });
+
+  test('native draws no ring', () => {
+    // The DS specifies focus as a web interaction; touch targets get no ring.
+    for (const platform of ['android', 'ios']) {
+      expect(rendersFocusRing(platform, { focused: true })).toBe(false);
+    }
+  });
+});
+
+describe('showsFocusRing', () => {
+  test('an unfocused button shows no ring', () => {
+    expect(showsFocusRing({})).toBe(false);
+  });
+
+  test('a focused enabled button shows the ring', () => {
+    expect(showsFocusRing({ focused: true })).toBe(true);
+  });
+
+  test('disabled never shows the ring, even while focused', () => {
+    expect(showsFocusRing({ disabled: true, focused: true })).toBe(false);
+  });
+
+  test('loading keeps the ring while blocking activation', () => {
+    // Loading is not disabled: focus survives, the press does not.
+    expect(showsFocusRing({ focused: true })).toBe(true);
+    expect(isButtonPressable({ loading: true })).toBe(false);
   });
 });

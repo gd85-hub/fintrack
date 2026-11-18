@@ -76,6 +76,14 @@ export const theme = {
         disabled: '#c7cdd1',
         disabledContent: '#98a0a5',
       },
+      // Inverse contrast: dark fill in Light, light fill in Dark.
+      // Disabled and focus are inherited from action.primary by contract.
+      neutral: {
+        fill: '#121b21',
+        hover: '#171717',
+        pressed: '#0b0b0b',
+        content: '#ffffff',
+      },
       secondary: {
         fill: '#ffffff',
         hover: '#eef2f4',
@@ -309,9 +317,12 @@ export const theme = {
       xs: 6,
       sm: 10,
       md: 14,
-      // Figma Button/Large binds radius/md = 16; this scale's md is the
-      // DS value radius/button/medium = 14, so the large corner is its own key.
-      buttonLg: 16,
+      // Explicit Button corners (DS: radius/button/*). The focus variants are
+      // the outer radius of the focus ring: corner + 2px gap + 2px outline.
+      buttonMedium: 14,
+      buttonLarge: 16,
+      buttonFocusMedium: 18,
+      buttonFocusLarge: 20,
       lg: 20,
       sheet: 28,
       pill: 999,
@@ -324,7 +335,8 @@ export const theme = {
       iconButton: 40,
       fieldHeight: 40,
       touchTarget: 44,
-      buttonHeight: 48,
+      // DS canonical control heights (size/control-*).
+      controlMd: 48,
       controlLg: 56,
       controlMinWidth: 88,
       rowHeight: 64,
@@ -434,6 +446,14 @@ export const darkColor = {
       focus: '#71c2f7',
       disabled: '#2b2b2b',
       disabledContent: '#5c5c5c',
+    },
+    // Inverse contrast: light fill in Dark, dark fill in Light.
+    // Disabled and focus are inherited from action.primary by contract.
+    neutral: {
+      fill: '#f2f2f2',
+      hover: '#f7f7f7',
+      pressed: '#e9e9e9',
+      content: '#0e0e0e',
     },
     secondary: {
       fill: '#1f1f1f',

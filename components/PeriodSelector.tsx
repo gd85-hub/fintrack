@@ -275,7 +275,7 @@ const makeStyles = (c: Colors) =>
       backgroundColor: c.action.primary.fill,
       borderRadius: theme.scale.radius.sm,
       justifyContent: 'center',
-      minHeight: theme.scale.size.buttonHeight,
+      minHeight: theme.scale.size.controlMd,
       paddingHorizontal: theme.scale.space[4],
     },
     applyButtonDisabled: {
