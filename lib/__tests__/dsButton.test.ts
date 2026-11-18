@@ -2,7 +2,9 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
   type ButtonColors,
+  type ButtonSurface,
   type ButtonVariant,
+  type ButtonVisualState,
   buttonFocusColor,
   buttonSizeSpec,
   buttonSurface,
@@ -80,6 +82,216 @@ describe('buttonSizeSpec', () => {
       expect(spec.focusRadius - spec.radius).toBe(ring * 2);
     }
   });
+});
+
+// The token each variant/state pair must bind, written from the Figma Button
+// set rather than from the implementation: Primary 591:852, Outline 591:942,
+// Ghost 591:1032 and Danger 591:1122 with their Hover/Pressed/Disabled
+// siblings, Neutral 901:1156 / 901:1181. Large repeats Medium's colours
+// (checked on 591:1023 and 591:1203), so colour is size-independent.
+// Surface has no symbol in that set; it follows the action/secondary tokens.
+type ContractState = 'default' | 'hover' | 'pressed' | 'disabled';
+
+const figmaContract: Record<
+  ButtonVariant,
+  Record<ContractState, (c: ButtonColors) => ButtonSurface>
+> = {
+  primary: {
+    default: (c) => ({
+      background: c.action.primary.fill,
+      border: null,
+      content: c.action.primary.content,
+    }),
+    hover: (c) => ({
+      background: c.action.primary.hover,
+      border: null,
+      content: c.action.primary.content,
+    }),
+    pressed: (c) => ({
+      background: c.action.primary.pressed,
+      border: null,
+      content: c.action.primary.content,
+    }),
+    disabled: (c) => ({
+      background: c.action.primary.disabled,
+      border: null,
+      content: c.action.primary.disabledContent,
+    }),
+  },
+  neutral: {
+    default: (c) => ({
+      background: c.action.neutral.fill,
+      border: null,
+      content: c.action.neutral.content,
+    }),
+    hover: (c) => ({
+      background: c.action.neutral.hover,
+      border: null,
+      content: c.action.neutral.content,
+    }),
+    pressed: (c) => ({
+      background: c.action.neutral.pressed,
+      border: null,
+      content: c.action.neutral.content,
+    }),
+    // Neutral has no disabled tokens of its own: 901:1181 binds the primary pair.
+    disabled: (c) => ({
+      background: c.action.primary.disabled,
+      border: null,
+      content: c.action.primary.disabledContent,
+    }),
+  },
+  surface: {
+    default: (c) => ({
+      background: c.action.secondary.fill,
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    hover: (c) => ({
+      background: c.action.secondary.hover,
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    pressed: (c) => ({
+      background: c.action.secondary.pressed,
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    disabled: (c) => ({
+      background: c.action.secondary.disabledFill,
+      border: null,
+      content: c.action.secondary.disabledContent,
+    }),
+  },
+  outline: {
+    // 591:942 binds no fill at all — only a border and the label.
+    default: (c) => ({
+      background: 'transparent',
+      border: c.border.default,
+      content: c.text.primary,
+    }),
+    hover: (c) => ({
+      background: c.state.hover,
+      border: c.border.default,
+      content: c.text.primary,
+    }),
+    pressed: (c) => ({
+      background: c.state.pressed,
+      border: c.border.default,
+      content: c.text.primary,
+    }),
+    // 591:978 keeps border/default; it does not switch to a disabled border.
+    disabled: (c) => ({
+      background: c.action.secondary.disabledFill,
+      border: c.border.default,
+      content: c.action.secondary.disabledContent,
+    }),
+  },
+  ghost: {
+    default: (c) => ({
+      background: 'transparent',
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    hover: (c) => ({
+      background: c.state.hover,
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    pressed: (c) => ({
+      background: c.state.pressed,
+      border: null,
+      content: c.action.secondary.content,
+    }),
+    disabled: (c) => ({
+      background: 'transparent',
+      border: null,
+      content: c.action.secondary.disabledContent,
+    }),
+  },
+  danger: {
+    default: (c) => ({
+      background: c.action.destructive.fill,
+      border: null,
+      content: c.action.destructive.content,
+    }),
+    hover: (c) => ({
+      background: c.action.destructive.hover,
+      border: null,
+      content: c.action.destructive.content,
+    }),
+    pressed: (c) => ({
+      background: c.action.destructive.pressed,
+      border: null,
+      content: c.action.destructive.content,
+    }),
+    // 591:1158 drops the destructive hue and binds the primary disabled pair.
+    disabled: (c) => ({
+      background: c.action.primary.disabled,
+      border: null,
+      content: c.action.primary.disabledContent,
+    }),
+  },
+};
+
+const contractStates: Record<ContractState, ButtonVisualState> = {
+  default: {},
+  hover: { hovered: true },
+  pressed: { pressed: true },
+  disabled: { disabled: true },
+};
+
+describe('Figma colour contract', () => {
+  test('every variant and state binds the token the Figma component binds', () => {
+    for (const [themeName, palette] of themes) {
+      for (const variant of variants) {
+        for (const stateName of Object.keys(
+          contractStates,
+        ) as ContractState[]) {
+          const expected = figmaContract[variant][stateName](palette);
+          const actual = buttonSurface(
+            palette,
+            variant,
+            contractStates[stateName],
+          );
+          expect({ themeName, variant, stateName, ...actual }).toEqual({
+            themeName,
+            variant,
+            stateName,
+            ...expected,
+          });
+        }
+      }
+    }
+  });
+
+  test('outline never paints a fill of its own', () => {
+    for (const [, palette] of themes) {
+      // Resting and loading share the resting surface: no fill, only a border.
+      expect(buttonSurface(palette, 'outline').background).toBe('transparent');
+      expect(buttonSurface(palette, 'outline').background).not.toBe(
+        palette.surface.default,
+      );
+    }
+  });
+
+  test('disabled danger carries no destructive hue', () => {
+    for (const [, palette] of themes) {
+      const disabled = buttonSurface(palette, 'danger', { disabled: true });
+      expect(disabled.background).not.toBe(palette.action.destructive.fill);
+      expect(disabled.background).toBe(palette.action.primary.disabled);
+      expect(disabled.content).toBe(palette.action.primary.disabledContent);
+    }
+  });
+
+  test('disabled outline keeps the default border', () => {
+    for (const [, palette] of themes) {
+      expect(buttonSurface(palette, 'outline', { disabled: true }).border).toBe(
+        palette.border.default,
+      );
+    }
+  });
+
 });
 
 describe('buttonSurface', () => {
@@ -170,9 +382,9 @@ describe('buttonSurface', () => {
   test('outline is the only variant with a resting border', () => {
     for (const [, palette] of themes) {
       expect(buttonSurface(palette, 'outline')).toEqual({
-        background: palette.surface.default,
+        background: 'transparent',
         border: palette.border.default,
-        content: palette.action.secondary.content,
+        content: palette.text.primary,
       });
       expect(buttonSurface(palette, 'primary').border).toBeNull();
       expect(buttonSurface(palette, 'neutral').border).toBeNull();

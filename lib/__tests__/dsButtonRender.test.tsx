@@ -125,6 +125,60 @@ describe('Button rendering', () => {
     mockPalette = theme.color;
   });
 
+  test('outline paints no fill and keeps border/default in every state', () => {
+    // Figma 591:942 / 591:978: no fill token, border/default throughout.
+    for (const [, scheme] of themes) {
+      mockPalette = scheme;
+      for (const size of sizes) {
+        for (const disabled of [false, true]) {
+          const tree = renderButton(
+            <Button
+              disabled={disabled}
+              label="Label"
+              onPress={() => {}}
+              size={size}
+              variant="outline"
+            />,
+          );
+          const style = rootStyle(tree.root);
+          expect(style.borderColor).toBe(scheme.border.default);
+          expect(style.borderWidth).toBe(theme.scale.stroke.hairline);
+          if (!disabled) {
+            expect(style.backgroundColor).toBe('transparent');
+          }
+          unmountTree(tree);
+        }
+      }
+    }
+    mockPalette = theme.color;
+  });
+
+  test('disabled danger renders the primary disabled pair', () => {
+    // Figma 591:1158 / 591:1203: action/primary/disabled, no destructive hue.
+    for (const [, scheme] of themes) {
+      mockPalette = scheme;
+      for (const size of sizes) {
+        const tree = renderButton(
+          <Button
+            disabled
+            label="Label"
+            onPress={() => {}}
+            size={size}
+            variant="danger"
+          />,
+        );
+        expect(rootStyle(tree.root).backgroundColor).toBe(
+          scheme.action.primary.disabled,
+        );
+        expect(
+          StyleSheet.flatten(tree.root.findByType(Text).props.style).color,
+        ).toBe(scheme.action.primary.disabledContent);
+        unmountTree(tree);
+      }
+    }
+    mockPalette = theme.color;
+  });
+
   test('disabled renders the disabled fill and reports the state', () => {
     for (const [, scheme] of themes) {
       mockPalette = scheme;

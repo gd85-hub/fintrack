@@ -106,7 +106,7 @@ export function buttonSurface(
   variant: ButtonVariant,
   state: ButtonVisualState = {},
 ): ButtonSurface {
-  const { action, border, state: overlay, surface } = colors;
+  const { action, border, state: overlay, text } = colors;
 
   const pick = (rest: string, hover: string, press: string): string => {
     if (state.pressed) {
@@ -153,16 +153,19 @@ export function buttonSurface(
             content: action.secondary.content,
           };
     case 'outline':
+      // Outline has no fill of its own: it rests transparent and only the
+      // state overlays tint it. The border stays border/default in every
+      // state, disabled included.
       return state.disabled
         ? {
             background: action.secondary.disabledFill,
-            border: action.secondary.disabledBorder,
+            border: border.default,
             content: action.secondary.disabledContent,
           }
         : {
-            background: pick(surface.default, overlay.hover, overlay.pressed),
+            background: pick('transparent', overlay.hover, overlay.pressed),
             border: border.default,
-            content: action.secondary.content,
+            content: text.primary,
           };
     case 'ghost':
       return state.disabled
@@ -177,11 +180,13 @@ export function buttonSurface(
             content: action.secondary.content,
           };
     case 'danger':
+      // Disabled Danger drops the destructive hue entirely and inherits the
+      // primary disabled pair, like Neutral does.
       return state.disabled
         ? {
-            background: action.destructive.disabledFill,
+            background: action.primary.disabled,
             border: null,
-            content: action.destructive.disabledContent,
+            content: action.primary.disabledContent,
           }
         : {
             background: pick(
