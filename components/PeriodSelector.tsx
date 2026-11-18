@@ -15,6 +15,7 @@ import { formatDayMonth, todayLocalISO } from '../lib/dates';
 import type { Period } from '../lib/period';
 import { theme, type Colors } from '../lib/theme';
 import { DatePicker } from './DatePicker';
+import { Button } from './ds/Button';
 
 type PeriodSelectorProps = {
   visible: boolean;
@@ -231,26 +232,14 @@ export function PeriodSelector({
                     </View>
                   </View>
 
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ disabled: !canApply }}
+                  <Button
                     disabled={!canApply}
+                    fullWidth
+                    label={t('period.apply')}
                     onPress={handleApply}
-                    style={({ pressed }) => [
-                      styles.applyButton,
-                      !canApply && styles.applyButtonDisabled,
-                      pressed && canApply && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.applyLabel,
-                        !canApply && styles.applyLabelDisabled,
-                      ]}
-                    >
-                      {t('period.apply')}
-                    </Text>
-                  </Pressable>
+                    size="medium"
+                    variant="primary"
+                  />
                 </View>
               ) : null}
             </ScrollView>
@@ -270,24 +259,6 @@ export function PeriodSelector({
 
 const makeStyles = (c: Colors) =>
   StyleSheet.create({
-    applyButton: {
-      alignItems: 'center',
-      backgroundColor: c.action.primary.fill,
-      borderRadius: theme.scale.radius.sm,
-      justifyContent: 'center',
-      minHeight: theme.scale.size.controlMd,
-      paddingHorizontal: theme.scale.space[4],
-    },
-    applyButtonDisabled: {
-      backgroundColor: c.action.primary.disabled,
-    },
-    applyLabel: {
-      ...theme.type.labelDefault,
-      color: c.action.primary.content,
-    },
-    applyLabelDisabled: {
-      color: c.action.primary.disabledContent,
-    },
     closeButton: {
       alignItems: 'center',
       height: theme.scale.size.iconButton,
