@@ -252,6 +252,9 @@ export const theme = {
     },
     // Label/Default — button label, label under an action icon
     labelDefault: { fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 20, letterSpacing: 0 },
+    // Figma Button/V2: Inter Medium, line height 1.2x.
+    buttonMedium: { fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 16.8, letterSpacing: 0 },
+    buttonLarge: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 19.2, letterSpacing: 0 },
     // Caption/Default — category, service caption
     captionDefault: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, letterSpacing: 0 },
     // Amount/Secondary — second-currency equivalent (tabular)
@@ -306,6 +309,9 @@ export const theme = {
       xs: 6,
       sm: 10,
       md: 14,
+      // Figma Button/Large binds radius/md = 16; this scale's md is the
+      // DS value radius/button/medium = 14, so the large corner is its own key.
+      buttonLg: 16,
       lg: 20,
       sheet: 28,
       pill: 999,
@@ -319,6 +325,8 @@ export const theme = {
       fieldHeight: 40,
       touchTarget: 44,
       buttonHeight: 48,
+      controlLg: 56,
+      controlMinWidth: 88,
       rowHeight: 64,
       chipHeight: 28,
       chipLgHeight: 36,
