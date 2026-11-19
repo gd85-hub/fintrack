@@ -49,6 +49,7 @@ import { theme, type Colors } from '../lib/theme';
 import { CategoryPicker } from './CategoryPicker';
 import { ConfirmDialog } from './ConfirmDialog';
 import { DatePicker } from './DatePicker';
+import { Button } from './ds/Button';
 import { FieldError } from './ds/FieldError';
 import { LoadingScreen } from './LoadingScreen';
 import { MerchantPicker } from './MerchantPicker';
@@ -134,12 +135,11 @@ function ExpenseForm({
     !isAutomatic &&
     manualRsdInput.trim() !== '' &&
     (parsedManualRsd === null || parsedManualRsd <= 0);
-  const canSave =
-    validAmount &&
-    validDate &&
-    categoryId !== null &&
-    !hasInvalidManualRsd &&
-    !saving;
+  // Same rule as before, split in two: what the form says, and whether a
+  // save is already running. The button shows those as different states.
+  const formValid =
+    validAmount && validDate && categoryId !== null && !hasInvalidManualRsd;
+  const canSave = formValid && !saving;
 
   useEffect(() => {
     let active = true;
@@ -482,33 +482,28 @@ function ExpenseForm({
 
         {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSave }}
-          disabled={!canSave}
+        {/* An incomplete form is Disabled; a save in flight is Loading. The
+            guards at the top of handleSave are unchanged and still cover
+            both. */}
+        <Button
+          accessibilityLabel={saving ? t('common.saving') : t('common.save')}
+          disabled={!formValid}
+          fullWidth
+          label={t('common.save')}
+          loading={saving}
           onPress={() => void handleSave()}
-          style={({ pressed }) => [
-            styles.saveButton,
-            !canSave && styles.disabled,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.saveButtonText}>
-            {saving ? t('common.saving') : t('common.save')}
-          </Text>
-        </Pressable>
+          size="medium"
+          variant="primary"
+        />
 
         {initialExpense ? (
-          <Pressable
-            accessibilityRole="button"
+          <Button
+            fullWidth
+            label={t('common.delete')}
             onPress={() => setDeleteVisible(true)}
-            style={({ pressed }) => [
-              styles.deleteButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.deleteButtonText}>{t('common.delete')}</Text>
-          </Pressable>
+            size="medium"
+            variant="danger"
+          />
         ) : null}
       </ScrollView>
 
@@ -602,16 +597,17 @@ export function ExpenseEditorScreen({
     return (
       <View style={styles.centered}>
         <Text style={styles.errorText}>{errorMessage}</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.secondaryAction,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.secondaryActionText}>{t('common.back')}</Text>
-        </Pressable>
+        {/* The button hugs its label and stays in the middle. Button sets
+            alignSelf itself, which would beat the container's alignItems,
+            so the row centres it instead. */}
+        <View style={styles.centeredAction}>
+          <Button
+            label={t('common.back')}
+            onPress={() => router.back()}
+            size="medium"
+            variant="surface"
+          />
+        </View>
       </View>
     );
   }
@@ -646,6 +642,13 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     justifyContent: 'center',
     padding: theme.spacing.lg,
   },
+  // A row, so justifyContent centres the button horizontally: in a column
+  // the button's own alignSelf would decide instead.
+  centeredAction: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
   content: {
     alignSelf: 'center',
     gap: theme.spacing.lg,
@@ -653,21 +656,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     padding: theme.spacing.lg,
     paddingBottom: theme.spacing.xxl,
     width: '100%',
-  },
-  deleteButton: {
-    alignItems: 'center',
-    backgroundColor: c.status.error.container,
-    borderRadius: theme.radii.button,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-  },
-  deleteButtonText: {
-    color: c.status.error.content,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '600',
-  },
-  disabled: {
-    opacity: theme.opacity.disabled,
   },
   errorText: {
     color: c.status.error.content,
@@ -753,34 +741,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     fontSize: theme.fontSizes.label,
     fontWeight: '600',
   },
-  saveButton: {
-    alignItems: 'center',
-    backgroundColor: c.action.primary.fill,
-    borderRadius: theme.radii.button,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-  },
-  saveButtonText: {
-    color: c.action.primary.content,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '700',
-  },
   screen: {
     backgroundColor: c.bg.base,
     flex: 1,
-  },
-  secondaryAction: {
-    alignItems: 'center',
-    backgroundColor: c.action.secondary.fill,
-    borderRadius: theme.radii.button,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-    paddingHorizontal: theme.spacing.lg,
-  },
-  secondaryActionText: {
-    color: c.action.secondary.content,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '600',
   },
   selector: {
     alignItems: 'center',
