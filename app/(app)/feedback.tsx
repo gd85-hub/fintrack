@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { Button } from '../../components/ds/Button';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -64,18 +64,17 @@ export default function FeedbackScreen() {
             <Text style={styles.bodyText}>
               {t('settings.feedback.successBody')}
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                {t('settings.feedback.done')}
-              </Text>
-            </Pressable>
+            {/* The button hugs its label and keeps its place in the middle
+                of the card. Button sets alignSelf itself, which would beat
+                the card's alignItems, so the row centres it instead. */}
+            <View style={styles.doneRow}>
+              <Button
+                label={t('settings.feedback.done')}
+                onPress={() => router.back()}
+                size="medium"
+                variant="primary"
+              />
+            </View>
           </View>
         ) : (
           <View style={styles.form}>
@@ -94,23 +93,23 @@ export default function FeedbackScreen() {
               value={message}
             />
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: submitDisabled }}
-              disabled={submitDisabled}
-              onPress={() => void handleSubmit()}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-                submitDisabled && styles.buttonDisabled,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>
-                {submitting
+            {/* Nothing to send is Disabled; sending is Loading. They are
+                different states, so the button shows them differently - the
+                submitDisabled guard in handleSubmit still covers both. */}
+            <Button
+              accessibilityLabel={
+                submitting
                   ? t('settings.feedback.submitting')
-                  : t('settings.feedback.submit')}
-              </Text>
-            </Pressable>
+                  : t('settings.feedback.submit')
+              }
+              disabled={!message.trim()}
+              fullWidth
+              label={t('settings.feedback.submit')}
+              loading={submitting}
+              onPress={() => void handleSubmit()}
+              size="medium"
+              variant="primary"
+            />
           </View>
         )}
       </ScrollView>
@@ -124,18 +123,19 @@ const makeStyles = (c: Colors) =>
       color: c.text.secondary,
       fontSize: theme.fontSizes.body,
     },
-    buttonDisabled: {
-      opacity: theme.opacity.disabled,
-    },
-    buttonPressed: {
-      opacity: theme.opacity.pressed,
-    },
     content: {
       alignSelf: 'center',
       maxWidth: theme.sizes.maxContentWidth,
       padding: theme.spacing.lg,
       paddingBottom: theme.spacing.xxl,
       width: '100%',
+    },
+    // A row, so justifyContent centres the button horizontally: in a column
+    // the button's own alignSelf would decide instead.
+    doneRow: {
+      alignSelf: 'stretch',
+      flexDirection: 'row',
+      justifyContent: 'center',
     },
     form: {
       gap: theme.spacing.md,
@@ -150,19 +150,6 @@ const makeStyles = (c: Colors) =>
       minHeight: theme.sizes.multilineInputHeight,
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
-    },
-    primaryButton: {
-      alignItems: 'center',
-      backgroundColor: c.action.primary.fill,
-      borderRadius: theme.radii.button,
-      justifyContent: 'center',
-      minHeight: theme.sizes.buttonHeight,
-      paddingHorizontal: theme.spacing.md,
-    },
-    primaryButtonText: {
-      color: c.action.primary.content,
-      fontSize: theme.fontSizes.button,
-      fontWeight: '600',
     },
     screen: {
       backgroundColor: c.bg.base,
