@@ -17,6 +17,7 @@ import {
   type ButtonVariant,
   buttonIconColor,
   buttonSizeSpec,
+  buttonSpinnerSize,
   buttonSurface,
 } from '../../components/ds/Button';
 import { labelledPalette } from '../__fixtures__/buttonPalette';
@@ -638,6 +639,178 @@ describe('Button icon slots', () => {
     // The icons carry no opacity of their own: the row hides them.
     for (const node of tree.root.findAllByType(Feather)) {
       expect(node.props.style).toBeUndefined();
+    }
+  });
+});
+
+describe('Button spinner', () => {
+  const palettes: [string, ButtonColors][] = [
+    ['light', theme.color],
+    ['dark', darkColor],
+    ['labelled', labelledPalette()],
+  ];
+
+  // Every way the content row can be filled, because the spinner sits on top
+  // of it and must not depend on what it covers.
+  const slotConfigurations: [ButtonIcon | undefined, ButtonIcon | undefined][] =
+    [
+      [undefined, undefined],
+      ['arrow-left', undefined],
+      [undefined, 'arrow-right'],
+      ['arrow-left', 'arrow-right'],
+    ];
+
+  test('the spinner takes its box from the button size, in every type and theme', () => {
+    for (const [scheme, palette] of palettes) {
+      mockPalette = palette;
+      for (const variant of variants) {
+        for (const size of sizes) {
+          for (const [leading, trailing] of slotConfigurations) {
+            const tree = renderButton(
+              <Button
+                label="Label"
+                leadingIcon={leading}
+                loading
+                onPress={() => {}}
+                size={size}
+                trailingIcon={trailing}
+                variant={variant}
+              />,
+            );
+            const spinner = tree.root.findByType(ActivityIndicator);
+            expect({ scheme, variant, size, box: spinner.props.size }).toEqual({
+              scheme,
+              variant,
+              size,
+              box: buttonSpinnerSize(size),
+            });
+            unmountTree(tree);
+          }
+        }
+      }
+    }
+    mockPalette = theme.color;
+  });
+
+  test('the spinner carries the active label colour of its type', () => {
+    // Figma binds it per type: Primary 591:885 -> action/primary/content,
+    // Surface 901:1240 -> text/primary, Danger 591:1200 ->
+    // action/destructive/content; each is that type's own label token.
+    for (const [scheme, palette] of palettes) {
+      mockPalette = palette;
+      for (const variant of variants) {
+        for (const size of sizes) {
+          const tree = renderButton(
+            <Button
+              label="Label"
+              loading
+              onPress={() => {}}
+              size={size}
+              variant={variant}
+            />,
+          );
+          expect({
+            scheme,
+            variant,
+            color: tree.root.findByType(ActivityIndicator).props.color,
+          }).toEqual({
+            scheme,
+            variant,
+            color: buttonSurface(palette, variant).content,
+          });
+          unmountTree(tree);
+        }
+      }
+    }
+    mockPalette = theme.color;
+  });
+
+  test('medium spins at 20 and large at 24', () => {
+    for (const [size, expected] of [
+      ['medium', 20],
+      ['large', 24],
+    ] as const) {
+      const tree = renderButton(
+        <Button label="Label" loading onPress={() => {}} size={size} />,
+      );
+      expect(tree.root.findByType(ActivityIndicator).props.size).toBe(expected);
+      unmountTree(tree);
+    }
+  });
+
+  test('the spinner is centred on the button and out of the layout flow', () => {
+    const tree = renderButton(<Button label="Label" loading onPress={() => {}} />);
+    const spinner = tree.root.findByType(ActivityIndicator);
+    const wrapper = spinner.parent;
+    expect(wrapper).not.toBeNull();
+    const style = StyleSheet.flatten(wrapper?.props.style as ViewStyle);
+    expect(style).toMatchObject({
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    });
+    // Absolute and non-interactive, so it cannot displace the content row.
+    expect(wrapper?.props.pointerEvents).toBe('none');
+  });
+
+  test('switching to loading leaves the frame geometry untouched', () => {
+    for (const variant of variants) {
+      for (const size of sizes) {
+        for (const [leading, trailing] of slotConfigurations) {
+          const frames: ViewStyle[] = [];
+          for (const loading of [false, true]) {
+            const tree = renderButton(
+              <Button
+                label="Label"
+                leadingIcon={leading}
+                loading={loading}
+                onPress={() => {}}
+                size={size}
+                trailingIcon={trailing}
+                variant={variant}
+              />,
+            );
+            const style = rootStyle(tree.root);
+            frames.push({
+              height: style.height,
+              minWidth: style.minWidth,
+              paddingHorizontal: style.paddingHorizontal,
+              borderRadius: style.borderRadius,
+              borderWidth: style.borderWidth,
+              alignSelf: style.alignSelf,
+            });
+            unmountTree(tree);
+          }
+          expect({ variant, size, frame: frames[1] }).toEqual({
+            variant,
+            size,
+            frame: frames[0],
+          });
+        }
+      }
+    }
+  });
+
+  test('a spinning button of any type still refuses a second press', () => {
+    for (const variant of variants) {
+      const onPress = jest.fn();
+      const tree = renderButton(
+        <Button label="Label" loading onPress={onPress} variant={variant} />,
+      );
+      const props = pressableProps(tree.root);
+      act(() => {
+        props.onPress();
+        props.onPress();
+      });
+      expect(onPress).not.toHaveBeenCalled();
+      // Busy, not disabled: it keeps keyboard focus while it works.
+      expect(props.accessibilityState).toEqual({ busy: true, disabled: false });
+      expect(props.focusable).toBe(true);
+      unmountTree(tree);
     }
   });
 });

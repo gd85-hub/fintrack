@@ -8,6 +8,7 @@ import {
   buttonFocusColor,
   buttonIconColor,
   buttonSizeSpec,
+  buttonSpinnerSize,
   buttonSurface,
   isButtonPressable,
   rendersFocusRing,
@@ -82,6 +83,25 @@ describe('buttonSizeSpec', () => {
     expect(buttonSizeSpec('medium').iconSize).toBe(20);
     expect(buttonSizeSpec('large').iconSize).toBe(24);
     expect(buttonSizeSpec('medium').iconStrokeWidth).toBe(2);
+  });
+
+  test('the spinner shares the icon box at both sizes', () => {
+    // Figma draws Spinner 20x20 in Medium (591:858, 901:1240) and 24x24 in
+    // Large (591:903, 591:1200) - the same box as the icon slots.
+    expect(buttonSpinnerSize('medium')).toBe(20);
+    expect(buttonSpinnerSize('large')).toBe(24);
+    for (const size of ['medium', 'large'] as const) {
+      expect(buttonSpinnerSize(size)).toBe(buttonSizeSpec(size).iconSize);
+    }
+  });
+
+  test('the spinner grows with the button, unlike a fixed small indicator', () => {
+    // The defect this replaces: ActivityIndicator size="small" is a flat 20 on
+    // every platform, so Large showed a Medium spinner.
+    expect(buttonSpinnerSize('large')).toBeGreaterThan(
+      buttonSpinnerSize('medium'),
+    );
+    expect(buttonSpinnerSize('large')).not.toBe(20);
   });
 
   test('the icon gap is 8 at both sizes', () => {

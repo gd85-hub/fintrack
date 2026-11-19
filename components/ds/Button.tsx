@@ -318,6 +318,14 @@ export function renderButtonIcon(
   return <Feather color={props.color} name={icon} size={props.size} />;
 }
 
+// The spinner occupies the same box as the icon slots: Figma draws it 20x20
+// in Medium (591:858, 901:1240) and 24x24 in Large (591:903, 591:1200),
+// centred on the button. One field in the size spec therefore covers both,
+// and no token is duplicated to say the same thing twice.
+export function buttonSpinnerSize(size: ButtonSize): number {
+  return buttonSizeSpec(size).iconSize;
+}
+
 // A loading button must not fire again, so activation is blocked while it
 // works - but it stays focusable, so keyboard focus is not lost.
 export function isButtonPressable(state: {
@@ -458,7 +466,14 @@ export function Button({
             </View>
             {loading ? (
               <View pointerEvents="none" style={styles.loader}>
-                <ActivityIndicator color={surface.content} size="small" />
+                {/* A numeric size is the only lever that ties the indicator
+                    to the button: 'small' is a fixed 20 at both sizes. RN
+                    turns the number into the view box, which the Android
+                    drawable and the web SVG both fill. */}
+                <ActivityIndicator
+                  color={surface.content}
+                  size={buttonSpinnerSize(size)}
+                />
               </View>
             ) : null}
             {focusRing ? (
