@@ -4,6 +4,7 @@ import {
   type PropsWithChildren,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import { useColorScheme } from 'react-native';
@@ -82,6 +83,32 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     <ThemeContext.Provider value={{ colors, scheme, setTheme, theme }}>
       {children}
     </ThemeContext.Provider>
+  );
+}
+
+/**
+ * Shows its subtree in one scheme, whatever the user's own setting is, and
+ * without writing that setting. Only for places that have to display both
+ * schemes at once, such as the design-system playground; screens follow the
+ * user's preference through `ThemeProvider`.
+ */
+export function ThemeOverride({
+  children,
+  scheme,
+}: PropsWithChildren<{ scheme: ColorScheme }>) {
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      colors: scheme === 'dark' ? darkColor : lightColor,
+      scheme,
+      // Deliberately inert: a preview must not be able to persist a theme.
+      setTheme: () => {},
+      theme: scheme,
+    }),
+    [scheme],
+  );
+
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
   );
 }
 

@@ -578,4 +578,37 @@ export const en = {
       other: 'Other',
     },
   },
+  dsPlayground: {
+    title: 'Design system',
+    subtitle: 'Development build only. Real components, no app data.',
+    theme: {
+      label: 'Preview theme',
+      light: 'Light',
+      dark: 'Dark',
+    },
+    press: {
+      idle: 'Press a button to see it register here.',
+      last: 'Last press: {{label}} · total {{count}}',
+      reset: 'Reset counter',
+    },
+    section: {
+      types: 'Types and sizes',
+      states: 'States',
+      icons: 'Icon slots',
+      width: 'Width',
+      interaction: 'Interaction',
+    },
+    width: {
+      hug: 'Hug',
+      fullWidth: 'Full width',
+    },
+    interaction: {
+      hint: 'Hover and hold any button above. Walk through them with Tab and Shift+Tab: the focus ring follows the keyboard, and a mouse click must not raise it. Enter and Space activate the focused button.',
+      focusTarget: 'Focus target',
+    },
+    unavailable: {
+      title: 'Not available',
+      body: 'The design system playground exists only in development builds.',
+    },
+  },
 } as const;
