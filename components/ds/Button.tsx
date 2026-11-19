@@ -1,4 +1,5 @@
-import { type ReactNode, useMemo, useRef, useState } from 'react';
+import Feather from '@expo/vector-icons/Feather';
+import { type ComponentProps, type ReactNode, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -9,7 +10,7 @@ import {
 } from 'react-native';
 
 import { useColors } from '../../contexts/ThemeContext';
-import { theme } from '../../lib/theme';
+import { type ColorShape, type Colors, theme } from '../../lib/theme';
 
 // Fintrack DS · Button.
 // Component: Figma "Components" page, frame 591:1212.
@@ -17,6 +18,9 @@ import { theme } from '../../lib/theme';
 // Types Primary / Neutral / Surface / Outline / Ghost / Danger in Medium and
 // Large, with default, hover, pressed, loading and disabled states, plus an
 // independent focused state rendered on web.
+// Every variant carries two independent icon slots, as the component does
+// (591:853 "Icon" and 591:856 "Trailing icon"): either, both or neither may
+// be filled, and an empty slot occupies no space.
 
 export type ButtonVariant =
   | 'primary'
@@ -28,6 +32,24 @@ export type ButtonVariant =
 
 export type ButtonSize = 'medium' | 'large';
 
+// The project draws its icons with Feather from @expo/vector-icons; no other
+// icon library is introduced here.
+export type ButtonIconName = ComponentProps<typeof Feather>['name'];
+
+// What the Button hands an icon slot. The caller picks the glyph, the Button
+// owns its size, colour and stroke, so a screen can never drift from the DS.
+export type ButtonIconProps = {
+  size: number;
+  color: string;
+  strokeWidth: number;
+};
+
+// A slot takes either a Feather glyph name, which the Button draws itself, or
+// a render function that receives the resolved icon props.
+export type ButtonIcon =
+  | ButtonIconName
+  | ((props: ButtonIconProps) => ReactNode);
+
 export type ButtonProps = {
   label: string;
   onPress: () => void;
@@ -35,7 +57,12 @@ export type ButtonProps = {
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
+  leadingIcon?: ButtonIcon;
+  trailingIcon?: ButtonIcon;
+  /** @deprecated Use leadingIcon / trailingIcon; the Button cannot size or
+   * colour a node that the caller already built. */
   icon?: ReactNode;
+  /** @deprecated Paired with the deprecated `icon`. */
   iconPosition?: 'leading' | 'trailing';
   fullWidth?: boolean;
   accessibilityHint?: string;
@@ -57,6 +84,8 @@ export type ButtonSizeSpec = {
   paddingHorizontal: number;
   minWidth: number;
   gap: number;
+  iconSize: number;
+  iconStrokeWidth: number;
   typography: ButtonTypography;
 };
 
@@ -72,8 +101,9 @@ export type ButtonSurface = {
   content: string;
 };
 
-// The palette the active theme hands out, so light and dark both fit.
-export type ButtonColors = ReturnType<typeof useColors>;
+// The palette shape the component reads, so light, dark and a test palette
+// built from distinct values all fit.
+export type ButtonColors = ColorShape<Colors>;
 
 // Medium and Large bind different height, corner and padding tokens.
 export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
@@ -85,6 +115,8 @@ export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
       paddingHorizontal: theme.scale.space[6],
       minWidth: theme.scale.size.controlMinWidth,
       gap: theme.scale.space[2],
+      iconSize: theme.scale.size.iconLg,
+      iconStrokeWidth: theme.scale.stroke.icon,
       typography: theme.type.buttonLarge,
     };
   }
@@ -95,6 +127,8 @@ export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
     paddingHorizontal: theme.scale.space[5],
     minWidth: theme.scale.size.controlMinWidth,
     gap: theme.scale.space[2],
+    iconSize: theme.scale.size.iconMd,
+    iconStrokeWidth: theme.scale.stroke.icon,
     typography: theme.type.buttonMedium,
   };
 }
@@ -235,6 +269,55 @@ export function buttonFocusColor(
   }
 }
 
+// Icon tint per the token contract. It is not always the label colour:
+// Primary binds its own action/primary/icon, and the quiet types - Surface,
+// Outline and Ghost - fall back to the secondary disabled content when the
+// button is off, while the solid ones take the primary disabled content.
+export function buttonIconColor(
+  colors: ButtonColors,
+  variant: ButtonVariant,
+  state: { disabled?: boolean } = {},
+): string {
+  const quiet = variant === 'surface' || variant === 'outline' || variant === 'ghost';
+
+  if (state.disabled) {
+    return quiet
+      ? colors.action.secondary.disabledContent
+      : colors.action.primary.disabledContent;
+  }
+
+  switch (variant) {
+    case 'neutral':
+      return colors.action.neutral.content;
+    case 'danger':
+      return colors.action.destructive.content;
+    case 'surface':
+    case 'outline':
+    case 'ghost':
+      return colors.text.primary;
+    default:
+      return colors.action.primary.icon;
+  }
+}
+
+// Draws one slot. A Feather name is rendered by the Button itself; a render
+// function gets the same resolved props, so an SVG icon can honour the stroke
+// width that a font glyph cannot.
+export function renderButtonIcon(
+  icon: ButtonIcon | undefined,
+  props: ButtonIconProps,
+): ReactNode {
+  if (icon === undefined) {
+    return null;
+  }
+  if (typeof icon === 'function') {
+    return icon(props);
+  }
+  // Feather ships as an icon font: its 2px stroke is baked into the glyph at
+  // the 24px grid and cannot be set per instance.
+  return <Feather color={props.color} name={icon} size={props.size} />;
+}
+
 // A loading button must not fire again, so activation is blocked while it
 // works - but it stays focusable, so keyboard focus is not lost.
 export function isButtonPressable(state: {
@@ -269,6 +352,8 @@ export function Button({
   size = 'medium',
   disabled = false,
   loading = false,
+  leadingIcon,
+  trailingIcon,
   icon,
   iconPosition = 'leading',
   fullWidth = false,
@@ -337,18 +422,39 @@ export function Button({
           hovered: hovered && pressable,
           pressed: pressed && pressable,
         });
+        const iconProps: ButtonIconProps = {
+          size: sizeSpec.iconSize,
+          color: buttonIconColor(colors, variant, { disabled }),
+          strokeWidth: sizeSpec.iconStrokeWidth,
+        };
+        // The deprecated single-icon props feed whichever slot they named, and
+        // only when that slot is otherwise empty.
+        const leading =
+          leadingIcon === undefined
+            ? iconPosition === 'leading'
+              ? icon
+              : null
+            : renderButtonIcon(leadingIcon, iconProps);
+        const trailing =
+          trailingIcon === undefined
+            ? iconPosition === 'trailing'
+              ? icon
+              : null
+            : renderButtonIcon(trailingIcon, iconProps);
+
         return (
           <>
-            {/* Kept mounted while loading so the button does not resize. */}
+            {/* Label and icons stay mounted while loading, so neither the
+                button nor its slots change width. */}
             <View style={[styles.content, loading && styles.contentHidden]}>
-              {icon && iconPosition === 'leading' ? icon : null}
+              {leading}
               <Text
                 numberOfLines={1}
                 style={[styles.label, { color: surface.content }]}
               >
                 {label}
               </Text>
-              {icon && iconPosition === 'trailing' ? icon : null}
+              {trailing}
             </View>
             {loading ? (
               <View pointerEvents="none" style={styles.loader}>

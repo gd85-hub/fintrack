@@ -380,7 +380,10 @@ export const lightColor = color;
 export type Colors = typeof color;
 export type ColorScheme = 'light' | 'dark';
 
-type ColorShape<T> = {
+// Widens a palette to its structure: same keys, plain strings for values. Both
+// published palettes satisfy it, and so can a test palette built to tell
+// semantic bindings apart.
+export type ColorShape<T> = {
   readonly [Key in keyof T]: T[Key] extends string
     ? string
     : ColorShape<T[Key]>;

@@ -6,12 +6,14 @@ import {
   type ButtonVariant,
   type ButtonVisualState,
   buttonFocusColor,
+  buttonIconColor,
   buttonSizeSpec,
   buttonSurface,
   isButtonPressable,
   rendersFocusRing,
   showsFocusRing,
 } from '../../components/ds/Button';
+import { labelledPalette } from '../__fixtures__/buttonPalette';
 import { darkColor, theme } from '../theme';
 
 // Asserts the Figma Button spec (component 591:1212, token contract 1041:2624)
@@ -64,6 +66,28 @@ describe('buttonSizeSpec', () => {
       gap: theme.scale.space[2],
     });
     expect(buttonSizeSpec('large').typography.fontSize).toBe(16);
+  });
+
+  test('each size binds its own icon box at a 2px stroke', () => {
+    // Figma 591:853 / 591:856 are 20x20 in Medium (591:852) and 24x24 in
+    // Large (591:897); the DS draws icon strokes at stroke/icon = 2.
+    expect(buttonSizeSpec('medium')).toMatchObject({
+      iconSize: theme.scale.size.iconMd,
+      iconStrokeWidth: theme.scale.stroke.icon,
+    });
+    expect(buttonSizeSpec('large')).toMatchObject({
+      iconSize: theme.scale.size.iconLg,
+      iconStrokeWidth: theme.scale.stroke.icon,
+    });
+    expect(buttonSizeSpec('medium').iconSize).toBe(20);
+    expect(buttonSizeSpec('large').iconSize).toBe(24);
+    expect(buttonSizeSpec('medium').iconStrokeWidth).toBe(2);
+  });
+
+  test('the icon gap is 8 at both sizes', () => {
+    for (const size of ['medium', 'large'] as const) {
+      expect(buttonSizeSpec(size).gap).toBe(8);
+    }
   });
 
   test('large is taller and rounder than medium', () => {
@@ -479,6 +503,119 @@ describe('buttonFocusColor', () => {
       expect(buttonFocusColor(palette, 'danger')).toBe(
         palette.action.destructive.focus,
       );
+    }
+  });
+});
+
+describe('buttonIconColor', () => {
+  // The icon slot is not simply the label colour: Primary binds its own
+  // action/primary/icon, and disabled splits into the solid types (primary
+  // disabled content) and the quiet ones (secondary disabled content).
+  const iconContract: Record<
+    ButtonVariant,
+    { active: (c: ButtonColors) => string; disabled: (c: ButtonColors) => string }
+  > = {
+    primary: {
+      active: (c) => c.action.primary.icon,
+      disabled: (c) => c.action.primary.disabledContent,
+    },
+    neutral: {
+      active: (c) => c.action.neutral.content,
+      disabled: (c) => c.action.primary.disabledContent,
+    },
+    surface: {
+      active: (c) => c.text.primary,
+      disabled: (c) => c.action.secondary.disabledContent,
+    },
+    outline: {
+      active: (c) => c.text.primary,
+      disabled: (c) => c.action.secondary.disabledContent,
+    },
+    ghost: {
+      active: (c) => c.text.primary,
+      disabled: (c) => c.action.secondary.disabledContent,
+    },
+    danger: {
+      active: (c) => c.action.destructive.content,
+      disabled: (c) => c.action.primary.disabledContent,
+    },
+  };
+
+  // Light and dark share hex values across semantically different tokens, so
+  // the labelled palette is the run that can actually fail on a misbinding.
+  const palettes: [string, ButtonColors][] = [
+    ...themes,
+    ['labelled', labelledPalette()],
+  ];
+
+  test('every type binds its contract icon token in both states', () => {
+    for (const [scheme, palette] of palettes) {
+      for (const variant of variants) {
+        const expected = iconContract[variant];
+        expect({
+          scheme,
+          variant,
+          active: buttonIconColor(palette, variant),
+          disabled: buttonIconColor(palette, variant, { disabled: true }),
+        }).toEqual({
+          scheme,
+          variant,
+          active: expected.active(palette),
+          disabled: expected.disabled(palette),
+        });
+      }
+    }
+  });
+
+  test('the labelled palette really does separate every token under test', () => {
+    // Guards the guard: if these collapsed, the table above would stop
+    // discriminating and quietly pass on a wrong binding.
+    const palette = labelledPalette();
+    const probes = [
+      palette.action.primary.icon,
+      palette.action.primary.content,
+      palette.action.primary.disabledContent,
+      palette.action.neutral.content,
+      palette.action.secondary.content,
+      palette.action.secondary.disabledContent,
+      palette.action.destructive.content,
+      palette.text.primary,
+    ];
+    expect(new Set(probes).size).toBe(probes.length);
+    expect(palette.action.primary.icon).toBe('action.primary.icon');
+  });
+
+  test('primary reads its icon token, not its label token', () => {
+    // They are the same hex in both published palettes (#ffffff / #001727),
+    // which is exactly why this is checked on the labelled palette.
+    const palette = labelledPalette();
+    expect(buttonIconColor(palette, 'primary')).toBe(palette.action.primary.icon);
+    expect(buttonIconColor(palette, 'primary')).not.toBe(
+      palette.action.primary.content,
+    );
+  });
+
+  test('disabled icons split solid types from quiet ones', () => {
+    const palette = labelledPalette();
+    for (const variant of ['primary', 'neutral', 'danger'] as const) {
+      expect(buttonIconColor(palette, variant, { disabled: true })).toBe(
+        palette.action.primary.disabledContent,
+      );
+    }
+    for (const variant of ['surface', 'outline', 'ghost'] as const) {
+      expect(buttonIconColor(palette, variant, { disabled: true })).toBe(
+        palette.action.secondary.disabledContent,
+      );
+    }
+  });
+
+  test('no disabled icon keeps a live hue', () => {
+    for (const [, palette] of themes) {
+      for (const variant of variants) {
+        expect(buttonIconColor(palette, variant, { disabled: true })).not.toBe(
+          buttonIconColor(palette, variant),
+        );
+      }
     }
   });
 });

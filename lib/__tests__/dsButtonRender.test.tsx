@@ -1,4 +1,5 @@
 import { describe, expect, jest, test } from '@jest/globals';
+import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -10,11 +11,15 @@ import { act, create, type ReactTestInstance } from 'react-test-renderer';
 import {
   Button,
   type ButtonColors,
+  type ButtonIcon,
+  type ButtonIconProps,
   type ButtonSize,
   type ButtonVariant,
+  buttonIconColor,
   buttonSizeSpec,
   buttonSurface,
 } from '../../components/ds/Button';
+import { labelledPalette } from '../__fixtures__/buttonPalette';
 import { darkColor, theme } from '../theme';
 
 // The palette the mocked ThemeContext hands to the component under test, so
@@ -24,6 +29,21 @@ let mockPalette: ButtonColors = theme.color;
 jest.mock('../../contexts/ThemeContext', () => ({
   useColors: () => mockPalette,
 }));
+
+// The real Feather loads its icon font asynchronously and sets state after the
+// test has finished, which only produces act() noise here. The stand-in keeps
+// the props the Button passes, which is what these tests assert.
+jest.mock('@expo/vector-icons/Feather', () => {
+  const mockReact = jest.requireActual<typeof import('react')>('react');
+  const mockRn = jest.requireActual<typeof import('react-native')>(
+    'react-native',
+  );
+  return {
+    __esModule: true,
+    default: (props: { name: string; size: number; color: string }) =>
+      mockReact.createElement(mockRn.Text, null, props.name),
+  };
+});
 
 const variants: ButtonVariant[] = [
   'primary',
@@ -86,6 +106,38 @@ function rootStyle(root: ReactTestInstance): ViewStyle {
     (node) => typeof node.type === 'string' && node.type.toLowerCase() === 'view',
   )[0];
   return StyleSheet.flatten(host.props.style as ViewStyle);
+}
+
+// The row that holds the leading slot, the label and the trailing slot. It is
+// the only host view carrying the DS gap, so an empty slot adding space would
+// have to show up as an extra child here.
+function contentRow(root: ReactTestInstance, size: ButtonSize = 'medium') {
+  return root.findAll(
+    (node) =>
+      typeof node.type === 'string' &&
+      node.type.toLowerCase() === 'view' &&
+      StyleSheet.flatten(node.props.style as ViewStyle).gap ===
+        buttonSizeSpec(size).gap,
+  )[0];
+}
+
+// Glyph names in document order: leading first, trailing last.
+function iconNames(root: ReactTestInstance): string[] {
+  return root.findAllByType(Feather).map((node) => String(node.props.name));
+}
+
+type IconProbe = { icon: ButtonIcon; seen: () => ButtonIconProps | undefined };
+
+// A render-function slot that records what the Button handed it.
+function probe(slot: string): IconProbe {
+  let received: ButtonIconProps | undefined;
+  return {
+    icon: (props: ButtonIconProps) => {
+      received = props;
+      return <Text>{slot}</Text>;
+    },
+    seen: () => received,
+  };
 }
 
 describe('Button rendering', () => {
@@ -302,6 +354,42 @@ describe('Button rendering', () => {
     expect(rootStyle(stretched.root).alignSelf).toBe('stretch');
   });
 
+  test('the deprecated icon prop still fills the slot it names', () => {
+    for (const position of ['leading', 'trailing'] as const) {
+      const tree = renderButton(
+        <Button
+          icon={<Text>legacy</Text>}
+          iconPosition={position}
+          label="Label"
+          onPress={() => {}}
+        />,
+      );
+      const texts = tree.root.findAllByType(Text).map((n) => n.props.children);
+      expect(texts).toEqual(
+        position === 'leading' ? ['legacy', 'Label'] : ['Label', 'legacy'],
+      );
+      unmountTree(tree);
+    }
+  });
+
+  test('a new slot wins over the deprecated icon prop', () => {
+    const tree = renderButton(
+      <Button
+        icon={<Text>legacy</Text>}
+        label="Label"
+        leadingIcon="check"
+        onPress={() => {}}
+      />,
+    );
+    expect(iconNames(tree.root)).toEqual(['check']);
+    // The legacy node is dropped, not stacked on top of the new slot.
+    expect(
+      tree.root
+        .findAllByType(Text)
+        .some((node) => node.props.children === 'legacy'),
+    ).toBe(false);
+  });
+
   test('native renders no focus ring overlay', () => {
     // Platform.OS is native under jest-expo; the web ring is covered by
     // rendersFocusRing in dsButton.test.ts.
@@ -318,5 +406,238 @@ describe('Button rendering', () => {
           theme.scale.stroke.focusRing,
     );
     expect(rings).toHaveLength(0);
+  });
+});
+
+describe('Button icon slots', () => {
+  // The labelled palette gives every token a distinct value, so a slot reading
+  // the neighbouring token cannot pass by coincidence.
+  const palettes: [string, ButtonColors][] = [
+    ['light', theme.color],
+    ['dark', darkColor],
+    ['labelled', labelledPalette()],
+  ];
+
+  test('all four slot configurations render in order', () => {
+    for (const variant of variants) {
+      for (const size of sizes) {
+        const cases: [ButtonIcon | undefined, ButtonIcon | undefined, string[]][] =
+          [
+            [undefined, undefined, []],
+            ['arrow-left', undefined, ['arrow-left']],
+            [undefined, 'arrow-right', ['arrow-right']],
+            ['arrow-left', 'arrow-right', ['arrow-left', 'arrow-right']],
+          ];
+        for (const [leading, trailing, expected] of cases) {
+          const tree = renderButton(
+            <Button
+              label="Label"
+              leadingIcon={leading}
+              onPress={() => {}}
+              size={size}
+              trailingIcon={trailing}
+              variant={variant}
+            />,
+          );
+          expect({ variant, size, names: iconNames(tree.root) }).toEqual({
+            variant,
+            size,
+            names: expected,
+          });
+          unmountTree(tree);
+        }
+      }
+    }
+  });
+
+  test('an empty slot renders nothing at all, so it cannot add a gap', () => {
+    // RN applies `gap` between rendered children only: with the label alone
+    // there is nothing for the gap to separate.
+    const bare = renderButton(<Button label="Label" onPress={() => {}} />);
+    expect(contentRow(bare.root).children).toHaveLength(1);
+    unmountTree(bare);
+
+    const one = renderButton(
+      <Button label="Label" leadingIcon="check" onPress={() => {}} />,
+    );
+    expect(contentRow(one.root).children).toHaveLength(2);
+    unmountTree(one);
+
+    const both = renderButton(
+      <Button
+        label="Label"
+        leadingIcon="check"
+        onPress={() => {}}
+        trailingIcon="chevron-right"
+      />,
+    );
+    expect(contentRow(both.root).children).toHaveLength(3);
+    unmountTree(both);
+  });
+
+  test('the Button sizes and tints its icons in every type, size and theme', () => {
+    for (const [scheme, palette] of palettes) {
+      mockPalette = palette;
+      for (const variant of variants) {
+        for (const size of sizes) {
+          for (const disabled of [false, true]) {
+            const tree = renderButton(
+              <Button
+                disabled={disabled}
+                label="Label"
+                leadingIcon="arrow-left"
+                onPress={() => {}}
+                size={size}
+                trailingIcon="arrow-right"
+                variant={variant}
+              />,
+            );
+            const icons = tree.root.findAllByType(Feather);
+            expect(icons).toHaveLength(2);
+            for (const node of icons) {
+              expect({
+                scheme,
+                variant,
+                size,
+                disabled,
+                size_: node.props.size,
+                color: node.props.color,
+              }).toEqual({
+                scheme,
+                variant,
+                size,
+                disabled,
+                size_: buttonSizeSpec(size).iconSize,
+                color: buttonIconColor(palette, variant, { disabled }),
+              });
+            }
+            unmountTree(tree);
+          }
+        }
+      }
+    }
+    mockPalette = theme.color;
+  });
+
+  test('medium icons are 20 and large icons are 24', () => {
+    for (const [size, expected] of [
+      ['medium', 20],
+      ['large', 24],
+    ] as const) {
+      const tree = renderButton(
+        <Button
+          label="Label"
+          leadingIcon="check"
+          onPress={() => {}}
+          size={size}
+        />,
+      );
+      expect(tree.root.findByType(Feather).props.size).toBe(expected);
+      unmountTree(tree);
+    }
+  });
+
+  test('a render slot receives size, colour and stroke width from the Button', () => {
+    mockPalette = labelledPalette();
+    for (const variant of variants) {
+      for (const size of sizes) {
+        for (const disabled of [false, true]) {
+          const leading = probe('leading');
+          const trailing = probe('trailing');
+          const tree = renderButton(
+            <Button
+              disabled={disabled}
+              label="Label"
+              leadingIcon={leading.icon}
+              onPress={() => {}}
+              size={size}
+              trailingIcon={trailing.icon}
+              variant={variant}
+            />,
+          );
+          const expected: ButtonIconProps = {
+            size: buttonSizeSpec(size).iconSize,
+            color: buttonIconColor(mockPalette, variant, { disabled }),
+            strokeWidth: buttonSizeSpec(size).iconStrokeWidth,
+          };
+          expect(leading.seen()).toEqual(expected);
+          expect(trailing.seen()).toEqual(expected);
+          expect(expected.strokeWidth).toBe(2);
+          unmountTree(tree);
+        }
+      }
+    }
+    mockPalette = theme.color;
+  });
+
+  test('loading keeps every slot configuration at its resting width', () => {
+    // There is no layout engine here, so width is pinned by what determines
+    // it: the same geometry on the frame, the same children in the content
+    // row, and one opacity flag on the row itself.
+    const configurations: [ButtonIcon | undefined, ButtonIcon | undefined][] = [
+      [undefined, undefined],
+      ['arrow-left', undefined],
+      [undefined, 'arrow-right'],
+      ['arrow-left', 'arrow-right'],
+    ];
+
+    for (const size of sizes) {
+      for (const [leading, trailing] of configurations) {
+        const frames: ViewStyle[] = [];
+        const rowChildren: number[] = [];
+        const rowOpacity: ViewStyle['opacity'][] = [];
+
+        for (const loading of [false, true]) {
+          const tree = renderButton(
+            <Button
+              label="Label"
+              leadingIcon={leading}
+              loading={loading}
+              onPress={() => {}}
+              size={size}
+              trailingIcon={trailing}
+            />,
+          );
+          const style = rootStyle(tree.root);
+          frames.push({
+            height: style.height,
+            minWidth: style.minWidth,
+            paddingHorizontal: style.paddingHorizontal,
+            alignSelf: style.alignSelf,
+          });
+          const row = contentRow(tree.root, size);
+          rowChildren.push(row.children.length);
+          rowOpacity.push(
+            StyleSheet.flatten(row.props.style as ViewStyle).opacity,
+          );
+          expect(tree.root.findAllByType(ActivityIndicator)).toHaveLength(
+            loading ? 1 : 0,
+          );
+          unmountTree(tree);
+        }
+
+        expect(frames[1]).toEqual(frames[0]);
+        expect(rowChildren[1]).toBe(rowChildren[0]);
+        // Default is fully opaque, loading only hides the row in place.
+        expect(rowOpacity).toEqual([undefined, 0]);
+      }
+    }
+  });
+
+  test('loading hides icons in place rather than unmounting them', () => {
+    const tree = renderButton(
+      <Button
+        label="Label"
+        leadingIcon="arrow-left"
+        loading
+        onPress={() => {}}
+        trailingIcon="arrow-right"
+      />,
+    );
+    expect(iconNames(tree.root)).toEqual(['arrow-left', 'arrow-right']);
+    // The icons carry no opacity of their own: the row hides them.
+    for (const node of tree.root.findAllByType(Feather)) {
+      expect(node.props.style).toBeUndefined();
+    }
   });
 });
