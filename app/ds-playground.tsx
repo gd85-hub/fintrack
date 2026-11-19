@@ -7,6 +7,11 @@ import {
   type ButtonSize,
   type ButtonVariant,
 } from '../components/ds/Button';
+import {
+  InputField,
+  type InputFieldAppearance,
+  type InputFieldProps,
+} from '../components/ds/InputField';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
 import { isPlaygroundEnabled } from '../lib/devRoutes';
@@ -31,6 +36,17 @@ const VARIANTS: ButtonVariant[] = [
 ];
 
 const SIZES: ButtonSize[] = ['medium', 'large'];
+
+const APPEARANCES: InputFieldAppearance[] = ['softFilled', 'cleanOutline'];
+
+// Hover and focus come from real interaction, so the gallery only pins the
+// states a caller can ask for; hover and focus are there to be tried.
+const INPUT_STATES: { name: string; props: Partial<InputFieldProps> }[] = [
+  { name: 'default', props: {} },
+  { name: 'error', props: { error: true } },
+  { name: 'read-only', props: { readOnly: true } },
+  { name: 'disabled', props: { disabled: true } },
+];
 
 // Variant, size and state names are the component's API, not product copy, so
 // they stay in English next to the code that uses them.
@@ -134,7 +150,199 @@ function Playground({
       </View>
 
       <ButtonGallery onPress={recordPress} />
+      <InputFieldGallery />
     </ScrollView>
+  );
+}
+
+function InputFieldGallery() {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const [empty, setEmpty] = useState('');
+  const [filled, setFilled] = useState('Maxi Zemun');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [merchant, setMerchant] = useState('');
+  const [amount, setAmount] = useState('');
+  const [noLabel, setNoLabel] = useState('');
+
+  // Every field below is a live instance; these keep the uncontrolled-looking
+  // demos typable without giving each one its own state hook.
+  const [states, setStates] = useState<Record<string, string>>({});
+  const stateValue = (key: string, initial = '') => states[key] ?? initial;
+  const setStateValue = (key: string) => (next: string) =>
+    setStates((current) => ({ ...current, [key]: next }));
+
+  return (
+    <>
+      <Section title={`${t('dsPlayground.inputField.title')} · ${t('dsPlayground.inputField.section.appearances')}`}>
+        {APPEARANCES.map((appearance) => (
+          <View key={appearance}>
+            {INPUT_STATES.map((state) => (
+              <Group column key={`${appearance}-${state.name}`} name={`${appearance} · ${state.name}`}>
+                <InputField
+                  appearance={appearance}
+                  label={t('dsPlayground.inputField.sample.merchant')}
+                  onChangeText={setStateValue(`${appearance}-${state.name}-empty`)}
+                  placeholder="Maxi"
+                  value={stateValue(`${appearance}-${state.name}-empty`)}
+                  {...state.props}
+                />
+                <InputField
+                  appearance={appearance}
+                  label={t('dsPlayground.inputField.sample.merchant')}
+                  onChangeText={setStateValue(`${appearance}-${state.name}-filled`)}
+                  placeholder="Maxi"
+                  value={stateValue(`${appearance}-${state.name}-filled`, 'Maxi Zemun')}
+                  {...state.props}
+                />
+              </Group>
+            ))}
+          </View>
+        ))}
+      </Section>
+
+      <Section title={`${t('dsPlayground.inputField.title')} · ${t('dsPlayground.inputField.section.icons')}`}>
+        <Group column name="no icons">
+          <InputField
+            label={t('dsPlayground.inputField.sample.merchant')}
+            onChangeText={setEmpty}
+            value={empty}
+          />
+        </Group>
+        <Group column name="leading">
+          <InputField
+            label={t('dsPlayground.inputField.sample.merchant')}
+            leadingIcon="map-pin"
+            onChangeText={setFilled}
+            value={filled}
+          />
+        </Group>
+        <Group column name="trailing">
+          <InputField
+            label={t('dsPlayground.inputField.sample.merchant')}
+            onChangeText={setStateValue('icon-trailing')}
+            trailingIcon="chevron-down"
+            value={stateValue('icon-trailing')}
+          />
+        </Group>
+        <Group column name="both, trailing is a button">
+          <InputField
+            label={t('dsPlayground.inputField.sample.merchant')}
+            leadingIcon="map-pin"
+            onChangeText={setStateValue('icon-both')}
+            onTrailingIconPress={() => setStateValue('icon-both')('')}
+            trailingIcon="x"
+            trailingIconAccessibilityLabel="Clear"
+            value={stateValue('icon-both', 'Maxi Zemun')}
+          />
+        </Group>
+      </Section>
+
+      <Section title={`${t('dsPlayground.inputField.title')} · ${t('dsPlayground.inputField.section.supporting')}`}>
+        <Group column name="hint">
+          <InputField
+            hint={t('dsPlayground.inputField.sample.emailHint')}
+            label={t('dsPlayground.inputField.sample.email')}
+            onChangeText={setStateValue('supporting-hint')}
+            value={stateValue('supporting-hint')}
+          />
+        </Group>
+        <Group column name="error text">
+          <InputField
+            errorText={t('dsPlayground.inputField.sample.emailError')}
+            label={t('dsPlayground.inputField.sample.email')}
+            onChangeText={setStateValue('supporting-error')}
+            value={stateValue('supporting-error', 'not-an-email')}
+          />
+        </Group>
+        <Group column name="error without text, height stays 56">
+          <InputField
+            error
+            label={t('dsPlayground.inputField.sample.email')}
+            onChangeText={setStateValue('supporting-bare')}
+            value={stateValue('supporting-bare')}
+          />
+        </Group>
+        <Group column name="error wins over hint">
+          <InputField
+            errorText={t('dsPlayground.inputField.sample.emailError')}
+            hint={t('dsPlayground.inputField.sample.emailHint')}
+            label={t('dsPlayground.inputField.sample.email')}
+            onChangeText={setStateValue('supporting-both')}
+            value={stateValue('supporting-both')}
+          />
+        </Group>
+      </Section>
+
+      <Section title={`${t('dsPlayground.inputField.title')} · ${t('dsPlayground.inputField.section.noLabel')}`}>
+        <Group column name="placeholder shows with no label, focused or not">
+          <InputField
+            onChangeText={setNoLabel}
+            placeholder={t('dsPlayground.inputField.sample.merchant')}
+            value={noLabel}
+          />
+          <InputField
+            appearance="cleanOutline"
+            leadingIcon="search"
+            onChangeText={setStateValue('nolabel-outline')}
+            placeholder={t('dsPlayground.inputField.sample.merchant')}
+            value={stateValue('nolabel-outline')}
+          />
+        </Group>
+      </Section>
+
+      <Section title={`${t('dsPlayground.inputField.title')} · ${t('dsPlayground.inputField.section.practical')}`}>
+        <View style={styles.column}>
+          <InputField
+            autoCapitalize="none"
+            autoComplete="email"
+            hint={t('dsPlayground.inputField.sample.emailHint')}
+            inputMode="email"
+            label={t('dsPlayground.inputField.sample.email')}
+            leadingIcon="mail"
+            onChangeText={setEmail}
+            placeholder="name@example.com"
+            value={email}
+          />
+          <InputField
+            autoCapitalize="none"
+            autoComplete="password"
+            label={t('dsPlayground.inputField.sample.password')}
+            leadingIcon="lock"
+            onChangeText={setPassword}
+            onTrailingIconPress={() => setPasswordVisible((shown) => !shown)}
+            secureTextEntry={!passwordVisible}
+            trailingIcon={passwordVisible ? 'eye-off' : 'eye'}
+            trailingIconAccessibilityLabel={
+              passwordVisible
+                ? t('dsPlayground.inputField.sample.passwordHide')
+                : t('dsPlayground.inputField.sample.passwordShow')
+            }
+            value={password}
+          />
+          <InputField
+            label={t('dsPlayground.inputField.sample.merchant')}
+            leadingIcon="map-pin"
+            onChangeText={setMerchant}
+            placeholder="Maxi"
+            value={merchant}
+          />
+          <InputField
+            appearance="cleanOutline"
+            hint={t('dsPlayground.inputField.sample.amountHint')}
+            inputMode="decimal"
+            label={t('dsPlayground.inputField.sample.amount')}
+            onChangeText={setAmount}
+            placeholder="0,00"
+            trailingIcon="dollar-sign"
+            value={amount}
+          />
+        </View>
+      </Section>
+    </>
   );
 }
 

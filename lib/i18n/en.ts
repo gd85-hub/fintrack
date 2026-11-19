@@ -579,6 +579,27 @@ export const en = {
     },
   },
   dsPlayground: {
+    inputField: {
+      title: 'Input Field',
+      section: {
+        appearances: 'Appearances and states',
+        icons: 'Icon slots',
+        supporting: 'Hint and error text',
+        noLabel: 'Without a label',
+        practical: 'In practice',
+      },
+      sample: {
+        email: 'Email',
+        password: 'Password',
+        merchant: 'Merchant name',
+        amount: 'Amount',
+        passwordShow: 'Show password',
+        passwordHide: 'Hide password',
+        emailHint: 'We only use it to sign you in.',
+        emailError: 'Enter a valid email.',
+        amountHint: 'Up to two decimal places.',
+      },
+    },
     title: 'Design system',
     subtitle: 'Development build only. Real components, no app data.',
     theme: {

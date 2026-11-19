@@ -593,6 +593,27 @@ export const ru = {
     },
   },
   dsPlayground: {
+    inputField: {
+      title: 'Поле ввода',
+      section: {
+        appearances: 'Разновидности и состояния',
+        icons: 'Слоты значков',
+        supporting: 'Подсказка и текст ошибки',
+        noLabel: 'Без лейбла',
+        practical: 'На практике',
+      },
+      sample: {
+        email: 'Почта',
+        password: 'Пароль',
+        merchant: 'Название места',
+        amount: 'Сумма',
+        passwordShow: 'Показать пароль',
+        passwordHide: 'Скрыть пароль',
+        emailHint: 'Нужна только для входа.',
+        emailError: 'Введите корректный email.',
+        amountHint: 'До двух знаков после запятой.',
+      },
+    },
     title: 'Дизайн-система',
     subtitle: 'Только в dev-сборке. Настоящие компоненты, без данных приложения.',
     theme: {

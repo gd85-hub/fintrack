@@ -64,6 +64,20 @@ export const theme = {
       disabledBorder: '#dadfe2',
       readOnlyFill: '#e8ecee',
       readOnlyContent: '#535c62',
+      // DS Input Field (Figma 596:1014). A family of its own, softer than the
+      // legacy field/* above, which stays for the screens still using it.
+      // Alpha is kept: these are overlays, never flattened onto a backdrop.
+      softFill: '#f4f6f8',
+      softBorder: '#0f172a0f',
+      softFocusBorder: '#005984',
+      softErrorBorder: '#b42318',
+      softPlaceholder: '#646d73',
+      hoverOverlay: '#0f172a0a',
+      outlineFill: '#ffffff',
+      outlineBorder: '#0f172a1f',
+      outlineBorderHover: '#0f172a1f',
+      subtleReadOnlyFill: '#e8ecee',
+      subtleDisabledFill: '#f4f6f8',
     },
     action: {
       primary: {
@@ -260,6 +274,10 @@ export const theme = {
     },
     // Label/Default — button label, label under an action icon
     labelDefault: { fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 20, letterSpacing: 0 },
+    // DS "Label/Large": the resting label of an empty Input Field.
+    labelLarge: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 22, letterSpacing: 0 },
+    // DS "Input/V2/Floating Label": the same label once it has floated up.
+    inputFloatingLabel: { fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 14, letterSpacing: 0 },
     // Figma Button/V2: Inter Medium, line height 1.2x.
     buttonMedium: { fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 16.8, letterSpacing: 0 },
     buttonLarge: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 19.2, letterSpacing: 0 },
@@ -440,6 +458,22 @@ export const darkColor = {
     disabledBorder: '#2b2b2b',
     readOnlyFill: '#2b2b2b',
     readOnlyContent: '#a8a8a8',
+    // DS Input Field (Figma 596:1014). Dark is where this family earns its
+    // keep: barely-there white overlays instead of the opaque greys above.
+    // Hex carries 8-bit alpha, so the authored 0.014 / 0.022 / 0.018 land on
+    // 0x04 / 0x06 / 0x05; Figma itself reports these as #ffffff0a, #ffffff06
+    // and #ffffff05, which is what the file was read back as.
+    softFill: '#ffffff0a',
+    softBorder: '#ffffff06',
+    softFocusBorder: '#71c2f7c7',
+    softErrorBorder: '#fda29bc2',
+    softPlaceholder: '#ffffff8c',
+    hoverOverlay: '#ffffff04',
+    outlineFill: '#ffffff00',
+    outlineBorder: '#ffffff1a',
+    outlineBorderHover: '#ffffff24',
+    subtleReadOnlyFill: '#ffffff06',
+    subtleDisabledFill: '#ffffff05',
   },
   action: {
     primary: {
