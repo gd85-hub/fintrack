@@ -593,6 +593,19 @@ export const ru = {
     },
   },
   dsPlayground: {
+      searchField: {
+        title: 'Поле поиска',
+        section: {
+          states: 'Состояния',
+          trailing: 'Правый значок',
+          interactive: 'Живой поиск',
+        },
+        placeholder: 'Поиск по чекам',
+        clear: 'Очистить поиск',
+        filter: 'Фильтры',
+        results: 'Запрос: {{query}}',
+        empty: 'Наберите запрос — он появится здесь.',
+      },
     inputField: {
       title: 'Поле ввода',
       section: {

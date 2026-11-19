@@ -11,6 +11,7 @@ import {
   InputField,
   type InputFieldAppearance,
 } from '../components/ds/InputField';
+import { SearchField } from '../components/ds/SearchField';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
 import { isPlaygroundEnabled } from '../lib/devRoutes';
@@ -153,7 +154,128 @@ function Playground({
 
       <ButtonGallery onPress={recordPress} />
       <InputFieldGallery />
+      <SearchFieldGallery />
     </ScrollView>
+  );
+}
+
+function SearchFieldGallery() {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const [empty, setEmpty] = useState('');
+  const [filled, setFilled] = useState('Maxi Zemun');
+  const [withTrailing, setWithTrailing] = useState('');
+  const [clearable, setClearable] = useState('кофе');
+  const [live, setLive] = useState('');
+  const [submitted, setSubmitted] = useState('');
+
+  const title = t('dsPlayground.searchField.title');
+  const placeholder = t('dsPlayground.searchField.placeholder');
+
+  return (
+    <>
+      <Section title={`${title} · ${t('dsPlayground.searchField.section.states')}`}>
+        <Group column name="empty">
+          <SearchField
+            onChangeText={setEmpty}
+            placeholder={placeholder}
+            value={empty}
+          />
+        </Group>
+        <Group column name="filled">
+          <SearchField
+            onChangeText={setFilled}
+            placeholder={placeholder}
+            value={filled}
+          />
+        </Group>
+        <Group column name="disabled">
+          <SearchField
+            disabled
+            onChangeText={() => {}}
+            placeholder={placeholder}
+            value=""
+          />
+        </Group>
+        <Group column name="disabled, filled">
+          <SearchField
+            disabled
+            onChangeText={() => {}}
+            placeholder={placeholder}
+            value="Maxi Zemun"
+          />
+        </Group>
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.searchField.section.trailing')}`}>
+        <Group column name="decorative">
+          <SearchField
+            onChangeText={setWithTrailing}
+            placeholder={placeholder}
+            trailingIcon="sliders"
+            value={withTrailing}
+          />
+        </Group>
+        <Group column name="clears the query">
+          <SearchField
+            onChangeText={setClearable}
+            onTrailingIconPress={() => setClearable('')}
+            placeholder={placeholder}
+            trailingIcon="x"
+            trailingIconAccessibilityLabel={t('dsPlayground.searchField.clear')}
+            value={clearable}
+          />
+        </Group>
+        <Group column name="disabled with an action">
+          <SearchField
+            disabled
+            onChangeText={() => {}}
+            onTrailingIconPress={() => {}}
+            placeholder={placeholder}
+            trailingIcon="x"
+            trailingIconAccessibilityLabel={t('dsPlayground.searchField.clear')}
+            value="Maxi"
+          />
+        </Group>
+      </Section>
+
+      <Section
+        title={`${title} · ${t('dsPlayground.searchField.section.interactive')}`}
+      >
+        <View style={styles.column}>
+          {/* The clear action appears with the query. The two props travel
+              together by type, so this is two elements rather than one with
+              conditional props. */}
+          {live === '' ? (
+            <SearchField
+              onChangeText={setLive}
+              onSubmitEditing={() => setSubmitted(live)}
+              placeholder={placeholder}
+              value={live}
+            />
+          ) : (
+            <SearchField
+              onChangeText={setLive}
+              onSubmitEditing={() => setSubmitted(live)}
+              onTrailingIconPress={() => setLive('')}
+              placeholder={placeholder}
+              trailingIcon="x"
+              trailingIconAccessibilityLabel={t('dsPlayground.searchField.clear')}
+              value={live}
+            />
+          )}
+          <Text style={styles.hint}>
+            {live === ''
+              ? t('dsPlayground.searchField.empty')
+              : t('dsPlayground.searchField.results', { query: live })}
+          </Text>
+          {submitted === '' ? null : (
+            <Text style={styles.hint}>{`Enter: ${submitted}`}</Text>
+          )}
+        </View>
+      </Section>
+    </>
   );
 }
 

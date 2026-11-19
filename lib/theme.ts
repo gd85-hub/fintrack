@@ -78,6 +78,8 @@ export const theme = {
       outlineBorderHover: '#0f172a1f',
       subtleReadOnlyFill: '#e8ecee',
       subtleDisabledFill: '#f4f6f8',
+      // DS Search Field (Figma 597:5010): a pill of its own, borderless.
+      searchFill: '#f4f6f8',
     },
     action: {
       primary: {
@@ -474,6 +476,9 @@ export const darkColor = {
     outlineBorderHover: '#ffffff24',
     subtleReadOnlyFill: '#ffffff06',
     subtleDisabledFill: '#ffffff05',
+    // DS Search Field (Figma 597:5010). Authored 0.032, which 8-bit alpha
+    // carries as 0x08.
+    searchFill: '#ffffff08',
   },
   action: {
     primary: {

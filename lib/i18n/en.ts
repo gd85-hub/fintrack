@@ -579,6 +579,19 @@ export const en = {
     },
   },
   dsPlayground: {
+      searchField: {
+        title: 'Search Field',
+        section: {
+          states: 'States',
+          trailing: 'Trailing icon',
+          interactive: 'Interactive search',
+        },
+        placeholder: 'Search receipts',
+        clear: 'Clear search',
+        filter: 'Filters',
+        results: 'Query: {{query}}',
+        empty: 'Type to see the query here.',
+      },
     inputField: {
       title: 'Input Field',
       section: {
