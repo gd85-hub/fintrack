@@ -790,3 +790,312 @@ describe('InputField appearances', () => {
     mockPalette = theme.color;
   });
 });
+
+// The input is a 22px line inside a 56px field, so most of the control is not
+// the input. Pressing any of it has to land the caret in the input.
+describe('InputField activation', () => {
+  function fieldNode(root: ReactTestInstance) {
+    return root.findAll(
+      (node) =>
+        typeof node.type === 'string' &&
+        node.type.toLowerCase() === 'view' &&
+        StyleSheet.flatten(node.props.style as ViewStyle).height ===
+          inputFieldMetrics.height,
+    )[0];
+  }
+
+  function spyOnFocus(tree: ReturnType<typeof renderField>) {
+    const node = tree.root.findByType(TextInput);
+    const focusSpy = jest.fn();
+    // react-test-renderer has no layout, so the instance method is what the
+    // press must reach; the browser check covers the hit testing itself.
+    (node.instance as unknown as { focus: () => void }).focus = focusSpy;
+    return focusSpy;
+  }
+
+  test('pressing the field hands focus to the input', () => {
+    const tree = renderField(
+      <InputField label="Merchant" onChangeText={() => {}} value="" />,
+    );
+    const focusSpy = spyOnFocus(tree);
+    const field = fieldNode(tree.root);
+    expect(field.props.onStartShouldSetResponder()).toBe(true);
+    act(() => {
+      field.props.onResponderRelease();
+    });
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a disabled field claims no press and focuses nothing', () => {
+    const tree = renderField(
+      <InputField disabled label="Merchant" onChangeText={() => {}} value="" />,
+    );
+    const focusSpy = spyOnFocus(tree);
+    const field = fieldNode(tree.root);
+    expect(field.props.onStartShouldSetResponder()).toBe(false);
+    act(() => {
+      field.props.onResponderRelease();
+    });
+    expect(focusSpy).not.toHaveBeenCalled();
+  });
+
+  test('read-only still takes a press, because it still takes focus', () => {
+    const tree = renderField(
+      <InputField label="Rate" onChangeText={() => {}} readOnly value="117,5" />,
+    );
+    const focusSpy = spyOnFocus(tree);
+    const field = fieldNode(tree.root);
+    expect(field.props.onStartShouldSetResponder()).toBe(true);
+    act(() => {
+      field.props.onResponderRelease();
+    });
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('the label and decorative icons let presses through', () => {
+    // Otherwise the resting label, which lies over the input, would swallow
+    // the very press that was meant to start typing.
+    const tree = renderField(
+      <InputField
+        label="Merchant"
+        leadingIcon="map-pin"
+        onChangeText={() => {}}
+        trailingIcon="chevron-down"
+        value=""
+      />,
+    );
+    const label = tree.root
+      .findAllByType(Text)
+      .find((node) => node.props.children === 'Merchant');
+    expect(
+      StyleSheet.flatten(label?.props.style as TextStyle).pointerEvents,
+    ).toBe('none');
+
+    const iconBoxes = tree.root.findAll(
+      (node) =>
+        typeof node.type === 'string' &&
+        node.type.toLowerCase() === 'view' &&
+        StyleSheet.flatten(node.props.style as ViewStyle).width ===
+          inputFieldMetrics.iconSize,
+    );
+    expect(iconBoxes.length).toBeGreaterThan(0);
+    for (const box of iconBoxes) {
+      expect(
+        StyleSheet.flatten(box.props.style as ViewStyle).pointerEvents,
+      ).toBe('none');
+    }
+  });
+
+  test('the field adds no second tab stop', () => {
+    const tree = renderField(
+      <InputField label="Merchant" onChangeText={() => {}} value="" />,
+    );
+    const focusable = tree.root.findAll(
+      (node) =>
+        typeof node.type !== 'string' &&
+        (node.props.accessibilityRole === 'button' ||
+          node.props.focusable === true),
+    );
+    expect(focusable).toHaveLength(0);
+  });
+
+  test('a ref still reaches the input while the field holds one of its own', () => {
+    const ref = { current: null as TextInput | null };
+    const tree = renderField(
+      <InputField label="Merchant" onChangeText={() => {}} ref={ref} value="" />,
+    );
+    expect(ref.current).toBe(tree.root.findByType(TextInput).instance);
+  });
+});
+
+describe('InputField trailing action target', () => {
+  function actionNode(root: ReactTestInstance) {
+    return root.find(
+      (node) =>
+        typeof node.type !== 'string' &&
+        node.props.accessibilityRole === 'button' &&
+        typeof node.props.onPress === 'function',
+    );
+  }
+
+  function withAction() {
+    return renderField(
+      <InputField
+        label="Password"
+        onChangeText={() => {}}
+        onTrailingIconPress={() => {}}
+        trailingIcon="eye"
+        trailingIconAccessibilityLabel="Show password"
+        value=""
+      />,
+    );
+  }
+
+  test('the target is the platform touch height around a 20px glyph', () => {
+    const style = StyleSheet.flatten(
+      actionNode(withAction().root).props.style as ViewStyle,
+    );
+    expect(style.height).toBe(theme.scale.size.touchTarget);
+    expect(style.height).toBe(44);
+    // The width stays at the glyph, so the target cannot cover the text.
+    expect(style.width).toBe(inputFieldMetrics.iconSize);
+    // And it fits inside the field rather than stretching it.
+    expect(Number(style.height)).toBeLessThan(inputFieldMetrics.height);
+  });
+
+  test('hitSlop widens it without moving the glyph or leaving the field', () => {
+    const slop = actionNode(withAction().root).props.hitSlop;
+    expect(slop).toEqual(inputFieldMetrics.trailingHitSlop);
+    // 44 + 4 + 4 = 52, still inside the 56 the parent would clip at.
+    expect(
+      theme.scale.size.touchTarget + Number(slop.top) + Number(slop.bottom),
+    ).toBeLessThanOrEqual(inputFieldMetrics.height);
+    expect(Number(slop.right)).toBeLessThanOrEqual(
+      inputFieldMetrics.paddingRight,
+    );
+  });
+
+  test('a decorative trailing icon gets no target at all', () => {
+    const tree = renderField(
+      <InputField
+        label="Merchant"
+        onChangeText={() => {}}
+        trailingIcon="chevron-down"
+        value=""
+      />,
+    );
+    expect(
+      tree.root.findAll(
+        (node) =>
+          typeof node.type !== 'string' &&
+          node.props.accessibilityRole === 'button',
+      ),
+    ).toHaveLength(0);
+  });
+});
+
+describe('InputField read-only focus', () => {
+  test('focus shows on read-only without changing its fill or text', () => {
+    for (const [scheme, palette] of themes) {
+      const resting = inputFieldSurface(palette, 'softFilled', {
+        readOnly: true,
+      });
+      const focused = inputFieldSurface(palette, 'softFilled', {
+        focused: true,
+        readOnly: true,
+      });
+      expect({ scheme, ...focused }).toEqual({
+        scheme,
+        ...resting,
+        border: palette.field.softFocusBorder,
+        borderWidth: inputFieldMetrics.focusBorderWidth,
+      });
+    }
+  });
+
+  test('the read-only field shows it live, at the same size', () => {
+    const tree = renderField(
+      <InputField label="Rate" onChangeText={() => {}} readOnly value="117,5" />,
+    );
+    const before = { ...frame(tree.root) };
+    focus(tree.root);
+    const after = frame(tree.root);
+    expect(after.borderColor).toBe(theme.color.field.softFocusBorder);
+    expect(after.borderWidth).toBe(2);
+    expect({ height: after.height, background: after.backgroundColor }).toEqual({
+      height: before.height,
+      background: before.backgroundColor,
+    });
+    // The give-back keeps the content exactly where it was.
+    expect(Number(after.paddingLeft) + Number(after.borderWidth)).toBe(
+      Number(before.paddingLeft) + Number(before.borderWidth),
+    );
+  });
+
+  test('disabled takes no focus border, because it takes no focus', () => {
+    for (const [, palette] of themes) {
+      const focused = inputFieldSurface(palette, 'softFilled', {
+        disabled: true,
+        focused: true,
+      });
+      expect(focused.border).toBe(palette.field.softBorder);
+      expect(focused.borderWidth).toBe(1);
+    }
+  });
+});
+
+describe('InputField empty supporting text', () => {
+  test('an empty error message does not take the hint off the screen', () => {
+    const tree = renderField(
+      <InputField
+        errorText=""
+        hint="We only use it to sign you in."
+        label="Email"
+        onChangeText={() => {}}
+        value=""
+      />,
+    );
+    expect(
+      tree.root.findAllByType(Text).map((node) => node.props.children),
+    ).toContain('We only use it to sign you in.');
+    // An empty string is not an error either.
+    expect(input(tree.root)['aria-invalid']).toBe(false);
+  });
+
+  test('empty supporting text renders nothing and reserves nothing', () => {
+    for (const props of [
+      { errorText: '' },
+      { hint: '' },
+      { errorText: '', hint: '' },
+    ]) {
+      const tree = renderField(
+        <InputField label="Email" onChangeText={() => {}} value="" {...props} />,
+      );
+      // Only the label.
+      expect(tree.root.findAllByType(Text)).toHaveLength(1);
+      expect(input(tree.root)['aria-describedby']).toBeUndefined();
+      unmountTree(tree);
+    }
+  });
+
+  test('a real error message still wins over a hint', () => {
+    const tree = renderField(
+      <InputField
+        errorText="Enter a valid email."
+        hint="We only use it to sign you in."
+        label="Email"
+        onChangeText={() => {}}
+        value=""
+      />,
+    );
+    const texts = tree.root
+      .findAllByType(Text)
+      .map((node) => node.props.children);
+    expect(texts).toContain('Enter a valid email.');
+    expect(texts).not.toContain('We only use it to sign you in.');
+    expect(input(tree.root)['aria-invalid']).toBe(true);
+  });
+
+  test('a multi-line message is left to grow', () => {
+    const long =
+      'Enter a valid email address, for example name@example.com, and try again.';
+    const tree = renderField(
+      <InputField
+        errorText={long}
+        label="Email"
+        onChangeText={() => {}}
+        value=""
+      />,
+    );
+    const node = tree.root
+      .findAllByType(Text)
+      .find((candidate) => candidate.props.children === long);
+    expect(node).toBeDefined();
+    // No clamp and no fixed height: the component grows, the field does not.
+    expect(node?.props.numberOfLines).toBeUndefined();
+    expect(
+      StyleSheet.flatten(node?.props.style as TextStyle).height,
+    ).toBeUndefined();
+    expect(frame(tree.root).height).toBe(inputFieldMetrics.height);
+  });
+});

@@ -3,8 +3,10 @@ import {
   type ComponentProps,
   forwardRef,
   type ReactNode,
+  useCallback,
   useId,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -70,7 +72,21 @@ type PassthroughProps = Pick<
   | 'textContentType'
 >;
 
-export type InputFieldProps = PassthroughProps & {
+// An icon that does something is a control, and a control without a name is
+// unusable with a screen reader. The two props therefore travel together:
+// giving onTrailingIconPress without a label is a type error.
+export type InputFieldTrailingAction =
+  | {
+      onTrailingIconPress: () => void;
+      trailingIconAccessibilityLabel: string;
+    }
+  | {
+      onTrailingIconPress?: undefined;
+      trailingIconAccessibilityLabel?: undefined;
+    };
+
+export type InputFieldProps = PassthroughProps &
+  InputFieldTrailingAction & {
   value: string;
   onChangeText: (value: string) => void;
   appearance?: InputFieldAppearance;
@@ -89,9 +105,6 @@ export type InputFieldProps = PassthroughProps & {
   readOnly?: boolean;
   leadingIcon?: InputFieldIcon;
   trailingIcon?: InputFieldIcon;
-  /** Makes the trailing icon a button. Needs trailingIconAccessibilityLabel. */
-  onTrailingIconPress?: () => void;
-  trailingIconAccessibilityLabel?: string;
   onBlur?: () => void;
   onFocus?: () => void;
   /** Overrides the accessible name, which otherwise comes from the label. */
@@ -164,6 +177,16 @@ export const inputFieldMetrics = {
   iconGap: theme.scale.space[3],
   iconSize: theme.scale.size.iconMd,
   iconStrokeWidth: theme.scale.stroke.icon,
+  // A 20px glyph is far too small to hit. The target around it is the
+  // platform touch target; hitSlop widens it without moving the glyph, and
+  // stays inside the field so the parent cannot clip it away.
+  touchTarget: theme.scale.size.touchTarget,
+  trailingHitSlop: {
+    bottom: theme.scale.space[1],
+    left: theme.scale.space[2],
+    right: theme.scale.space[2],
+    top: theme.scale.space[1],
+  },
   labelGap: theme.scale.space[1],
   floatingLabelHeight: theme.type.inputFloatingLabel.lineHeight,
   valueHeight: theme.type.bodyDefault.lineHeight,
@@ -220,6 +243,15 @@ export function inputFieldSurface(
         background: field.subtleReadOnlyFill,
         content: field.readOnlyContent,
         placeholder: field.readOnlyContent,
+        // Read-only still takes keyboard focus, and the browser ring is off,
+        // so the focus border is the only thing that can show where the
+        // keyboard is. The fill and the text stay read-only.
+        ...(state.focused
+          ? {
+              border: field.softFocusBorder,
+              borderWidth: inputFieldMetrics.focusBorderWidth,
+            }
+          : {}),
       };
     case 'error':
       return {
@@ -312,6 +344,20 @@ export const InputField = forwardRef<TextInput, InputFieldProps>(
     const [hovered, setHovered] = useState(false);
     const styles = useMemo(() => makeStyles(), []);
     const supportingId = useId();
+    // The component needs the input to hand it focus when the surface is
+    // tapped, and the caller still gets the ref it asked for.
+    const inputRef = useRef<TextInput | null>(null);
+    const attachInput = useCallback(
+      (node: TextInput | null) => {
+        inputRef.current = node;
+        if (typeof ref === 'function') {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref],
+    );
 
     const invalid = error || (errorText ?? '') !== '';
     const interactive = !disabled && !readOnly;
@@ -327,8 +373,14 @@ export const InputField = forwardRef<TextInput, InputFieldProps>(
       focused,
       hasLabel: label !== undefined,
     });
-    const supportingText = errorText ?? hint;
+    // An empty error message is not a message: it must not take the hint's
+    // place, and neither of them may reserve space while empty.
     const supportingIsError = (errorText ?? '') !== '';
+    const supportingText = supportingIsError
+      ? errorText
+      : (hint ?? '') !== ''
+        ? hint
+        : undefined;
 
     const iconProps: InputFieldIconProps = {
       size: inputFieldMetrics.iconSize,
@@ -348,11 +400,25 @@ export const InputField = forwardRef<TextInput, InputFieldProps>(
       disabled,
     } as Partial<TextInputProps>;
 
+    // Anywhere on the field that is not the input itself - the padding, the
+    // label, a decorative icon - hands focus to the input. The responder is
+    // only claimed when no child wants the gesture, so a press on the input
+    // keeps its own caret placement and selection, and the trailing button
+    // keeps its press. Disabled takes nothing.
+    const claimsPress = () => !disabled;
+    const focusInput = () => {
+      if (!disabled) {
+        inputRef.current?.focus();
+      }
+    };
+
     return (
       <View style={styles.root}>
         <View
           onPointerEnter={() => setHovered(true)}
           onPointerLeave={() => setHovered(false)}
+          onResponderRelease={focusInput}
+          onStartShouldSetResponder={claimsPress}
           style={[
             styles.field,
             {
@@ -412,7 +478,7 @@ export const InputField = forwardRef<TextInput, InputFieldProps>(
               // readOnly rather than editable: editable is deprecated on web
               // and readOnly keeps the text selectable and copyable.
               readOnly={readOnly || disabled}
-              ref={ref}
+              ref={attachInput}
               style={[
                 styles.input,
                 label === undefined ? styles.inputCentred : styles.inputAnchored,
@@ -430,6 +496,7 @@ export const InputField = forwardRef<TextInput, InputFieldProps>(
                 aria-disabled={disabled}
                 disabled={disabled}
                 focusable={!disabled}
+                hitSlop={inputFieldMetrics.trailingHitSlop}
                 onPress={onTrailingIconPress}
                 style={styles.trailingAction}
               >
@@ -508,8 +575,11 @@ function makeStyles() {
       width: '100%',
     },
     label: {
-      position: 'absolute',
       left: 0,
+      // Lies over the input, so it must let a press through to the field
+      // instead of eating it.
+      pointerEvents: 'none',
+      position: 'absolute',
       right: 0,
     },
     labelFloating: {
@@ -520,6 +590,7 @@ function makeStyles() {
     },
     leadingIcon: {
       height: m.iconSize,
+      pointerEvents: 'none',
       width: m.iconSize,
     },
     overlay: {
@@ -545,12 +616,17 @@ function makeStyles() {
     },
     trailingAction: {
       alignItems: 'center',
-      height: m.iconSize,
+      // The glyph stays 20 and keeps its place; the target around it grows
+      // to the full control height, which a 56 field has room for. The width
+      // stays 20 so it cannot steal presses aimed at the text, and hitSlop
+      // adds the rest without taking part in layout.
+      height: m.touchTarget,
       justifyContent: 'center',
       width: m.iconSize,
     },
     trailingIcon: {
       height: m.iconSize,
+      pointerEvents: 'none',
       width: m.iconSize,
     },
   });

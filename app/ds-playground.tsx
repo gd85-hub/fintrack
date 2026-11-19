@@ -10,7 +10,6 @@ import {
 import {
   InputField,
   type InputFieldAppearance,
-  type InputFieldProps,
 } from '../components/ds/InputField';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
@@ -41,7 +40,10 @@ const APPEARANCES: InputFieldAppearance[] = ['softFilled', 'cleanOutline'];
 
 // Hover and focus come from real interaction, so the gallery only pins the
 // states a caller can ask for; hover and focus are there to be tried.
-const INPUT_STATES: { name: string; props: Partial<InputFieldProps> }[] = [
+const INPUT_STATES: {
+  name: string;
+  props: { disabled?: boolean; error?: boolean; readOnly?: boolean };
+}[] = [
   { name: 'default', props: {} },
   { name: 'error', props: { error: true } },
   { name: 'read-only', props: { readOnly: true } },
