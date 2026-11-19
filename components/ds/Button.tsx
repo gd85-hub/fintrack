@@ -531,7 +531,7 @@ export function Button({
               {trailing}
             </View>
             {loading ? (
-              <View pointerEvents="none" style={styles.loader}>
+              <View style={styles.loader}>
                 {/* A numeric size is the only lever that ties the indicator
                     to the button: 'small' is a fixed 20 at both sizes. RN
                     turns the number into the view box, which the Android
@@ -571,7 +571,13 @@ function makeStyles(size: ButtonSizeSpec) {
       opacity: 0,
     },
     fullWidth: {
+      // alignSelf covers a column parent, where the cross axis is the width.
+      // In a row parent the cross axis is the height, so stretch does nothing
+      // for the width and the button would keep hugging its label: width
+      // fills the container there. Sharing a row between several buttons
+      // stays the parent's job.
       alignSelf: 'stretch',
+      width: '100%',
     },
     label: {
       ...size.typography,
@@ -582,6 +588,9 @@ function makeStyles(size: ButtonSizeSpec) {
       bottom: 0,
       justifyContent: 'center',
       left: 0,
+      // In style, not as a prop: the prop form is deprecated in React Native
+      // and warns on every render. The overlay still swallows nothing.
+      pointerEvents: 'none',
       position: 'absolute',
       right: 0,
       top: 0,

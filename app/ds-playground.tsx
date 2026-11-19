@@ -232,21 +232,45 @@ function ButtonGallery({ onPress }: { onPress: (label: string) => void }) {
         </Group>
       </Section>
 
-      {/* fullWidth is alignSelf: 'stretch', which only widens inside a
-          column, so this section stacks instead of using the shared row. */}
+      {/* Both directions, because the parent's flexDirection decides what a
+          cross-axis stretch means and fullWidth has to survive either. */}
       <Section title={t('dsPlayground.section.width')}>
-        <Group column name={t('dsPlayground.width.hug')}>
+        <Group column name={`${t('dsPlayground.width.hug')} · column`}>
           <Button
-            label="hug"
-            onPress={() => onPress('hug')}
+            label="hug column"
+            onPress={() => onPress('hug column')}
             trailingIcon="arrow-right"
           />
         </Group>
-        <Group column name={t('dsPlayground.width.fullWidth')}>
+        <Group column name={`${t('dsPlayground.width.fullWidth')} · column`}>
           <Button
             fullWidth
-            label="full width"
-            onPress={() => onPress('full width')}
+            label="full width column"
+            onPress={() => onPress('full width column')}
+            trailingIcon="arrow-right"
+          />
+        </Group>
+        <Group name={`${t('dsPlayground.width.hug')} · row`}>
+          <Button
+            label="hug row"
+            onPress={() => onPress('hug row')}
+            trailingIcon="arrow-right"
+          />
+        </Group>
+        <Group name={`${t('dsPlayground.width.fullWidth')} · row`}>
+          <Button
+            fullWidth
+            label="full width row"
+            onPress={() => onPress('full width row')}
+            trailingIcon="arrow-right"
+          />
+        </Group>
+        <Group name={`${t('dsPlayground.width.fullWidth')} · row, loading`}>
+          <Button
+            fullWidth
+            label="full width row"
+            loading
+            onPress={() => onPress('full width row loading')}
             trailingIcon="arrow-right"
           />
         </Group>

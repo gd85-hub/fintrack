@@ -348,12 +348,101 @@ describe('Button rendering', () => {
   });
 
   test('fullWidth stretches instead of hugging its label', () => {
+    // Jest lays nothing out, so this pins the declarations that decide the
+    // width; the measured geometry is checked in the browser through
+    // /ds-playground and recorded in HANDOFF.md.
     const hugging = renderButton(<Button label="Label" onPress={() => {}} />);
-    expect(rootStyle(hugging.root).alignSelf).toBe('flex-start');
+    const hug = rootStyle(hugging.root);
+    expect(hug.alignSelf).toBe('flex-start');
+    // Nothing may pin the hug width: it is the label plus the padding.
+    expect(hug.width).toBeUndefined();
+    expect(hug.flexGrow).toBeUndefined();
+    unmountTree(hugging);
+
     const stretched = renderButton(
       <Button fullWidth label="Label" onPress={() => {}} />,
     );
-    expect(rootStyle(stretched.root).alignSelf).toBe('stretch');
+    const full = rootStyle(stretched.root);
+    // alignSelf alone only widens in a column, where the cross axis is the
+    // width. width: '100%' is what carries a row parent, whose cross axis is
+    // the height.
+    expect(full.alignSelf).toBe('stretch');
+    expect(full.width).toBe('100%');
+    unmountTree(stretched);
+  });
+
+  test('fullWidth keeps the DS minimum width and the resting height', () => {
+    for (const size of sizes) {
+      const spec = buttonSizeSpec(size);
+      const style = (fullWidth: boolean) => {
+        const tree = renderButton(
+          <Button
+            fullWidth={fullWidth}
+            label="Label"
+            onPress={() => {}}
+            size={size}
+          />,
+        );
+        const resolved = { ...rootStyle(tree.root) };
+        unmountTree(tree);
+        return resolved;
+      };
+      const hug = style(false);
+      const full = style(true);
+      expect({ size, minWidth: full.minWidth, height: full.height }).toEqual({
+        size,
+        minWidth: spec.minWidth,
+        height: spec.height,
+      });
+      // Width is the only thing fullWidth is allowed to change.
+      expect({ ...full, alignSelf: null, width: null }).toEqual({
+        ...hug,
+        alignSelf: null,
+        width: null,
+      });
+    }
+  });
+
+  test('loading does not resize a fullWidth button', () => {
+    for (const size of sizes) {
+      const frames = [false, true].map((loading) => {
+        const tree = renderButton(
+          <Button
+            fullWidth
+            label="Label"
+            leadingIcon="check"
+            loading={loading}
+            onPress={() => {}}
+            size={size}
+          />,
+        );
+        const style = rootStyle(tree.root);
+        const frame = {
+          alignSelf: style.alignSelf,
+          height: style.height,
+          minWidth: style.minWidth,
+          paddingHorizontal: style.paddingHorizontal,
+          width: style.width,
+        };
+        unmountTree(tree);
+        return frame;
+      });
+      expect({ size, loading: frames[1] }).toEqual({
+        size,
+        loading: frames[0],
+      });
+    }
+  });
+
+  test('the spinner overlay declines events through style, not the deprecated prop', () => {
+    // React Native warns on every render for the pointerEvents prop, and the
+    // overlay must still let presses through to the button underneath.
+    const tree = renderButton(<Button label="Label" loading onPress={() => {}} />);
+    const overlay = tree.root
+      .findAllByType(ActivityIndicator)[0]
+      .parent;
+    expect(overlay).not.toBeNull();
+    expect(overlay?.props.pointerEvents).toBeUndefined();
   });
 
   test('the deprecated icon prop still fills the slot it names', () => {
@@ -807,8 +896,9 @@ describe('Button spinner', () => {
       alignItems: 'center',
       justifyContent: 'center',
     });
-    // Absolute and non-interactive, so it cannot displace the content row.
-    expect(wrapper?.props.pointerEvents).toBe('none');
+    // Absolute and non-interactive, so it cannot displace the content row
+    // or swallow a press meant for the button.
+    expect(style.pointerEvents).toBe('none');
   });
 
   test('switching to loading leaves the frame geometry untouched', () => {
