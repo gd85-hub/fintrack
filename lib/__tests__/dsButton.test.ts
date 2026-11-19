@@ -85,11 +85,14 @@ describe('buttonSizeSpec', () => {
 });
 
 // The token each variant/state pair must bind, written from the Figma Button
-// set rather than from the implementation: Primary 591:852, Outline 591:942,
-// Ghost 591:1032 and Danger 591:1122 with their Hover/Pressed/Disabled
-// siblings, Neutral 901:1156 / 901:1181. Large repeats Medium's colours
-// (checked on 591:1023 and 591:1203), so colour is size-independent.
-// Surface has no symbol in that set; it follows the action/secondary tokens.
+// component set 591:1212 rather than from the implementation. That set holds
+// all 60 variants (6 types x 2 sizes x 5 states); a variant's node id prefix
+// says nothing about which set it belongs to, so Surface (901:1218 and
+// siblings) and Neutral (901:1156 / 901:1181) live in the same set as
+// Primary 591:852, Outline 591:942, Ghost 591:1032 and Danger 591:1122.
+// Medium nodes are cited below; Large repeats their colours (checked on
+// 591:1023 and 591:1203), so colour is size-independent.
+// Surface, Outline and Ghost all label with text/primary while active.
 type ContractState = 'default' | 'hover' | 'pressed' | 'disabled';
 
 const figmaContract: Record<
@@ -141,21 +144,22 @@ const figmaContract: Record<
       content: c.action.primary.disabledContent,
     }),
   },
+  // 901:1218 / 901:1224 / 901:1230: own fill, label text/primary.
   surface: {
     default: (c) => ({
       background: c.action.secondary.fill,
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     hover: (c) => ({
       background: c.action.secondary.hover,
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     pressed: (c) => ({
       background: c.action.secondary.pressed,
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     disabled: (c) => ({
       background: c.action.secondary.disabledFill,
@@ -187,21 +191,22 @@ const figmaContract: Record<
       content: c.action.secondary.disabledContent,
     }),
   },
+  // 591:1032 / 591:1041 / 591:1050: no fill, no border, label text/primary.
   ghost: {
     default: (c) => ({
       background: 'transparent',
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     hover: (c) => ({
       background: c.state.hover,
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     pressed: (c) => ({
       background: c.state.pressed,
       border: null,
-      content: c.action.secondary.content,
+      content: c.text.primary,
     }),
     disabled: (c) => ({
       background: 'transparent',
@@ -281,6 +286,24 @@ describe('Figma colour contract', () => {
       expect(disabled.background).not.toBe(palette.action.destructive.fill);
       expect(disabled.background).toBe(palette.action.primary.disabled);
       expect(disabled.content).toBe(palette.action.primary.disabledContent);
+    }
+  });
+
+  test('surface, outline and ghost all label with text/primary', () => {
+    // 901:1218, 591:942 and 591:1032 and their hover/pressed siblings bind
+    // color/text/primary, not an action token.
+    for (const [, palette] of themes) {
+      for (const variant of ['surface', 'outline', 'ghost'] as const) {
+        for (const state of [{}, { hovered: true }, { pressed: true }]) {
+          expect(buttonSurface(palette, variant, state).content).toBe(
+            palette.text.primary,
+          );
+        }
+        // Disabled still drops to the secondary disabled content token.
+        expect(
+          buttonSurface(palette, variant, { disabled: true }).content,
+        ).toBe(palette.action.secondary.disabledContent);
+      }
     }
   });
 
@@ -414,10 +437,11 @@ describe('buttonSurface', () => {
 
   test('surface and danger bind their own action tokens', () => {
     for (const [, palette] of themes) {
+      // Surface owns its fill but not its label: that is text/primary.
       expect(buttonSurface(palette, 'surface')).toEqual({
         background: palette.action.secondary.fill,
         border: null,
-        content: palette.action.secondary.content,
+        content: palette.text.primary,
       });
       expect(buttonSurface(palette, 'danger')).toEqual({
         background: palette.action.destructive.fill,

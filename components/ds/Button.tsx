@@ -150,7 +150,7 @@ export function buttonSurface(
               action.secondary.pressed,
             ),
             border: null,
-            content: action.secondary.content,
+            content: text.primary,
           };
     case 'outline':
       // Outline has no fill of its own: it rests transparent and only the
@@ -177,7 +177,7 @@ export function buttonSurface(
         : {
             background: pick('transparent', overlay.hover, overlay.pressed),
             border: null,
-            content: action.secondary.content,
+            content: text.primary,
           };
     case 'danger':
       // Disabled Danger drops the destructive hue entirely and inherits the
