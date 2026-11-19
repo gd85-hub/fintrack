@@ -1,13 +1,8 @@
 import { Link } from 'expo-router';
 import { useMemo, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { Button } from '../../components/ds/Button';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
@@ -90,19 +85,20 @@ export default function SignUpScreen() {
           <Text style={styles.error}>{errorMessage}</Text>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={submitting}
+        <Button
+          // While registering the label gives way to the spinner, so the
+          // progress wording moves to the accessible name, which is what a
+          // screen reader announced before.
+          accessibilityLabel={
+            submitting ? t('auth.signingUp') : t('auth.signUpButton')
+          }
+          fullWidth
+          label={t('auth.signUpButton')}
+          loading={submitting}
           onPress={() => void handleSignUp()}
-          style={({ pressed }) => [
-            styles.button,
-            (pressed || submitting) && styles.buttonPressed,
-          ]}
-        >
-          <Text style={styles.buttonText}>
-            {submitting ? t('auth.signingUp') : t('auth.signUpButton')}
-          </Text>
-        </Pressable>
+          size="medium"
+          variant="primary"
+        />
 
         <Link href="/(auth)/sign-in" style={styles.link}>
           {t('auth.haveAccount')}
@@ -113,22 +109,6 @@ export default function SignUpScreen() {
 }
 
 const makeStyles = (c: Colors) => StyleSheet.create({
-  button: {
-    alignItems: 'center',
-    backgroundColor: c.action.primary.fill,
-    borderRadius: theme.radii.button,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-    paddingHorizontal: theme.spacing.md,
-  },
-  buttonPressed: {
-    opacity: theme.opacity.pressed,
-  },
-  buttonText: {
-    color: c.action.primary.content,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '600',
-  },
   container: {
     alignItems: 'center',
     backgroundColor: c.bg.base,
