@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import { type ComponentProps, type ReactNode, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -269,6 +269,76 @@ export function buttonFocusColor(
   }
 }
 
+// The ring the browser draws for us. An outline takes no part in layout, it
+// follows the button's own corner (its radius grows by the offset, so a 14
+// corner rings at 18 and a 16 at 20, matching radius/button/focus-*), and
+// setting it replaces the user-agent ring instead of stacking a second one
+// on top of it. Cleared, it also suppresses that user-agent ring, so the
+// component is the only thing that can light the button up.
+export type ButtonFocusRing = {
+  outlineColor: string;
+  outlineOffset: number;
+  outlineStyle: 'solid';
+  outlineWidth: number;
+};
+
+export function buttonFocusRing(
+  colors: ButtonColors,
+  variant: ButtonVariant,
+  visible: boolean,
+): ButtonFocusRing {
+  if (!visible) {
+    // Width zero rather than 'none': an author outline-style of its own is
+    // what overrides the user-agent's `outline-style: auto` ring, and RN
+    // types the property without 'none' anyway.
+    return {
+      outlineColor: 'transparent',
+      outlineOffset: 0,
+      outlineStyle: 'solid',
+      outlineWidth: 0,
+    };
+  }
+  return {
+    outlineColor: buttonFocusColor(colors, variant),
+    outlineOffset: theme.scale.stroke.focusRing,
+    outlineStyle: 'solid',
+    outlineWidth: theme.scale.stroke.focusRing,
+  };
+}
+
+// Only the part of an element the focus check needs, so a test can stand in
+// for one.
+export type FocusVisibleQuery = { matches: (selector: string) => boolean };
+
+// Whether the focus that just arrived is one the browser would indicate.
+// Asking it through :focus-visible is the only reliable answer: guessing from
+// the order of press and focus events cannot work, because the browser
+// focuses on mousedown while react-native-web delays onPressIn by 50ms, so
+// the press flag is always still unset when focus arrives.
+export function isKeyboardFocusTarget(
+  element: FocusVisibleQuery | null | undefined,
+): boolean {
+  if (element == null) {
+    return false;
+  }
+  try {
+    return element.matches(':focus-visible');
+  } catch {
+    // A browser too old for :focus-visible: show the ring rather than hide
+    // keyboard focus altogether.
+    return true;
+  }
+}
+
+export function isKeyboardFocus(): boolean {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') {
+    return false;
+  }
+  // Inside the focus event the element that just took focus is the active
+  // one, so this asks the browser about the button itself.
+  return isKeyboardFocusTarget(document.activeElement);
+}
+
 // Icon tint per the token contract. It is not always the label colour:
 // Primary binds its own action/primary/icon, and the quiet types - Surface,
 // Outline and Ghost - fall back to the secondary disabled content when the
@@ -372,9 +442,6 @@ export function Button({
   const colors = useColors();
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  // Approximates :focus-visible - a focus that arrives with a pointer press
-  // does not raise the ring, a focus that arrives from the keyboard does.
-  const pointerFocus = useRef(false);
   const sizeSpec = useMemo(() => buttonSizeSpec(size), [size]);
   const styles = useMemo(() => makeStyles(sizeSpec), [sizeSpec]);
 
@@ -390,11 +457,8 @@ export function Button({
       // Only a disabled button leaves the focus order; a loading one keeps it.
       disabled={disabled}
       focusable={!disabled}
-      onBlur={() => {
-        setFocused(false);
-        pointerFocus.current = false;
-      }}
-      onFocus={() => setFocused(!pointerFocus.current)}
+      onBlur={() => setFocused(false)}
+      onFocus={() => setFocused(isKeyboardFocus())}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       onPress={() => {
@@ -402,9 +466,6 @@ export function Button({
           return;
         }
         onPress();
-      }}
-      onPressIn={() => {
-        pointerFocus.current = true;
       }}
       style={({ pressed }) => {
         const surface = buttonSurface(colors, variant, {
@@ -420,6 +481,11 @@ export function Button({
             borderColor: surface.border ?? 'transparent',
             borderWidth: surface.border ? theme.scale.stroke.hairline : 0,
           },
+          // Web only: on native the outline props would be a second ring that
+          // the platform never asked for, and an overlay outside a rounded
+          // view can clip on Android.
+          Platform.OS === 'web' &&
+            buttonFocusRing(colors, variant, focusRing),
         ];
       }}
       testID={testID}
@@ -476,15 +542,6 @@ export function Button({
                 />
               </View>
             ) : null}
-            {focusRing ? (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.focusRing,
-                  { borderColor: buttonFocusColor(colors, variant) },
-                ]}
-              />
-            ) : null}
           </>
         );
       }}
@@ -493,10 +550,6 @@ export function Button({
 }
 
 function makeStyles(size: ButtonSizeSpec) {
-  // The ring sits outside the button: a clear gap, then the outline. Both are
-  // absolute, so focus never moves anything around it.
-  const ringOffset = size.focusRadius - size.radius;
-
   return StyleSheet.create({
     base: {
       alignItems: 'center',
@@ -516,15 +569,6 @@ function makeStyles(size: ButtonSizeSpec) {
     },
     contentHidden: {
       opacity: 0,
-    },
-    focusRing: {
-      borderRadius: size.focusRadius,
-      borderWidth: theme.scale.stroke.focusRing,
-      bottom: -ringOffset,
-      left: -ringOffset,
-      position: 'absolute',
-      right: -ringOffset,
-      top: -ringOffset,
     },
     fullWidth: {
       alignSelf: 'stretch',

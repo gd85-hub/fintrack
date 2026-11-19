@@ -6,11 +6,14 @@ import {
   type ButtonVariant,
   type ButtonVisualState,
   buttonFocusColor,
+  buttonFocusRing,
   buttonIconColor,
   buttonSizeSpec,
   buttonSpinnerSize,
   buttonSurface,
   isButtonPressable,
+  isKeyboardFocus,
+  isKeyboardFocusTarget,
   rendersFocusRing,
   showsFocusRing,
 } from '../../components/ds/Button';
@@ -637,6 +640,128 @@ describe('buttonIconColor', () => {
         );
       }
     }
+  });
+});
+
+describe('buttonFocusRing', () => {
+  const ring = theme.scale.stroke.focusRing;
+  const palettes: [string, ButtonColors][] = [
+    ...themes,
+    ['labelled', labelledPalette()],
+  ];
+
+  test('a visible ring is 2px wide, 2px clear of the button, in the focus colour of its type', () => {
+    for (const [scheme, palette] of palettes) {
+      for (const variant of variants) {
+        expect({ scheme, variant, ...buttonFocusRing(palette, variant, true) }).toEqual({
+          scheme,
+          variant,
+          outlineColor: buttonFocusColor(palette, variant),
+          outlineOffset: ring,
+          outlineStyle: 'solid',
+          outlineWidth: ring,
+        });
+      }
+    }
+    expect(ring).toBe(2);
+  });
+
+  test('a hidden ring keeps an author outline style, so the browser draws none of its own', () => {
+    // Chrome rings a focusable element with `outline-style: auto` by default.
+    // Only an author outline-style overrides it, so the ring is hidden by
+    // taking its width to zero rather than by removing the style.
+    for (const [, palette] of palettes) {
+      for (const variant of variants) {
+        expect(buttonFocusRing(palette, variant, false)).toEqual({
+          outlineColor: 'transparent',
+          outlineOffset: 0,
+          outlineStyle: 'solid',
+          outlineWidth: 0,
+        });
+      }
+    }
+  });
+
+  test('the ring touches nothing that takes part in layout', () => {
+    // An outline is painted outside the box and never reflows the page, which
+    // is why the previous absolutely positioned overlay is gone.
+    for (const visible of [true, false]) {
+      expect(Object.keys(buttonFocusRing(theme.color, 'primary', visible)).sort()).toEqual([
+        'outlineColor',
+        'outlineOffset',
+        'outlineStyle',
+        'outlineWidth',
+      ]);
+    }
+  });
+
+  test('the outer corner the browser draws is the documented focus radius', () => {
+    // The outline follows the button corner and grows by the offset, so the
+    // outer radius is corner + offset + width - 18 in Medium, 20 in Large.
+    for (const size of ['medium', 'large'] as const) {
+      const spec = buttonSizeSpec(size);
+      const drawn = buttonFocusRing(theme.color, 'primary', true);
+      expect(spec.radius + drawn.outlineOffset + drawn.outlineWidth).toBe(
+        spec.focusRadius,
+      );
+    }
+    expect(buttonSizeSpec('medium').focusRadius).toBe(18);
+    expect(buttonSizeSpec('large').focusRadius).toBe(20);
+  });
+
+  test('every type rings in its own focus token', () => {
+    const palette = labelledPalette();
+    expect(buttonFocusRing(palette, 'primary', true).outlineColor).toBe(
+      palette.action.primary.focus,
+    );
+    expect(buttonFocusRing(palette, 'neutral', true).outlineColor).toBe(
+      palette.action.primary.focus,
+    );
+    for (const variant of ['surface', 'outline', 'ghost'] as const) {
+      expect(buttonFocusRing(palette, variant, true).outlineColor).toBe(
+        palette.action.secondary.focus,
+      );
+    }
+    expect(buttonFocusRing(palette, 'danger', true).outlineColor).toBe(
+      palette.action.destructive.focus,
+    );
+  });
+});
+
+describe('isKeyboardFocusTarget', () => {
+  // The browser decides. The component only asks it the right question, at
+  // the moment focus arrives, and copes when the answer is unavailable.
+  const element = (matches: () => boolean) => ({ matches });
+
+  test('a focus the browser would indicate raises the ring', () => {
+    expect(isKeyboardFocusTarget(element(() => true))).toBe(true);
+  });
+
+  test('a focus the browser would not indicate stays quiet', () => {
+    // This is the mouse click: the element is focused, but not focus-visible.
+    expect(isKeyboardFocusTarget(element(() => false))).toBe(false);
+  });
+
+  test('nothing focused means no ring', () => {
+    expect(isKeyboardFocusTarget(null)).toBe(false);
+    expect(isKeyboardFocusTarget(undefined)).toBe(false);
+  });
+
+  test('a browser without :focus-visible errs towards showing the ring', () => {
+    // matches() throws on a selector it does not know; losing the ring is
+    // worse than showing one after a click.
+    expect(
+      isKeyboardFocusTarget(
+        element(() => {
+          throw new Error('unknown pseudo-class');
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test('on a platform without a document there is no ring to show', () => {
+    // Jest runs the native platform, where the ring is not rendered at all.
+    expect(isKeyboardFocus()).toBe(false);
   });
 });
 

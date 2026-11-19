@@ -82,6 +82,7 @@ function unmountTree(tree: ReturnType<typeof create>) {
 type PressableProps = {
   accessibilityState: { busy: boolean; disabled: boolean };
   focusable: boolean;
+  onBlur: () => void;
   onFocus: () => void;
   onHoverIn: () => void;
   onPress: () => void;
@@ -391,22 +392,75 @@ describe('Button rendering', () => {
     ).toBe(false);
   });
 
-  test('native renders no focus ring overlay', () => {
-    // Platform.OS is native under jest-expo; the web ring is covered by
-    // rendersFocusRing in dsButton.test.ts.
-    const tree = renderButton(<Button label="Label" onPress={() => {}} />);
-    act(() => {
-      pressableProps(tree.root).onFocus();
-    });
-    const rings = tree.root.findAll(
-      (node) =>
-        typeof node.type === 'string' &&
-        node.type.toLowerCase() === 'view' &&
-        StyleSheet.flatten(node.props.style as ViewStyle).position === 'absolute' &&
-        StyleSheet.flatten(node.props.style as ViewStyle).borderWidth ===
-          theme.scale.stroke.focusRing,
-    );
-    expect(rings).toHaveLength(0);
+  test('native draws no ring and mounts no overlay for it', () => {
+    // Platform.OS is native under jest-expo. The ring is a web affordance:
+    // the outline props must not reach a native view, and the absolutely
+    // positioned overlay that used to stand in for them is gone. The web
+    // path is covered by buttonFocusRing / rendersFocusRing in
+    // dsButton.test.ts and by the browser check recorded in HANDOFF.md.
+    for (const variant of variants) {
+      const tree = renderButton(
+        <Button label="Label" onPress={() => {}} variant={variant} />,
+      );
+      act(() => {
+        pressableProps(tree.root).onFocus();
+      });
+      const style = rootStyle(tree.root) as Record<string, unknown>;
+      for (const key of [
+        'outlineColor',
+        'outlineOffset',
+        'outlineStyle',
+        'outlineWidth',
+      ]) {
+        expect({ variant, key, value: style[key] }).toEqual({
+          variant,
+          key,
+          value: undefined,
+        });
+      }
+      const overlays = tree.root.findAll(
+        (node) =>
+          typeof node.type === 'string' &&
+          node.type.toLowerCase() === 'view' &&
+          StyleSheet.flatten(node.props.style as ViewStyle).position ===
+            'absolute' &&
+          StyleSheet.flatten(node.props.style as ViewStyle).borderWidth ===
+            theme.scale.stroke.focusRing,
+      );
+      expect(overlays).toHaveLength(0);
+      unmountTree(tree);
+    }
+  });
+
+  test('focus and blur never move the button', () => {
+    // Whatever the ring does, it is painted outside the box: the frame the
+    // layout engine sees is identical focused and unfocused.
+    for (const size of sizes) {
+      const tree = renderButton(
+        <Button label="Label" onPress={() => {}} size={size} />,
+      );
+      const resting = { ...rootStyle(tree.root) };
+      act(() => {
+        pressableProps(tree.root).onFocus();
+      });
+      expect(rootStyle(tree.root)).toEqual(resting);
+      act(() => {
+        pressableProps(tree.root).onBlur();
+      });
+      expect(rootStyle(tree.root)).toEqual(resting);
+      unmountTree(tree);
+    }
+  });
+
+  test('a disabled button leaves the focus order entirely', () => {
+    // No tab stop means the browser can never raise a ring on it.
+    for (const variant of variants) {
+      const tree = renderButton(
+        <Button disabled label="Label" onPress={() => {}} variant={variant} />,
+      );
+      expect(pressableProps(tree.root).focusable).toBe(false);
+      unmountTree(tree);
+    }
   });
 });
 
