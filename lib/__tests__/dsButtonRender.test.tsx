@@ -81,6 +81,7 @@ function unmountTree(tree: ReturnType<typeof create>) {
 
 type PressableProps = {
   accessibilityState: { busy: boolean; disabled: boolean };
+  'aria-busy': boolean;
   focusable: boolean;
   onBlur: () => void;
   onFocus: () => void;
@@ -539,6 +540,83 @@ describe('Button rendering', () => {
       expect(rootStyle(tree.root)).toEqual(resting);
       unmountTree(tree);
     }
+  });
+
+  test('loading is announced through both accessibility channels', () => {
+    // accessibilityState is what native reads. react-native-web reads only
+    // the aria-* props and never looks at accessibilityState, so without
+    // aria-busy a loading button announces nothing in a browser. RN
+    // documents aria-busy as the alias, so one flag serves both.
+    for (const variant of variants) {
+      const resting = pressableProps(
+        renderButton(
+          <Button label="Label" onPress={() => {}} variant={variant} />,
+        ).root,
+      );
+      expect({ variant, state: resting.accessibilityState.busy, aria: resting['aria-busy'] }).toEqual({
+        variant,
+        state: false,
+        aria: false,
+      });
+
+      const busy = pressableProps(
+        renderButton(
+          <Button label="Label" loading onPress={() => {}} variant={variant} />,
+        ).root,
+      );
+      expect({ variant, state: busy.accessibilityState.busy, aria: busy['aria-busy'] }).toEqual({
+        variant,
+        state: true,
+        aria: true,
+      });
+    }
+  });
+
+  test('the two busy channels can never disagree', () => {
+    for (const loading of [false, true]) {
+      for (const disabled of [false, true]) {
+        const props = pressableProps(
+          renderButton(
+            <Button
+              disabled={disabled}
+              label="Label"
+              loading={loading}
+              onPress={() => {}}
+            />,
+          ).root,
+        );
+        expect({
+          loading,
+          disabled,
+          agree: props['aria-busy'] === props.accessibilityState.busy,
+          busy: props['aria-busy'],
+        }).toEqual({ loading, disabled, agree: true, busy: loading });
+      }
+    }
+  });
+
+  test('leaving loading clears busy without touching disabled', () => {
+    const tree = renderButton(<Button label="Label" loading onPress={() => {}} />);
+    expect(pressableProps(tree.root)['aria-busy']).toBe(true);
+    act(() => {
+      tree.update(<Button label="Label" onPress={() => {}} />);
+    });
+    const settled = pressableProps(tree.root);
+    expect(settled['aria-busy']).toBe(false);
+    expect(settled.accessibilityState).toEqual({ busy: false, disabled: false });
+    // The reset must not cost the button its place in the focus order.
+    expect(settled.focusable).toBe(true);
+  });
+
+  test('a disabled button is not busy', () => {
+    const props = pressableProps(
+      renderButton(
+        <Button disabled label="Label" onPress={() => {}} />,
+      ).root,
+    );
+    expect(props['aria-busy']).toBe(false);
+    expect(props.accessibilityState).toEqual({ busy: false, disabled: true });
+    expect(props.focusable).toBe(false);
   });
 
   test('a disabled button leaves the focus order entirely', () => {

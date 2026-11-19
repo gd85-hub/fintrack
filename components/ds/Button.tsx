@@ -454,6 +454,12 @@ export function Button({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
       accessibilityState={{ busy: loading, disabled }}
+      // React Native's documented alias for accessibilityState.busy, and the
+      // only one that reaches the DOM: react-native-web reads the aria-*
+      // props and never looks at accessibilityState, so without this a
+      // loading button announces nothing on web. Native keeps reading
+      // accessibilityState above; the two always say the same thing.
+      aria-busy={loading}
       // Only a disabled button leaves the focus order; a loading one keeps it.
       disabled={disabled}
       focusable={!disabled}
