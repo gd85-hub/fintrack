@@ -579,6 +579,23 @@ export const en = {
     },
   },
   dsPlayground: {
+      iconButton: {
+        title: 'Icon Button',
+        section: {
+          types: 'Types and sizes',
+          states: 'States',
+          onMedia: 'On media',
+          interaction: 'Interaction',
+        },
+        hint: 'Hover and hold any button. Walk through them with Tab: the ring follows the keyboard, a mouse click must not raise it. Enter and Space activate the focused button.',
+        label: {
+          add: 'Add expense',
+          edit: 'Edit',
+          remove: 'Delete',
+          close: 'Close',
+          more: 'More actions',
+        },
+      },
       searchField: {
         title: 'Search Field',
         section: {

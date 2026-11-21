@@ -11,6 +11,12 @@ import {
   InputField,
   type InputFieldAppearance,
 } from '../components/ds/InputField';
+import {
+  IconButton,
+  type IconButtonIconName,
+  type IconButtonSize,
+  type IconButtonVariant,
+} from '../components/ds/IconButton';
 import { SearchField } from '../components/ds/SearchField';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
@@ -36,6 +42,18 @@ const VARIANTS: ButtonVariant[] = [
 ];
 
 const SIZES: ButtonSize[] = ['medium', 'large'];
+
+const ICON_BUTTON_VARIANTS: IconButtonVariant[] = [
+  'primary',
+  'neutral',
+  'outline',
+  'surface',
+  'ghost',
+  'danger',
+  'onMedia',
+];
+
+const ICON_BUTTON_SIZES: IconButtonSize[] = ['small', 'medium', 'large'];
 
 const APPEARANCES: InputFieldAppearance[] = ['softFilled', 'cleanOutline'];
 
@@ -153,9 +171,153 @@ function Playground({
       </View>
 
       <ButtonGallery onPress={recordPress} />
+      <IconButtonGallery onPress={recordPress} />
       <InputFieldGallery />
       <SearchFieldGallery />
     </ScrollView>
+  );
+}
+
+function IconButtonGallery({ onPress }: { onPress: (label: string) => void }) {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
+  const title = t('dsPlayground.iconButton.title');
+  const glyphs: Record<IconButtonVariant, IconButtonIconName> = {
+    primary: 'plus',
+    neutral: 'edit-2',
+    outline: 'filter',
+    surface: 'more-horizontal',
+    ghost: 'x',
+    danger: 'trash-2',
+    onMedia: 'camera',
+  };
+  const labels: Record<IconButtonVariant, string> = {
+    primary: t('dsPlayground.iconButton.label.add'),
+    neutral: t('dsPlayground.iconButton.label.edit'),
+    outline: t('dsPlayground.iconButton.label.more'),
+    surface: t('dsPlayground.iconButton.label.more'),
+    ghost: t('dsPlayground.iconButton.label.close'),
+    danger: t('dsPlayground.iconButton.label.remove'),
+    onMedia: t('dsPlayground.iconButton.label.close'),
+  };
+
+  return (
+    <>
+      <Section title={`${title} · ${t('dsPlayground.iconButton.section.types')}`}>
+        {ICON_BUTTON_SIZES.map((size) => (
+          <Group key={size} name={size}>
+            {ICON_BUTTON_VARIANTS.filter((variant) => variant !== 'onMedia').map(
+              (variant) => (
+                <IconButton
+                  accessibilityLabel={labels[variant]}
+                  icon={glyphs[variant]}
+                  key={variant}
+                  onPress={() => onPress(`${variant} / ${size}`)}
+                  size={size}
+                  variant={variant}
+                />
+              ),
+            )}
+          </Group>
+        ))}
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.iconButton.section.states')}`}>
+        {ICON_BUTTON_SIZES.map((size) => (
+          <View key={size}>
+            <Group name={`${size} · disabled`}>
+              {ICON_BUTTON_VARIANTS.filter((v) => v !== 'onMedia').map(
+                (variant) => (
+                  <IconButton
+                    accessibilityLabel={labels[variant]}
+                    disabled
+                    icon={glyphs[variant]}
+                    key={variant}
+                    onPress={() => onPress(`disabled ${variant}`)}
+                    size={size}
+                    variant={variant}
+                  />
+                ),
+              )}
+            </Group>
+            <Group name={`${size} · loading`}>
+              {ICON_BUTTON_VARIANTS.filter((v) => v !== 'onMedia').map(
+                (variant) => (
+                  <IconButton
+                    accessibilityLabel={labels[variant]}
+                    icon={glyphs[variant]}
+                    key={variant}
+                    loading
+                    onPress={() => onPress(`loading ${variant}`)}
+                    size={size}
+                    variant={variant}
+                  />
+                ),
+              )}
+            </Group>
+          </View>
+        ))}
+      </Section>
+
+      {/* On media only reads on something to sit on: a photo-dark panel. */}
+      <Section title={`${title} · ${t('dsPlayground.iconButton.section.onMedia')}`}>
+        <Group name="default, disabled, loading">
+          <View style={styles.media}>
+            {ICON_BUTTON_SIZES.map((size) => (
+              <IconButton
+                accessibilityLabel={labels.onMedia}
+                icon={glyphs.onMedia}
+                key={size}
+                onPress={() => onPress(`onMedia / ${size}`)}
+                size={size}
+                variant="onMedia"
+              />
+            ))}
+            <IconButton
+              accessibilityLabel={labels.onMedia}
+              disabled
+              icon={glyphs.onMedia}
+              onPress={() => onPress('onMedia disabled')}
+              variant="onMedia"
+            />
+            <IconButton
+              accessibilityLabel={labels.onMedia}
+              icon={glyphs.onMedia}
+              loading
+              onPress={() => onPress('onMedia loading')}
+              variant="onMedia"
+            />
+          </View>
+        </Group>
+      </Section>
+
+      <Section
+        title={`${title} · ${t('dsPlayground.iconButton.section.interaction')}`}
+      >
+        <Text style={styles.hint}>{t('dsPlayground.iconButton.hint')}</Text>
+        <Group name="press me, then try the loading one next to me">
+          {ICON_BUTTON_VARIANTS.filter((v) => v !== 'onMedia').map((variant) => (
+            <IconButton
+              accessibilityLabel={labels[variant]}
+              icon={glyphs[variant]}
+              key={variant}
+              onPress={() => onPress(`tap ${variant}`)}
+              size="large"
+              variant={variant}
+            />
+          ))}
+          <IconButton
+            accessibilityLabel={labels.primary}
+            icon={glyphs.primary}
+            loading
+            onPress={() => onPress('blocked while loading')}
+            size="large"
+          />
+        </Group>
+      </Section>
+    </>
   );
 }
 
@@ -691,6 +853,15 @@ function makeStyles(colors: Colors) {
       ...theme.type.microLabel,
       color: colors.text.tertiary,
       textTransform: 'uppercase',
+    },
+    media: {
+      alignItems: 'center',
+      backgroundColor: colors.bg.sunken,
+      borderRadius: theme.scale.radius.lg,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.scale.space[3],
+      padding: theme.scale.space[4],
     },
     hint: {
       ...theme.type.captionDefault,
