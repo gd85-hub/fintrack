@@ -22,6 +22,12 @@ import {
   type IconButtonSize,
   type IconButtonVariant,
 } from '../components/ds/IconButton';
+import {
+  Radio,
+  RadioGroup,
+  type RadioGroupOption,
+  type RadioSize,
+} from '../components/ds/Radio';
 import { SearchField } from '../components/ds/SearchField';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
@@ -69,6 +75,11 @@ const CHECKBOX_VALUES: CheckboxChecked[] = [false, true, 'mixed'];
 type CheckboxChild = 'groceries' | 'cafes' | 'transport';
 
 const CHECKBOX_CHILDREN: CheckboxChild[] = ['groceries', 'cafes', 'transport'];
+
+const RADIO_SIZES: RadioSize[] = ['small', 'medium', 'large'];
+
+// The two the copy examples choose between; the group examples add a third.
+const RADIO_PAIR = ['eur', 'usd'] as const;
 
 // Hover and focus come from real interaction, so the gallery only pins the
 // states a caller can ask for; hover and focus are there to be tried.
@@ -188,6 +199,7 @@ function Playground({
       <InputFieldGallery />
       <SearchFieldGallery />
       <CheckboxGallery />
+      <RadioGallery />
     </ScrollView>
   );
 }
@@ -465,6 +477,180 @@ function CheckboxGallery() {
               />
             ))}
           </View>
+        </Group>
+      </Section>
+    </>
+  );
+}
+
+function RadioGallery() {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
+  // One choice per size, so each copy example is a real radio group rather
+  // than a picture of one.
+  const [plain, setPlain] = useState<Record<RadioSize, string>>({
+    small: 'eur',
+    medium: 'eur',
+    large: 'eur',
+  });
+  const [described, setDescribed] = useState<Record<RadioSize, string>>({
+    small: 'usd',
+    medium: 'usd',
+    large: 'usd',
+  });
+  const [bare, setBare] = useState('eur');
+  const [currency, setCurrency] = useState<string | null>('eur');
+  // Starts empty: the group still has exactly one Tab stop, on the first
+  // option a user can reach.
+  const [period, setPeriod] = useState<string | null>(null);
+
+  const title = t('dsPlayground.radio.title');
+
+  const currencyOptions: RadioGroupOption[] = [
+    {
+      value: 'eur',
+      label: t('dsPlayground.radio.currency.eur.label'),
+      description: t('dsPlayground.radio.currency.eur.description'),
+    },
+    {
+      value: 'usd',
+      label: t('dsPlayground.radio.currency.usd.label'),
+      description: t('dsPlayground.radio.currency.usd.description'),
+    },
+    {
+      value: 'rsd',
+      label: t('dsPlayground.radio.currency.rsd.label'),
+      description: t('dsPlayground.radio.currency.rsd.description'),
+    },
+  ];
+
+  // The middle option is off, so the arrows have something to step over.
+  const periodOptions: RadioGroupOption[] = [
+    { value: 'month', label: t('dsPlayground.radio.period.month.label') },
+    {
+      value: 'quarter',
+      label: t('dsPlayground.radio.period.quarter.label'),
+      description: t('dsPlayground.radio.period.quarter.description'),
+      disabled: true,
+    },
+    { value: 'year', label: t('dsPlayground.radio.period.year.label') },
+  ];
+
+  return (
+    <>
+      <Section title={`${title} · ${t('dsPlayground.radio.section.states')}`}>
+        {RADIO_SIZES.map((size) => (
+          <View key={size}>
+            <Group name={size}>
+              {[false, true].map((checked) => (
+                <Radio
+                  accessibilityLabel={`${size} ${String(checked)}`}
+                  checked={checked}
+                  key={String(checked)}
+                  onSelect={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+            <Group name={`${size} · disabled`}>
+              {[false, true].map((checked) => (
+                <Radio
+                  accessibilityLabel={`${size} ${String(checked)} disabled`}
+                  checked={checked}
+                  disabled
+                  key={String(checked)}
+                  onSelect={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+          </View>
+        ))}
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.radio.section.copy')}`}>
+        {RADIO_SIZES.map((size) => (
+          <View key={size}>
+            <Group column name={`${size} · label`}>
+              {RADIO_PAIR.map((value) => (
+                <Radio
+                  checked={plain[size] === value}
+                  key={value}
+                  label={t(`dsPlayground.radio.currency.${value}.label`)}
+                  onSelect={() =>
+                    setPlain((current) => ({ ...current, [size]: value }))
+                  }
+                  size={size}
+                />
+              ))}
+            </Group>
+            <Group column name={`${size} · label and description`}>
+              {RADIO_PAIR.map((value) => (
+                <Radio
+                  checked={described[size] === value}
+                  description={t(
+                    `dsPlayground.radio.currency.${value}.description`,
+                  )}
+                  key={value}
+                  label={t(`dsPlayground.radio.currency.${value}.label`)}
+                  onSelect={() =>
+                    setDescribed((current) => ({ ...current, [size]: value }))
+                  }
+                  size={size}
+                />
+              ))}
+            </Group>
+            <Group column name={`${size} · label and description, disabled`}>
+              {RADIO_PAIR.map((value) => (
+                <Radio
+                  checked={value === 'eur'}
+                  description={t(
+                    `dsPlayground.radio.currency.${value}.description`,
+                  )}
+                  disabled
+                  key={value}
+                  label={t(`dsPlayground.radio.currency.${value}.label`)}
+                  onSelect={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+          </View>
+        ))}
+        <Group name="no visible label, named for a screen reader">
+          {RADIO_PAIR.map((value) => (
+            <Radio
+              accessibilityLabel={`${t('dsPlayground.radio.bare')} ${value.toUpperCase()}`}
+              checked={bare === value}
+              key={value}
+              onSelect={() => setBare(value)}
+            />
+          ))}
+        </Group>
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.radio.section.group')}`}>
+        <Text style={styles.hint}>{t('dsPlayground.radio.hint')}</Text>
+        <Group column name={t('dsPlayground.radio.currency.title')}>
+          <RadioGroup
+            accessibilityLabel={t('dsPlayground.radio.currency.title')}
+            onChange={setCurrency}
+            options={currencyOptions}
+            value={currency}
+          />
+        </Group>
+        {/* Nothing chosen and one option off: the two cases the keyboard
+            flow has to survive. */}
+        <Group column name={`${t('dsPlayground.radio.period.title')} · small`}>
+          <RadioGroup
+            accessibilityLabel={t('dsPlayground.radio.period.title')}
+            onChange={setPeriod}
+            options={periodOptions}
+            size="small"
+            value={period}
+          />
         </Group>
       </Section>
     </>

@@ -579,6 +579,37 @@ export const en = {
     },
   },
   dsPlayground: {
+      radio: {
+        title: 'Radio',
+        section: {
+          states: 'States and sizes',
+          copy: 'Label and description',
+          group: 'Group and keyboard',
+        },
+        hint: 'Hover and hold any radio, and press its label - the label is part of the control. Tab stops once per group, on the chosen option; the arrow keys move the choice and step over disabled options; Space picks the focused one. Pressing the chosen radio again leaves it chosen.',
+        bare: 'Pick',
+        currency: {
+          title: 'Primary display currency',
+          eur: {
+            label: 'Euro (EUR)',
+            description: 'Totals are shown in euro',
+          },
+          usd: {
+            label: 'US dollar (USD)',
+            description: 'Totals are shown in dollars',
+          },
+          rsd: {
+            label: 'Serbian dinar (RSD)',
+            description: 'Totals are shown in dinars',
+          },
+        },
+        period: {
+          title: 'Reporting period',
+          month: { label: 'Month' },
+          quarter: { label: 'Quarter', description: 'Not available yet' },
+          year: { label: 'Year' },
+        },
+      },
       checkbox: {
         title: 'Checkbox',
         section: {
