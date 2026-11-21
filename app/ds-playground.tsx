@@ -8,6 +8,11 @@ import {
   type ButtonVariant,
 } from '../components/ds/Button';
 import {
+  Checkbox,
+  type CheckboxChecked,
+  type CheckboxSize,
+} from '../components/ds/Checkbox';
+import {
   InputField,
   type InputFieldAppearance,
 } from '../components/ds/InputField';
@@ -56,6 +61,14 @@ const ICON_BUTTON_VARIANTS: IconButtonVariant[] = [
 const ICON_BUTTON_SIZES: IconButtonSize[] = ['small', 'medium', 'large'];
 
 const APPEARANCES: InputFieldAppearance[] = ['softFilled', 'cleanOutline'];
+
+const CHECKBOX_SIZES: CheckboxSize[] = ['small', 'medium', 'large'];
+
+const CHECKBOX_VALUES: CheckboxChecked[] = [false, true, 'mixed'];
+
+type CheckboxChild = 'groceries' | 'cafes' | 'transport';
+
+const CHECKBOX_CHILDREN: CheckboxChild[] = ['groceries', 'cafes', 'transport'];
 
 // Hover and focus come from real interaction, so the gallery only pins the
 // states a caller can ask for; hover and focus are there to be tried.
@@ -174,6 +187,7 @@ function Playground({
       <IconButtonGallery onPress={recordPress} />
       <InputFieldGallery />
       <SearchFieldGallery />
+      <CheckboxGallery />
     </ScrollView>
   );
 }
@@ -315,6 +329,142 @@ function IconButtonGallery({ onPress }: { onPress: (label: string) => void }) {
             onPress={() => onPress('blocked while loading')}
             size="large"
           />
+        </Group>
+      </Section>
+    </>
+  );
+}
+
+function CheckboxGallery() {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+
+  const [toggled, setToggled] = useState(false);
+  const [withDescription, setWithDescription] = useState(true);
+  const [bare, setBare] = useState(false);
+  const [children, setChildren] = useState<Record<CheckboxChild, boolean>>({
+    groceries: true,
+    cafes: false,
+    transport: false,
+  });
+
+  const picked = CHECKBOX_CHILDREN.filter((key) => children[key]);
+  // The point of Mixed: a parent that is neither all nor nothing.
+  const parent: CheckboxChecked =
+    picked.length === CHECKBOX_CHILDREN.length
+      ? true
+      : picked.length === 0
+        ? false
+        : 'mixed';
+
+  const title = t('dsPlayground.checkbox.title');
+  const label = t('dsPlayground.checkbox.remember.label');
+  const description = t('dsPlayground.checkbox.remember.description');
+
+  return (
+    <>
+      <Section title={`${title} · ${t('dsPlayground.checkbox.section.states')}`}>
+        {CHECKBOX_SIZES.map((size) => (
+          <View key={size}>
+            <Group name={size}>
+              {CHECKBOX_VALUES.map((value) => (
+                <Checkbox
+                  accessibilityLabel={`${size} ${String(value)}`}
+                  checked={value}
+                  key={String(value)}
+                  onChange={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+            <Group name={`${size} · disabled`}>
+              {CHECKBOX_VALUES.map((value) => (
+                <Checkbox
+                  accessibilityLabel={`${size} ${String(value)} disabled`}
+                  checked={value}
+                  disabled
+                  key={String(value)}
+                  onChange={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+          </View>
+        ))}
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.checkbox.section.copy')}`}>
+        {CHECKBOX_SIZES.map((size) => (
+          <View key={size}>
+            <Group column name={`${size} · label`}>
+              <Checkbox
+                checked={toggled}
+                label={label}
+                onChange={setToggled}
+                size={size}
+              />
+            </Group>
+            <Group column name={`${size} · label and description`}>
+              <Checkbox
+                checked={withDescription}
+                description={description}
+                label={label}
+                onChange={setWithDescription}
+                size={size}
+              />
+            </Group>
+            <Group column name={`${size} · label and description, disabled`}>
+              <Checkbox
+                checked
+                description={description}
+                disabled
+                label={label}
+                size={size}
+                onChange={() => {}}
+              />
+            </Group>
+          </View>
+        ))}
+        <Group name="no visible label, named for a screen reader">
+          <Checkbox
+            accessibilityLabel={t('dsPlayground.checkbox.bare')}
+            checked={bare}
+            onChange={setBare}
+          />
+        </Group>
+      </Section>
+
+      <Section
+        title={`${title} · ${t('dsPlayground.checkbox.section.interaction')}`}
+      >
+        <Text style={styles.hint}>{t('dsPlayground.checkbox.hint')}</Text>
+        {/* Mixed earns its keep here: the parent follows the children. */}
+        <Group column name="partial selection">
+          <Checkbox
+            checked={parent}
+            label={t('dsPlayground.checkbox.parent')}
+            onChange={(next) =>
+              setChildren({
+                groceries: next,
+                cafes: next,
+                transport: next,
+              })
+            }
+          />
+          <View style={styles.checkboxChildren}>
+            {CHECKBOX_CHILDREN.map((key) => (
+              <Checkbox
+                checked={children[key]}
+                key={key}
+                label={t(`dsPlayground.checkbox.child.${key}`)}
+                onChange={(next) =>
+                  setChildren((current) => ({ ...current, [key]: next }))
+                }
+                size="small"
+              />
+            ))}
+          </View>
         </Group>
       </Section>
     </>
@@ -833,6 +983,9 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
       padding: theme.scale.space[6],
+    },
+    checkboxChildren: {
+      paddingLeft: theme.scale.space[6],
     },
     column: {
       flexDirection: 'column',

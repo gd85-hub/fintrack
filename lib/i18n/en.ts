@@ -579,6 +579,26 @@ export const en = {
     },
   },
   dsPlayground: {
+      checkbox: {
+        title: 'Checkbox',
+        section: {
+          states: 'States and sizes',
+          copy: 'Label and description',
+          interaction: 'Interaction',
+        },
+        hint: 'Hover and hold any box, and press its label - the label is part of the control. Walk through them with Tab: one stop each, the ring follows the keyboard, a mouse click must not raise it. Space toggles the focused box.',
+        remember: {
+          label: 'Remember this device',
+          description: 'Skip entering your password on this device',
+        },
+        bare: 'Select this row',
+        parent: 'All categories',
+        child: {
+          groceries: 'Groceries',
+          cafes: 'Cafes',
+          transport: 'Transport',
+        },
+      },
       iconButton: {
         title: 'Icon Button',
         section: {

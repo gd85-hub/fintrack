@@ -276,6 +276,9 @@ export const theme = {
     },
     // Label/Default — button label, label under an action icon
     labelDefault: { fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 20, letterSpacing: 0 },
+    // DS Checkbox Small label (Figma 409:755). One step under labelDefault:
+    // same line box, one point smaller.
+    labelSmall: { fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 20, letterSpacing: 0 },
     // DS "Label/Large": the resting label of an empty Input Field.
     labelLarge: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 22, letterSpacing: 0 },
     // DS "Input/V2/Floating Label": the same label once it has floated up.
@@ -285,6 +288,12 @@ export const theme = {
     buttonLarge: { fontFamily: 'Inter_500Medium', fontSize: 16, lineHeight: 19.2, letterSpacing: 0 },
     // Caption/Default — category, service caption
     captionDefault: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, letterSpacing: 0 },
+    // DS Checkbox Large description (Figma 409:755): body text one step down
+    // from bodyDefault.
+    bodySmall: { fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20, letterSpacing: 0 },
+    // DS Checkbox Small description (Figma 409:755): the regular-weight
+    // sibling of dataValue's 12/16 box.
+    captionSmall: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 16, letterSpacing: 0 },
     // Amount/Secondary — second-currency equivalent (tabular)
     amountSecondary: {
       fontFamily: 'Inter_500Medium',
