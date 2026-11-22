@@ -579,6 +579,32 @@ export const en = {
     },
   },
   dsPlayground: {
+      toggle: {
+        title: 'Toggle',
+        section: {
+          states: 'States and sizes',
+          copy: 'Label, description and position',
+          long: 'Long copy',
+        },
+        hint: 'Hover, hold, and press anywhere on the row. Tab stops once on the toggle, the ring follows keyboard focus, and Space changes the value without scrolling the page.',
+        bare: 'Toggle without a visible label',
+        notifications: {
+          label: 'Notifications',
+          description: 'Reminders for recurring expenses',
+        },
+        leading: {
+          label: 'Leading toggle',
+          description: 'The label and description sit to its right',
+        },
+        trailing: {
+          label: 'Trailing toggle',
+          description: 'The label and description sit to its left',
+        },
+        long: {
+          label: 'A very long notification setting that wraps across several lines without running underneath the toggle',
+          description: 'The description can be long too: the row stays within the screen while the toggle keeps its size and touch target.',
+        },
+      },
       radio: {
         title: 'Radio',
         section: {

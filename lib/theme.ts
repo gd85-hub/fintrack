@@ -132,6 +132,10 @@ export const theme = {
       hover: '#0f172a0a',
       pressed: '#0f172a14',
     },
+    control: {
+      trackOff: '#7C848A',
+      knob: '#FFFFFF',
+    },
     selection: {
       container: '#a1d8fe',
     },
@@ -539,6 +543,10 @@ export const darkColor = {
   state: {
     hover: '#ffffff0d',
     pressed: '#ffffff17',
+  },
+  control: {
+    trackOff: '#7A7A7A',
+    knob: '#FFFFFF',
   },
   selection: {
     container: '#35a7e84d',

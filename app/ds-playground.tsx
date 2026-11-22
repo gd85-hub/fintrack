@@ -29,6 +29,10 @@ import {
   type RadioSize,
 } from '../components/ds/Radio';
 import { SearchField } from '../components/ds/SearchField';
+import {
+  Toggle,
+  type ToggleSize,
+} from '../components/ds/Toggle';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ThemeOverride, useColors } from '../contexts/ThemeContext';
 import { isPlaygroundEnabled } from '../lib/devRoutes';
@@ -77,6 +81,8 @@ type CheckboxChild = 'groceries' | 'cafes' | 'transport';
 const CHECKBOX_CHILDREN: CheckboxChild[] = ['groceries', 'cafes', 'transport'];
 
 const RADIO_SIZES: RadioSize[] = ['small', 'medium', 'large'];
+
+const TOGGLE_SIZES: ToggleSize[] = ['small', 'medium', 'large'];
 
 // The two the copy examples choose between; the group examples add a third.
 const RADIO_PAIR = ['eur', 'usd'] as const;
@@ -200,6 +206,7 @@ function Playground({
       <SearchFieldGallery />
       <CheckboxGallery />
       <RadioGallery />
+      <ToggleGallery />
     </ScrollView>
   );
 }
@@ -650,6 +657,124 @@ function RadioGallery() {
             options={periodOptions}
             size="small"
             value={period}
+          />
+        </Group>
+      </Section>
+    </>
+  );
+}
+
+function ToggleGallery() {
+  const { t } = useLanguage();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
+  const [values, setValues] = useState<Record<ToggleSize, boolean>>({
+    small: false,
+    medium: true,
+    large: false,
+  });
+  const [leading, setLeading] = useState(false);
+  const [trailing, setTrailing] = useState(true);
+  const [bare, setBare] = useState(false);
+  const title = t('dsPlayground.toggle.title');
+
+  return (
+    <>
+      <Section title={`${title} · ${t('dsPlayground.toggle.section.states')}`}>
+        {TOGGLE_SIZES.map((size) => (
+          <View key={size}>
+            <Group name={size}>
+              {[false, true].map((checked) => (
+                <Toggle
+                  accessibilityLabel={`${size} ${String(checked)}`}
+                  checked={checked}
+                  key={String(checked)}
+                  onChange={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+            <Group name={`${size} · disabled`}>
+              {[false, true].map((checked) => (
+                <Toggle
+                  accessibilityLabel={`${size} ${String(checked)} disabled`}
+                  checked={checked}
+                  disabled
+                  key={String(checked)}
+                  onChange={() => {}}
+                  size={size}
+                />
+              ))}
+            </Group>
+          </View>
+        ))}
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.toggle.section.copy')}`}>
+        {TOGGLE_SIZES.map((size) => (
+          <Group column key={size} name={`${size} · interactive`}>
+            <Toggle
+              checked={values[size]}
+              label={t('dsPlayground.toggle.notifications.label')}
+              onChange={(next) =>
+                setValues((current) => ({ ...current, [size]: next }))
+              }
+              size={size}
+            />
+            <Toggle
+              checked={!values[size]}
+              description={t(
+                'dsPlayground.toggle.notifications.description',
+              )}
+              label={t('dsPlayground.toggle.notifications.label')}
+              onChange={(next) =>
+                setValues((current) => ({ ...current, [size]: !next }))
+              }
+              size={size}
+            />
+          </Group>
+        ))}
+        <Group column name="leading / trailing">
+          <Toggle
+            checked={leading}
+            description={t('dsPlayground.toggle.leading.description')}
+            label={t('dsPlayground.toggle.leading.label')}
+            onChange={setLeading}
+            position="leading"
+          />
+          <Toggle
+            checked={trailing}
+            description={t('dsPlayground.toggle.trailing.description')}
+            label={t('dsPlayground.toggle.trailing.label')}
+            onChange={setTrailing}
+            position="trailing"
+          />
+        </Group>
+        <Group name={t('dsPlayground.toggle.bare')}>
+          <Toggle
+            accessibilityLabel={t('dsPlayground.toggle.bare')}
+            checked={bare}
+            onChange={setBare}
+          />
+        </Group>
+      </Section>
+
+      <Section title={`${title} · ${t('dsPlayground.toggle.section.long')}`}>
+        <Text style={styles.hint}>{t('dsPlayground.toggle.hint')}</Text>
+        <Group column name="375 px wrapping">
+          <Toggle
+            checked
+            description={t('dsPlayground.toggle.long.description')}
+            label={t('dsPlayground.toggle.long.label')}
+            onChange={() => {}}
+            position="leading"
+          />
+          <Toggle
+            checked={false}
+            description={t('dsPlayground.toggle.long.description')}
+            label={t('dsPlayground.toggle.long.label')}
+            onChange={() => {}}
+            position="trailing"
           />
         </Group>
       </Section>
