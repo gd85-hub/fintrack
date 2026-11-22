@@ -50,17 +50,12 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Requires manual or environment verification
 
-### VERIFY-1 · 🟡 Per-account category migration
-
-- `20261115000000_per_account_categories.sql` is committed, but production application is not confirmed.
-- Apply it deliberately, run the verification SQL at the end of the migration, and check a new and an existing account before treating the feature as production-complete.
-
-### VERIFY-2 · 🟡 EUR-anchor display and on-demand rate sync
+### VERIFY-1 · 🟡 EUR-anchor display and on-demand rate sync
 
 - `ANCHOR_DISPLAY=true`, primary/secondary currencies, Frankfurter sync, and resilient partial totals are implemented and unit-tested.
 - Still verify real-device/network behavior across a weekend/old expense, a previously unused currency, Home, Analytics, and the currency-management rates panel before tester rollout.
 
-### VERIFY-3 · 🟡 Environment-dependent account operations
+### VERIFY-2 · 🟡 Environment-dependent account operations
 
 - Password-reset code depends on custom SMTP/domain/redirect configuration and is intentionally hidden by `PASSWORD_RESET_UI=false`.
 - Account deletion and feedback require their Edge Function/migration deployment in the target Supabase environment. Repository presence alone does not prove they are live.
@@ -68,6 +63,18 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 ---
 
 ## Fixed
+
+### BUG-7 · ✅ Expense collection queries could stop at the PostgREST row limit
+
+- **Area:** Home, Analytics, Reports / financial data retrieval
+- **Resolution:** monthly and ranged expense datasets plus category/merchant breakdowns now exhaust bounded `.range()` pages with deterministic `occurred_on`, `created_at`, `id` ordering. Any failed page rejects the complete load; no partial result is returned.
+- **Coverage:** empty/small/exact/multi-page/partial datasets, a server cap below the requested size, first/later-page errors, equal timestamps, and a 1,001-row financial total/group invariant.
+- **Limitation:** offset pagination is reliable for stable data but is not snapshot-isolated from concurrent writes.
+- **Commit:** `PENDING`.
+
+### OPS-1 · ✅ Per-account category migration applied
+
+- Project owner confirmed on 2026-11-17 that `20261115000000_per_account_categories.sql` was applied to production Supabase and its verification checks passed. No additional production verification is pending for that migration.
 
 ### BUG-1 · ✅ Settings child screens returned to Home
 

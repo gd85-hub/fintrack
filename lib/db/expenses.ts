@@ -17,6 +17,7 @@ import {
   receiptExpenseAmounts,
   type ExpenseQueryRow,
 } from './internal';
+import { fetchAllRows } from './pagination';
 import type { Expense, ExpenseInput } from './types';
 
 type ExistingExpenseRow = {
@@ -30,19 +31,19 @@ export async function listExpensesByMonth(
   yyyyMm: string,
 ): Promise<Expense[]> {
   const { first, last } = monthBounds(yyyyMm);
-  const { data, error } = await supabase
-    .from('expenses')
-    .select(EXPENSE_SELECT)
-    .gte('occurred_on', first)
-    .lte('occurred_on', last)
-    .order('occurred_on', { ascending: false })
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllRows<ExpenseQueryRow>((from, to) =>
+    supabase
+      .from('expenses')
+      .select(EXPENSE_SELECT)
+      .gte('occurred_on', first)
+      .lte('occurred_on', last)
+      .order('occurred_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, to),
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return (data as unknown as ExpenseQueryRow[]).map(mapExpense);
+  return rows.map(mapExpense);
 }
 
 export async function getExpense(id: string): Promise<Expense | null> {

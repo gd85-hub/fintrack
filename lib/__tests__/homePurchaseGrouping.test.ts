@@ -66,38 +66,38 @@ function createExpense(
 
 describe('Home purchase grouping', () => {
   test('maps receipt_id from the ordered Home expense query', async () => {
-    const secondOrder = jest.fn<
-      () => Promise<{ data: unknown[]; error: null }>
-    >();
-    secondOrder.mockResolvedValue({
-      data: [
-        {
-          id: 'receipt-line',
-          receipt_id: 'receipt-a',
-          occurred_on: '2026-08-01',
-          description: 'Хлеб',
-          raw_name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
-          category_id: 'groceries',
-          merchant_id: 'merchant',
-          original_amount: '100.00',
-          original_currency: 'RSD',
-          amount_rsd: '100.00',
-          amount_usd: '1.00',
-          amount_eur: '0.90',
-          fx_rate_date: '2026-08-01',
-          note: null,
-          created_at: '2026-08-01T12:00:00Z',
-          category: {
-            emoji: '🛒',
-            name: 'Продукты',
-            slug: 'groceries',
-          },
-          merchant: { name: 'Market' },
-          receipt: { merchant_label: 'Market 101 Center' },
+    const rows = [
+      {
+        id: 'receipt-line',
+        receipt_id: 'receipt-a',
+        occurred_on: '2026-08-01',
+        description: 'Хлеб',
+        raw_name: 'HLEB 7 ZRNA SECENI (KOM) (E)',
+        category_id: 'groceries',
+        merchant_id: 'merchant',
+        original_amount: '100.00',
+        original_currency: 'RSD',
+        amount_rsd: '100.00',
+        amount_usd: '1.00',
+        amount_eur: '0.90',
+        fx_rate_date: '2026-08-01',
+        note: null,
+        created_at: '2026-08-01T12:00:00Z',
+        category: {
+          emoji: '🛒',
+          name: 'Продукты',
+          slug: 'groceries',
         },
-      ],
+        merchant: { name: 'Market' },
+        receipt: { merchant_label: 'Market 101 Center' },
+      },
+    ];
+    const range = jest.fn(async (from: number, to: number) => ({
+      data: rows.slice(from, to + 1),
       error: null,
-    });
+    }));
+    const thirdOrder = jest.fn(() => ({ range }));
+    const secondOrder = jest.fn(() => ({ order: thirdOrder }));
     const firstOrder = jest.fn(() => ({ order: secondOrder }));
     const lte = jest.fn(() => ({ order: firstOrder }));
     const gte = jest.fn(() => ({ lte }));
@@ -117,6 +117,19 @@ describe('Home purchase grouping', () => {
     expect(select).toHaveBeenCalledWith(
       expect.stringContaining('merchant_label'),
     );
+    expect(firstOrder).toHaveBeenCalledWith('occurred_on', {
+      ascending: false,
+    });
+    expect(secondOrder).toHaveBeenCalledWith('created_at', {
+      ascending: false,
+    });
+    expect(thirdOrder).toHaveBeenCalledWith('id', {
+      ascending: false,
+    });
+    expect(range.mock.calls).toEqual([
+      [0, 999],
+      [1, 1_000],
+    ]);
   });
 
   test('groups receipt lines at their first position and keeps manual expenses separate', () => {

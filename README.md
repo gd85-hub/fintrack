@@ -17,7 +17,7 @@ The following capabilities are implemented in `main`. Presence in `main` does no
 | FX | Frozen EUR anchor, historical Frankfurter rates, selectable primary/secondary display currencies | `sync-fx` and the RSD/USD/EUR snapshot remain as a legacy rollback path |
 | Home | Month picker, balance hero, per-day cards, collapsible days, expandable purchases | Totals use the selected home currency; an optional secondary currency is shown in the hero |
 | Receipts | Android SUF QR scanning; photo/email-screenshot recognition on Android and Web; multi-photo overlap handling | SUF QR/link fetching is native-only because browsers are blocked by CORS |
-| Categorization | Personal dictionary, model fallback, editable item names, merchant normalization | Per-account default-category migration is in `main`; production application is not confirmed |
+| Categorization | Personal dictionary, model fallback, editable item names, merchant normalization | Per-account default-category migration was applied and owner-verified in production on 2026-11-17 |
 | Management | Full category and place create/edit/merge/delete flows with compensating cleanup | Each account owns its category copies; its `uncategorized` row is the protected fallback |
 | Analytics | Custom/preset periods, category/place/fixed-variable tabs, drilldown, sorting, averages, pace/forecast, display-currency picker | Read-only; trends across periods and subscription forecasting remain backlog work |
 | Export | Monthly CSV, Excel, and styled PDF with native/Web delivery | Export still has known currency/null limitations; see [`BUGS.md`](./BUGS.md) |
@@ -76,7 +76,7 @@ Current additive migrations cover:
 - in-app feedback;
 - per-account editable copies of default categories.
 
-`20261115000000_per_account_categories.sql` remains operationally important: its application to production is not confirmed. It seeds defaults for new users, backfills existing accounts, and re-points category references. Run the verification queries at the end of that migration after applying it.
+`20261115000000_per_account_categories.sql` seeds defaults for new users, backfills existing accounts, and re-points category references. The project owner confirmed that it was applied and its verification SQL passed in production on 2026-11-17.
 
 ### 3. Edge Functions
 
@@ -144,6 +144,7 @@ components/             Shared inputs, pickers, navigation, receipt inputs, DS f
 contexts/               Auth, language, theme, toast, receipt draft, display/home/secondary currency
 lib/
   db/                   Domain data modules (expenses, receipts, analytics, categories, merchants, feedback)
+    pagination.ts        Complete bounded-page retrieval for financial collections
   i18n/                 RU/EN dictionaries
   __tests__/             Jest tests for pure/domain logic
   anchorRates.ts         EUR-base historical rate resolution and on-demand sync
@@ -177,17 +178,18 @@ RLS protects user-owned tables. Client inserts set `user_id` explicitly. `fx_rat
 - `occurred_on` is a local calendar date, never a UTC-derived date shortcut.
 - Expense originals and frozen EUR anchors do not drift after save; display conversion uses historical rates on or before the expense date.
 - Receipt multi-row writes use explicit compensating cleanup when a later write fails.
+- Home, Analytics, and Reports exhaust bounded expense-query pages and fail instead of returning a partial financial dataset.
 - SUF HTML is fetched by the native device and parsed by the server with strict URL/input validation.
 - Receipt categorization is dictionary-first; only unresolved names reach the text model.
 - User-created names are content, not translation keys.
 
 ## Known limitations
 
-- The category migration in `main` still needs confirmed production application and SQL verification.
 - Password-reset routes exist, but the sign-in entry point is disabled until custom SMTP/domain/redirect configuration is ready.
 - Export is still tied to RSD/EUR/USD columns and currently turns a missing EUR value into `0`; see [`BUGS.md`](./BUGS.md).
 - The amount parser accepts plain decimal comma/dot input but not grouped thousands such as `1.234,56`.
 - Cross-period trends, budgets, search, duplicate-receipt protection, and subscription forecasting remain backlog items.
+- Expense pagination uses deterministic offsets and is complete for stable data, but multiple HTTP requests do not share a database snapshot; concurrent writes during a load can shift offsets.
 
 ## Documentation ownership
 

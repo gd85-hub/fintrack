@@ -26,34 +26,28 @@ jest.mock('../supabase', () => ({
 
 const fromMock = jest.mocked(supabase.from);
 
-function mockMonthQuery(data: unknown[]) {
-  const lte = jest.fn<
-    (
-      column: string,
-      value: string,
-    ) => Promise<{ data: unknown[]; error: null }>
-  >();
-  lte.mockResolvedValue({ data, error: null });
-  const gte = jest.fn(() => ({ lte }));
-  const select = jest.fn(() => ({ gte }));
-
-  return {
-    client: {
-      select,
-    } as unknown as ReturnType<typeof supabase.from>,
-    gte,
-    lte,
-  };
-}
-
-function mockOrderedQuery(data: unknown[]) {
-  const secondOrder = jest.fn<
-    (
-      column: string,
-      options: { ascending: boolean },
-    ) => Promise<{ data: unknown[]; error: null }>
-  >();
-  secondOrder.mockResolvedValue({ data, error: null });
+function mockPagedQuery(
+  data: unknown[],
+  serverLimit = Number.POSITIVE_INFINITY,
+  errorPage: number | null = null,
+) {
+  let page = 0;
+  const range = jest.fn(async (from: number, to: number) => {
+    const currentPage = page;
+    page += 1;
+    if (currentPage === errorPage) {
+      return { data: null, error: { message: 'page failed' } };
+    }
+    return {
+      data: data.slice(
+        from,
+        from + Math.min(to - from + 1, serverLimit),
+      ),
+      error: null,
+    };
+  });
+  const thirdOrder = jest.fn(() => ({ range }));
+  const secondOrder = jest.fn(() => ({ order: thirdOrder }));
   const firstOrder = jest.fn(() => ({ order: secondOrder }));
   const lte = jest.fn(() => ({ order: firstOrder }));
   const gte = jest.fn(() => ({ lte }));
@@ -64,10 +58,15 @@ function mockOrderedQuery(data: unknown[]) {
     firstOrder,
     gte,
     lte,
+    range,
     select,
     secondOrder,
+    thirdOrder,
   };
 }
+
+const mockMonthQuery = mockPagedQuery;
+const mockOrderedQuery = mockPagedQuery;
 
 function sumTotals(
   rows: readonly {
@@ -226,11 +225,9 @@ describe('merchantBreakdownByMonth', () => {
         merchant: null,
       },
     ]);
-    fromMock
-      .mockReturnValueOnce(categoryQuery.client)
-      .mockReturnValueOnce(merchantQuery.client);
-
+    fromMock.mockReturnValue(categoryQuery.client);
     const categoryResult = await categoryBreakdownByMonth('2026-07');
+    fromMock.mockReturnValue(merchantQuery.client);
     const merchantResult = await merchantBreakdownByMonth('2026-07');
 
     expect(merchantResult).toEqual({
@@ -334,18 +331,16 @@ describe('range analytics queries', () => {
     const categoryRangeQuery = mockMonthQuery(categoryRows);
     const merchantMonthQuery = mockMonthQuery(merchantRows);
     const merchantRangeQuery = mockMonthQuery(merchantRows);
-    fromMock
-      .mockReturnValueOnce(categoryMonthQuery.client)
-      .mockReturnValueOnce(categoryRangeQuery.client)
-      .mockReturnValueOnce(merchantMonthQuery.client)
-      .mockReturnValueOnce(merchantRangeQuery.client);
-
+    fromMock.mockReturnValue(categoryMonthQuery.client);
     const categoryMonth = await categoryBreakdownByMonth('2026-07');
+    fromMock.mockReturnValue(categoryRangeQuery.client);
     const categoryRange = await categoryBreakdownByRange(
       '2026-07-01',
       '2026-07-31',
     );
+    fromMock.mockReturnValue(merchantMonthQuery.client);
     const merchantMonth = await merchantBreakdownByMonth('2026-07');
+    fromMock.mockReturnValue(merchantRangeQuery.client);
     const merchantRange = await merchantBreakdownByRange(
       '2026-07-01',
       '2026-07-31',
@@ -438,6 +433,11 @@ describe('listExpensesForAnalytics', () => {
     expect(query.secondOrder).toHaveBeenCalledWith('created_at', {
       ascending: false,
     });
+    expect(query.thirdOrder).toHaveBeenCalledWith('id', {
+      ascending: false,
+    });
+    expect(query.range).toHaveBeenNthCalledWith(1, 0, 999);
+    expect(query.range).toHaveBeenNthCalledWith(2, 1, 1000);
   });
 
   test('matches the month query for equivalent inclusive range bounds', async () => {
@@ -465,11 +465,9 @@ describe('listExpensesForAnalytics', () => {
     ];
     const monthQuery = mockOrderedQuery(data);
     const rangeQuery = mockOrderedQuery(data);
-    fromMock
-      .mockReturnValueOnce(monthQuery.client)
-      .mockReturnValueOnce(rangeQuery.client);
-
+    fromMock.mockReturnValue(monthQuery.client);
     const monthResult = await listExpensesForAnalytics('2026-07');
+    fromMock.mockReturnValue(rangeQuery.client);
     const rangeResult = await listExpensesForRange(
       '2026-07-01',
       '2026-07-31',
@@ -525,6 +523,67 @@ describe('listExpensesForAnalytics', () => {
     expect(query.select).toHaveBeenCalledWith(
       expect.stringContaining('original_amount,original_currency'),
     );
+  });
+
+  test('retrieves and aggregates more than 1,000 expenses without gaps or duplicates', async () => {
+    const data = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `expense-${String(index).padStart(4, '0')}`,
+      occurred_on: '2026-07-15',
+      created_at: '2026-07-15T12:00:00Z',
+      description: `Expense ${index}`,
+      category_id: index % 2 === 0 ? 'fixed' : 'variable',
+      merchant_id: null,
+      original_amount: '1.00',
+      original_currency: 'EUR',
+      amount_rsd: '1.00',
+      amount_usd: '0.01',
+      amount_eur: '0.01',
+      category: {
+        emoji: index % 2 === 0 ? '🏠' : '🛒',
+        group: index % 2 === 0 ? 'Жильё' : 'Еда',
+        name: index % 2 === 0 ? 'Аренда' : 'Продукты',
+        type: index % 2 === 0 ? 'fixed' : 'variable',
+      },
+      merchant: null,
+    }));
+    const query = mockOrderedQuery(data, 1_000);
+    fromMock.mockReturnValue(query.client);
+
+    const result = await listExpensesForRange(
+      '2026-07-01',
+      '2026-07-31',
+    );
+    const breakdown = buildFixedVariableBreakdown(result);
+    const groupedTotal = breakdown.buckets.reduce(
+      (total, bucket) => total + bucket.totalRsd,
+      0,
+    );
+
+    expect(result).toHaveLength(1_001);
+    expect(new Set(result.map(({ id }) => id)).size).toBe(1_001);
+    expect(result.map(({ id }) => id)).toEqual(
+      data.map(({ id }) => id),
+    );
+    expect(breakdown.totalRsd).toBe(100_100);
+    expect(groupedTotal).toBe(breakdown.totalRsd);
+    expect(query.range.mock.calls).toEqual([
+      [0, 999],
+      [1_000, 1_999],
+      [1_001, 2_000],
+    ]);
+  });
+
+  test('rejects the full range when a later page fails', async () => {
+    const data = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `expense-${index}`,
+    }));
+    const query = mockOrderedQuery(data, 1_000, 1);
+    fromMock.mockReturnValue(query.client);
+
+    await expect(
+      listExpensesForRange('2026-07-01', '2026-07-31'),
+    ).rejects.toEqual({ message: 'page failed' });
+    expect(query.range).toHaveBeenCalledTimes(2);
   });
 });
 

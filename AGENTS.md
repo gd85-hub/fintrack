@@ -52,7 +52,7 @@ The current model has a canonical write-time anchor plus a temporary compatibili
 
 ## Categories, merchants, and reference data
 
-- Categories are per-account editable rows. `20261115000000_per_account_categories.sql` keeps NULL-user rows only as registration templates, seeds/backfills personal copies, and re-points existing references. Its production application is not yet confirmed in repository history.
+- Categories are per-account editable rows. `20261115000000_per_account_categories.sql` keeps NULL-user rows only as registration templates, seeds/backfills personal copies, and re-points existing references. The owner confirmed successful production application and verification on 2026-11-17.
 - Client category lists must filter `user_id = auth.uid()`; never mix NULL templates into pickers or management screens.
 - Every account must have exactly one personal `slug='uncategorized'`. It can be renamed/re-styled but never deleted or used as a merge source. Deleting another category re-points expenses, subscriptions, and dictionary rules to that personal fallback before deletion.
 - Category/merchant destructive multi-row operations preserve ownership and use compensating cleanup.
@@ -102,6 +102,8 @@ The current model has a canonical write-time anchor plus a temporary compatibili
 ## Analytics and export
 
 - Analytics never writes data. Fetch a range once per dataset, aggregate in memory, cap long lists, and preserve `sum(groups) === total` tests.
+- Every unbounded financial collection query must exhaust bounded PostgREST range pages through the shared pagination helper. Preserve filters/joins, order deterministically with unique `id` as the final tie-breaker, and fail the whole operation if any page fails; never present a partial dataset as complete.
+- Offset pagination is complete for a stable dataset but is not a transaction snapshot. Concurrent inserts/updates/deletes may shift page offsets; do not claim snapshot consistency without a server-side transaction/RPC design.
 - Analytics display uses frozen EUR anchors + historical display rates when `ANCHOR_DISPLAY` is on; do not fall back to silently recomputing saved anchors.
 - Export builders are pure and covered by characterization tests. Current RSD/EUR/USD-column and missing-EUR issues are documented bugs; fix them only in a dedicated task with regression tests.
 

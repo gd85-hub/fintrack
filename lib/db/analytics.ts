@@ -1,6 +1,7 @@
 import { monthBounds } from '../dates';
 import { decimalToCents } from '../money';
 import { supabase } from '../supabase';
+import { fetchAllRows } from './pagination';
 import type {
   AnalyticsExpense,
   CategoryBreakdown,
@@ -61,24 +62,27 @@ async function categoryBreakdownBetween(
   firstISO: string,
   lastISO: string,
 ): Promise<MonthlyCategoryBreakdown> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select(
-      'category_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group)',
-    )
-    .gte('occurred_on', firstISO)
-    .lte('occurred_on', lastISO);
-
-  if (error) {
-    throw error;
-  }
+  const rows = await fetchAllRows<CategoryBreakdownQueryRow>(
+    (from, to) =>
+      supabase
+        .from('expenses')
+        .select(
+          'category_id,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group)',
+        )
+        .gte('occurred_on', firstISO)
+        .lte('occurred_on', lastISO)
+        .order('occurred_on', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to),
+  );
 
   const categories = new Map<string, CategoryBreakdown>();
   let totalRsd = 0;
   let totalUsd = 0;
   let totalEur = 0;
 
-  for (const row of data as unknown as CategoryBreakdownQueryRow[]) {
+  for (const row of rows) {
     const amountRsd = decimalToCents(row.amount_rsd);
     const amountUsd = decimalToCents(row.amount_usd);
     const amountEur = decimalToCents(row.amount_eur);
@@ -133,24 +137,27 @@ async function merchantBreakdownBetween(
   firstISO: string,
   lastISO: string,
 ): Promise<MonthlyMerchantBreakdown> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select(
-      'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name)',
-    )
-    .gte('occurred_on', firstISO)
-    .lte('occurred_on', lastISO);
-
-  if (error) {
-    throw error;
-  }
+  const rows = await fetchAllRows<MerchantBreakdownQueryRow>(
+    (from, to) =>
+      supabase
+        .from('expenses')
+        .select(
+          'merchant_id,amount_rsd,amount_usd,amount_eur,merchant:merchants!expenses_merchant_id_fkey(name)',
+        )
+        .gte('occurred_on', firstISO)
+        .lte('occurred_on', lastISO)
+        .order('occurred_on', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to),
+  );
 
   const merchants = new Map<string, MerchantBreakdown>();
   let totalRsd = 0;
   let totalUsd = 0;
   let totalEur = 0;
 
-  for (const row of data as unknown as MerchantBreakdownQueryRow[]) {
+  for (const row of rows) {
     const amountRsd = decimalToCents(row.amount_rsd);
     const amountUsd = decimalToCents(row.amount_usd);
     const amountEur = decimalToCents(row.amount_eur);
@@ -283,21 +290,22 @@ async function listExpensesBetween(
   firstISO: string,
   lastISO: string,
 ): Promise<AnalyticsExpense[]> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select(
-      'id,occurred_on,created_at,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group,type),merchant:merchants!expenses_merchant_id_fkey(name)',
-    )
-    .gte('occurred_on', firstISO)
-    .lte('occurred_on', lastISO)
-    .order('occurred_on', { ascending: false })
-    .order('created_at', { ascending: false });
+  const rows = await fetchAllRows<AnalyticsExpenseQueryRow>(
+    (from, to) =>
+      supabase
+        .from('expenses')
+        .select(
+          'id,occurred_on,created_at,description,category_id,merchant_id,original_amount,original_currency,amount_rsd,amount_usd,amount_eur,category:categories!expenses_category_id_fkey(emoji,name,group,type),merchant:merchants!expenses_merchant_id_fkey(name)',
+        )
+        .gte('occurred_on', firstISO)
+        .lte('occurred_on', lastISO)
+        .order('occurred_on', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to),
+  );
 
-  if (error) {
-    throw error;
-  }
-
-  return (data as unknown as AnalyticsExpenseQueryRow[]).map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     occurredOn: row.occurred_on,
     createdAt: row.created_at,
