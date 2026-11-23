@@ -393,6 +393,102 @@ describe('buildExpensesPdfHtml', () => {
     expect(html).toContain('<b>—</b> EUR');
     expect(html).toContain('Unavailable: EUR (1)');
     expect(html).not.toContain('<b>0</b> EUR');
+    expect(html).toContain('199.99<span class="cur">RSD</span>');
+    expect(html).toContain('<b>1.85</b> USD');
+  });
+
+  it.each([
+    [1, '0.01'],
+    [49, '0.49'],
+    [50, '0.50'],
+    [12375, '123.75'],
+    [123456, '1\u2009234.56'],
+  ])('renders %i cents exactly in PDF detail rows', (amountCents, expected) => {
+    const html = buildExpensesPdfHtml(
+      [
+        {
+          ...rows[0],
+          amountOriginalCents: amountCents,
+          amountRsdCents: amountCents,
+        },
+      ],
+      columns,
+      meta,
+    );
+
+    expect(html).toContain(
+      `<td class="num orig">${expected} RSD</td><td class="num rsd">${expected}</td>`,
+    );
+    expect(html).toContain(
+      `<div class="total-num">${expected}<span class="cur">RSD</span></div>`,
+    );
+  });
+
+  it('preserves cents in equivalents and uses thin-space grouping for a large total', () => {
+    const html = buildExpensesPdfHtml(
+      [
+        {
+          ...rows[0],
+          amountOriginalCents: 987654321098,
+          amountRsdCents: 987654321098,
+          amountEurCents: 49,
+          amountUsdCents: 50,
+        },
+      ],
+      columns,
+      meta,
+    );
+
+    expect(html).toContain(
+      '<div class="total-num">9\u2009876\u2009543\u2009210.98<span class="cur">RSD</span></div>',
+    );
+    expect(html).toContain('<div class="equiv">≈ <b>0.49</b> EUR · <b>0.50</b> USD</div>');
+  });
+
+  it('keeps category and day totals equal to their exact fractional row sum', () => {
+    const html = buildExpensesPdfHtml(
+      [
+        {
+          ...rows[0],
+          purchaseKey: 'manual-1',
+          amountOriginalCents: 12375,
+          amountRsdCents: 12375,
+        },
+        {
+          ...rows[0],
+          purchaseKey: 'manual-2',
+          amountOriginalCents: 50,
+          amountRsdCents: 50,
+        },
+      ],
+      columns,
+      meta,
+    );
+
+    expect(html).toContain('<span class="cat-amt">124.25 RSD');
+    expect(html).toContain('<td class="num daytot">124.25 RSD</td>');
+    expect(html).toContain('<td class="num rsd">123.75</td>');
+    expect(html).toContain('<td class="num rsd">0.50</td>');
+    expect(html).toContain(
+      '<div class="total-num">124.25<span class="cur">RSD</span></div>',
+    );
+  });
+
+  it('preserves cents when lower-ranked categories are combined into Other', () => {
+    const categoryAmounts = [800, 700, 600, 500, 400, 300, 225, 150];
+    const html = buildExpensesPdfHtml(
+      categoryAmounts.map((amountRsdCents, index) => ({
+        ...rows[0],
+        purchaseKey: `manual-${index}`,
+        category: `Category ${index + 1}`,
+        amountRsdCents,
+      })),
+      columns,
+      meta,
+    );
+
+    expect(html).toContain('>Other</span>');
+    expect(html).toContain('<span class="cat-amt">3.75 RSD');
   });
 
   it('counts purchases and aggregates receipt lines for average and largest metrics', () => {
@@ -416,7 +512,7 @@ describe('buildExpensesPdfHtml', () => {
         ...rows[0],
         purchaseKey: 'receipt-1',
         place: 'Receipt shop',
-        amountRsdCents: 10000,
+        amountRsdCents: 10001,
       },
       {
         ...rows[0],
@@ -428,19 +524,31 @@ describe('buildExpensesPdfHtml', () => {
         ...rows[1],
         purchaseKey: 'manual-expense-1',
         place: 'Manual shop',
-        amountRsdCents: 20000,
+        amountRsdCents: 19999,
+      },
+      {
+        ...rows[1],
+        purchaseKey: 'manual-expense-2',
+        place: 'Small manual shop',
+        amountRsdCents: 1,
+      },
+      {
+        ...rows[1],
+        purchaseKey: 'manual-expense-3',
+        place: 'Another manual shop',
+        amountRsdCents: 1,
       },
     ];
     const html = buildExpensesPdfHtml(pdfRows, columns, pdfMeta);
 
     expect(html).toContain(
-      '<div class="stat-label">Purchases</div><div class="stat-value">2</div>',
+      '<div class="stat-label">Purchases</div><div class="stat-value">4</div>',
     );
     expect(html).toContain(
-      '<div class="stat-label">Average purchase</div><div class="stat-value">175 RSD</div>',
+      '<div class="stat-label">Average purchase</div><div class="stat-value">87.51 RSD</div>',
     );
     expect(html).toContain(
-      '<div class="stat-label">Largest purchase</div><div class="stat-value">200 RSD</div><div class="stat-sub">Manual shop</div>',
+      '<div class="stat-label">Largest purchase</div><div class="stat-value">199.99 RSD</div><div class="stat-sub">Manual shop</div>',
     );
   });
 });

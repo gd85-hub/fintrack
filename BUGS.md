@@ -55,6 +55,12 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Fixed
 
+### BUG-8 · ✅ PDF monetary values were rounded to whole currency units
+
+- **Area:** Reports / PDF export
+- **Resolution:** every PDF money surface now formats the stored integer cents with exactly two decimal places and the existing thin-space thousands separator. Totals, EUR/USD equivalents, purchase metrics, categories (including Other), day totals, and detail rows no longer lose cents.
+- **Coverage:** 0.01/0.49/0.50/123.75/1,234.56 boundaries, large grouped values, receipt purchase grouping, multiple manual purchases, half-up average, category/day reconciliation, Other aggregation, and missing EUR.
+
 ### BUG-4 · ✅ Missing EUR anchor was exported as a real zero
 
 - **Area:** Reports / all export formats

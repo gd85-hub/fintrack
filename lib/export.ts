@@ -310,14 +310,6 @@ function moneyDisplayCents(value: number): string {
   return `${negative ? '-' : ''}${grouped}.${decimals}`;
 }
 
-// Whole RSD with space thousands — for the statement's RSD figures.
-function moneyWholeCents(value: number): string {
-  const n = Math.round(value / 100);
-  const negative = n < 0;
-  const grouped = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${negative ? '-' : ''}${grouped}`;
-}
-
 const PDF_FALLBACK: ExportPdfLabels = {
   report: 'Expense report',
   generated: '',
@@ -424,12 +416,12 @@ export function buildExpensesPdfHtml(
   // ---- render pieces ----
   const tiles = [
     { label: L.count, value: String(purchaseCount) },
-    { label: L.average, value: `${moneyWholeCents(avg)} ${rsd}` },
+    { label: L.average, value: `${moneyDisplayCents(avg)} ${rsd}` },
     { label: L.activeDays, value: `${daysWithSpend} / ${daysInMonth}` },
     {
       label: L.largest,
       value: largestPurchase
-        ? `${moneyWholeCents(largestPurchase.amountRsdCents)} ${rsd}`
+        ? `${moneyDisplayCents(largestPurchase.amountRsdCents)} ${rsd}`
         : '—',
       sub: largestPurchase
         ? escapeHtml(largestPurchase.place || largestPurchase.category)
@@ -456,7 +448,7 @@ export function buildExpensesPdfHtml(
         `<span class="cat-name"><span class="dot" style="background:${color}"></span>${escapeHtml(
           c.label,
         )}</span>` +
-        `<span class="cat-amt">${moneyWholeCents(c.amt)} ${rsd}<span class="cat-pct">${pct.toFixed(
+        `<span class="cat-amt">${moneyDisplayCents(c.amt)} ${rsd}<span class="cat-pct">${pct.toFixed(
           1,
         )}%</span></span></div>` +
         `<div class="track"><div class="fill" style="width:${w.toFixed(
@@ -477,7 +469,7 @@ export function buildExpensesPdfHtml(
             `<td class="num orig">${moneyDisplayCents(r.amountOriginalCents)} ${escapeHtml(
               r.currencyOriginal,
             )}</td>` +
-            `<td class="num rsd">${moneyWholeCents(r.amountRsdCents)}</td></tr>`,
+            `<td class="num rsd">${moneyDisplayCents(r.amountRsdCents)}</td></tr>`,
         )
         .join('');
       return (
@@ -485,7 +477,7 @@ export function buildExpensesPdfHtml(
         `<td colspan="3"><span class="daydate">${escapeHtml(
           g.dateLabel,
         )}</span></td>` +
-        `<td class="num daytot">${moneyWholeCents(g.total)} ${rsd}</td></tr>` +
+        `<td class="num daytot">${moneyDisplayCents(g.total)} ${rsd}</td></tr>` +
         `${items}</tbody>`
       );
     })
@@ -568,8 +560,8 @@ export function buildExpensesPdfHtml(
 
   <div class="hero">
     <div class="eyebrow">${escapeHtml(L.totalSpending)}</div>
-    <div class="total-num">${moneyWholeCents(totalRsd)}<span class="cur">${rsd}</span></div>
-    <div class="equiv">≈ <b>${totalEur === null ? '—' : moneyWholeCents(totalEur)}</b> ${eur} · <b>${moneyWholeCents(totalUsd)}</b> ${usd}</div>
+    <div class="total-num">${moneyDisplayCents(totalRsd)}<span class="cur">${rsd}</span></div>
+    <div class="equiv">≈ <b>${totalEur === null ? '—' : moneyDisplayCents(totalEur)}</b> ${eur} · <b>${moneyDisplayCents(totalUsd)}</b> ${usd}</div>
     ${unavailableNote}
   </div>
 
