@@ -1160,18 +1160,25 @@ function ButtonGallery({ onPress }: { onPress: (label: string) => void }) {
 
       <Section title={t('dsPlayground.section.icons')}>
         {SIZES.map((size) => (
-          <Group key={size} name={size}>
-            {ICON_SLOTS.map((slot) => (
-              <Button
-                key={slot.name}
-                label={slot.name}
-                leadingIcon={slot.leading}
-                onPress={() => onPress(`${slot.name} / ${size}`)}
-                size={size}
-                trailingIcon={slot.trailing}
-              />
+          <View key={size}>
+            {VARIANTS.map((variant) => (
+              <Group key={variant} name={`${size} · ${variant}`}>
+                {ICON_SLOTS.map((slot) => (
+                  <Button
+                    key={slot.name}
+                    label={slot.name}
+                    leadingIcon={slot.leading}
+                    onPress={() =>
+                      onPress(`${slot.name} / ${variant} / ${size}`)
+                    }
+                    size={size}
+                    trailingIcon={slot.trailing}
+                    variant={variant}
+                  />
+                ))}
+              </Group>
             ))}
-          </Group>
+          </View>
         ))}
         <Group name="loading keeps its width">
           {ICON_SLOTS.map((slot) => (
@@ -1185,6 +1192,24 @@ function ButtonGallery({ onPress }: { onPress: (label: string) => void }) {
             />
           ))}
         </Group>
+      </Section>
+
+      <Section title="Button labels">
+        {SIZES.map((size) => (
+          <Group column key={size} name={size}>
+            <Button
+              label="Short"
+              onPress={() => onPress(`short label / ${size}`)}
+              size={size}
+            />
+            <Button
+              label="A deliberately long button label for layout review"
+              onPress={() => onPress(`long label / ${size}`)}
+              size={size}
+              trailingIcon="arrow-right"
+            />
+          </Group>
+        ))}
       </Section>
 
       {/* Both directions, because the parent's flexDirection decides what a

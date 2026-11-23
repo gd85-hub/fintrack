@@ -180,8 +180,7 @@ describe('Button rendering', () => {
     mockPalette = theme.color;
   });
 
-  test('outline paints no fill and keeps border/default in every state', () => {
-    // Figma 591:942 / 591:978: no fill token, border/default throughout.
+  test('outline paints no resting fill and binds enabled/disabled action borders', () => {
     for (const [, scheme] of themes) {
       mockPalette = scheme;
       for (const size of sizes) {
@@ -196,7 +195,11 @@ describe('Button rendering', () => {
             />,
           );
           const style = rootStyle(tree.root);
-          expect(style.borderColor).toBe(scheme.border.default);
+          expect(style.borderColor).toBe(
+            disabled
+              ? scheme.action.secondary.disabledBorder
+              : scheme.action.secondary.border,
+          );
           expect(style.borderWidth).toBe(theme.scale.stroke.hairline);
           if (!disabled) {
             expect(style.backgroundColor).toBe('transparent');
@@ -697,6 +700,65 @@ describe('Button icon slots', () => {
     unmountTree(both);
   });
 
+  test('icon slots reproduce the compact Figma anatomy at both sizes', () => {
+    for (const size of sizes) {
+      const spec = buttonSizeSpec(size);
+      const tree = renderButton(
+        <Button
+          label="Label"
+          leadingIcon="arrow-left"
+          onPress={() => {}}
+          size={size}
+          trailingIcon="arrow-right"
+        />,
+      );
+      const row = contentRow(tree.root, size);
+      const slots = row.findAll(
+        (node) => {
+          if (typeof node.type !== 'string' || node.type.toLowerCase() !== 'view') {
+            return false;
+          }
+          const style = StyleSheet.flatten(node.props.style as ViewStyle);
+          return (
+            style.position === 'relative' &&
+            style.width === spec.iconSlotWidth &&
+            style.height === spec.iconSize
+          );
+        },
+        { deep: false },
+      );
+      expect(slots).toHaveLength(2);
+
+      const visualStyles = slots.map((slot) => {
+        const visual = slot.find(
+          (node) => {
+            if (
+              typeof node.type !== 'string' ||
+              node.type.toLowerCase() !== 'view'
+            ) {
+              return false;
+            }
+            return (
+              StyleSheet.flatten(node.props.style as ViewStyle).position ===
+              'absolute'
+            );
+          },
+        );
+        return StyleSheet.flatten(visual.props.style as ViewStyle);
+      });
+
+      expect(visualStyles.map(({ width, height, left }) => ({
+        width,
+        height,
+        left,
+      }))).toEqual([
+        { width: spec.iconSize, height: spec.iconSize, left: -4 },
+        { width: spec.iconSize, height: spec.iconSize, left: 0 },
+      ]);
+      unmountTree(tree);
+    }
+  });
+
   test('the Button sizes and tints its icons in every type, size and theme', () => {
     for (const [scheme, palette] of palettes) {
       mockPalette = palette;
@@ -784,7 +846,7 @@ describe('Button icon slots', () => {
           };
           expect(leading.seen()).toEqual(expected);
           expect(trailing.seen()).toEqual(expected);
-          expect(expected.strokeWidth).toBe(2);
+          expect(expected.strokeWidth).toBe(1.5);
           unmountTree(tree);
         }
       }

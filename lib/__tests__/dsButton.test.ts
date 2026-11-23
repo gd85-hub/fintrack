@@ -72,20 +72,24 @@ describe('buttonSizeSpec', () => {
     expect(buttonSizeSpec('large').typography.fontSize).toBe(16);
   });
 
-  test('each size binds its own icon box at a 2px stroke', () => {
-    // Figma 591:853 / 591:856 are 20x20 in Medium (591:852) and 24x24 in
-    // Large (591:897); the DS draws icon strokes at stroke/icon = 2.
+  test('each size binds the Figma visual icon, compact slot and 1.5px stroke', () => {
+    // The visible glyph is 20/24 while its auto-layout slot is 16/20. The
+    // leading glyph starts 4px before that slot; the trailing one starts at 0.
     expect(buttonSizeSpec('medium')).toMatchObject({
       iconSize: theme.scale.size.iconMd,
-      iconStrokeWidth: theme.scale.stroke.icon,
+      iconSlotWidth: theme.scale.size.iconSm,
+      leadingIconOffset: -4,
+      iconStrokeWidth: 1.5,
     });
     expect(buttonSizeSpec('large')).toMatchObject({
       iconSize: theme.scale.size.iconLg,
-      iconStrokeWidth: theme.scale.stroke.icon,
+      iconSlotWidth: theme.scale.size.iconMd,
+      leadingIconOffset: -4,
+      iconStrokeWidth: 1.5,
     });
     expect(buttonSizeSpec('medium').iconSize).toBe(20);
     expect(buttonSizeSpec('large').iconSize).toBe(24);
-    expect(buttonSizeSpec('medium').iconStrokeWidth).toBe(2);
+    expect(buttonSizeSpec('medium').iconStrokeWidth).toBe(1.5);
   });
 
   test('the spinner shares the icon box at both sizes', () => {
@@ -218,23 +222,23 @@ const figmaContract: Record<
     // 591:942 binds no fill at all — only a border and the label.
     default: (c) => ({
       background: 'transparent',
-      border: c.border.default,
+      border: c.action.secondary.border,
       content: c.text.primary,
     }),
     hover: (c) => ({
       background: c.state.hover,
-      border: c.border.default,
+      border: c.action.secondary.border,
       content: c.text.primary,
     }),
     pressed: (c) => ({
       background: c.state.pressed,
-      border: c.border.default,
+      border: c.action.secondary.border,
       content: c.text.primary,
     }),
-    // 591:978 keeps border/default; it does not switch to a disabled border.
+    // 591:978 binds the secondary disabled border.
     disabled: (c) => ({
       background: c.action.secondary.disabledFill,
-      border: c.border.default,
+      border: c.action.secondary.disabledBorder,
       content: c.action.secondary.disabledContent,
     }),
   },
@@ -354,10 +358,10 @@ describe('Figma colour contract', () => {
     }
   });
 
-  test('disabled outline keeps the default border', () => {
+  test('disabled outline binds the secondary disabled border', () => {
     for (const [, palette] of themes) {
       expect(buttonSurface(palette, 'outline', { disabled: true }).border).toBe(
-        palette.border.default,
+        palette.action.secondary.disabledBorder,
       );
     }
   });
@@ -453,7 +457,7 @@ describe('buttonSurface', () => {
     for (const [, palette] of themes) {
       expect(buttonSurface(palette, 'outline')).toEqual({
         background: 'transparent',
-        border: palette.border.default,
+        border: palette.action.secondary.border,
         content: palette.text.primary,
       });
       expect(buttonSurface(palette, 'primary').border).toBeNull();

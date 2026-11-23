@@ -85,6 +85,8 @@ export type ButtonSizeSpec = {
   minWidth: number;
   gap: number;
   iconSize: number;
+  iconSlotWidth: number;
+  leadingIconOffset: number;
   iconStrokeWidth: number;
   typography: ButtonTypography;
 };
@@ -105,6 +107,11 @@ export type ButtonSurface = {
 // built from distinct values all fit.
 export type ButtonColors = ColorShape<Colors>;
 
+// Figma's Button icons use a 1.5px stroke. The shared icon stroke token is 2px
+// and belongs to the wider DS, so Button keeps its audited component metric
+// local instead of changing every other icon consumer.
+const BUTTON_ICON_STROKE_WIDTH = 1.5;
+
 // Medium and Large bind different height, corner and padding tokens.
 export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
   if (size === 'large') {
@@ -116,7 +123,10 @@ export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
       minWidth: theme.scale.size.controlMinWidth,
       gap: theme.scale.space[2],
       iconSize: theme.scale.size.iconLg,
-      iconStrokeWidth: theme.scale.stroke.icon,
+      iconSlotWidth: theme.scale.size.iconMd,
+      leadingIconOffset:
+        theme.scale.size.iconMd - theme.scale.size.iconLg,
+      iconStrokeWidth: BUTTON_ICON_STROKE_WIDTH,
       typography: theme.type.buttonLarge,
     };
   }
@@ -128,7 +138,10 @@ export function buttonSizeSpec(size: ButtonSize): ButtonSizeSpec {
     minWidth: theme.scale.size.controlMinWidth,
     gap: theme.scale.space[2],
     iconSize: theme.scale.size.iconMd,
-    iconStrokeWidth: theme.scale.stroke.icon,
+    iconSlotWidth: theme.scale.size.iconSm,
+    leadingIconOffset:
+      theme.scale.size.iconSm - theme.scale.size.iconMd,
+    iconStrokeWidth: BUTTON_ICON_STROKE_WIDTH,
     typography: theme.type.buttonMedium,
   };
 }
@@ -140,7 +153,7 @@ export function buttonSurface(
   variant: ButtonVariant,
   state: ButtonVisualState = {},
 ): ButtonSurface {
-  const { action, border, state: overlay, text } = colors;
+  const { action, state: overlay, text } = colors;
 
   const pick = (rest: string, hover: string, press: string): string => {
     if (state.pressed) {
@@ -188,17 +201,17 @@ export function buttonSurface(
           };
     case 'outline':
       // Outline has no fill of its own: it rests transparent and only the
-      // state overlays tint it. The border stays border/default in every
-      // state, disabled included.
+      // state overlays tint it. Its enabled and disabled strokes have their
+      // own semantic action tokens in the Figma component.
       return state.disabled
         ? {
             background: action.secondary.disabledFill,
-            border: border.default,
+            border: action.secondary.disabledBorder,
             content: action.secondary.disabledContent,
           }
         : {
             background: pick('transparent', overlay.hover, overlay.pressed),
-            border: border.default,
+            border: action.secondary.border,
             content: text.primary,
           };
     case 'ghost':
@@ -383,8 +396,9 @@ export function renderButtonIcon(
   if (typeof icon === 'function') {
     return icon(props);
   }
-  // Feather ships as an icon font: its 2px stroke is baked into the glyph at
-  // the 24px grid and cannot be set per instance.
+  // Feather ships as an icon font: its stroke is baked into the glyph and
+  // cannot be set per instance. Render-function icons receive the exact 1.5
+  // metric above and are the precise path for SVG glyphs.
   return <Feather color={props.color} name={icon} size={props.size} />;
 }
 
@@ -527,14 +541,22 @@ export function Button({
             {/* Label and icons stay mounted while loading, so neither the
                 button nor its slots change width. */}
             <View style={[styles.content, loading && styles.contentHidden]}>
-              {leading}
+              {leading !== null && leading !== undefined ? (
+                <View style={styles.iconSlot}>
+                  <View style={styles.leadingIconVisual}>{leading}</View>
+                </View>
+              ) : null}
               <Text
                 numberOfLines={1}
                 style={[styles.label, { color: surface.content }]}
               >
                 {label}
               </Text>
-              {trailing}
+              {trailing !== null && trailing !== undefined ? (
+                <View style={styles.iconSlot}>
+                  <View style={styles.trailingIconVisual}>{trailing}</View>
+                </View>
+              ) : null}
             </View>
             {loading ? (
               <View style={styles.loader}>
@@ -585,6 +607,20 @@ function makeStyles(size: ButtonSizeSpec) {
       alignSelf: 'stretch',
       width: '100%',
     },
+    iconSlot: {
+      height: size.iconSize,
+      position: 'relative',
+      width: size.iconSlotWidth,
+    },
+    leadingIconVisual: {
+      alignItems: 'center',
+      height: size.iconSize,
+      justifyContent: 'center',
+      left: size.leadingIconOffset,
+      position: 'absolute',
+      top: 0,
+      width: size.iconSize,
+    },
     label: {
       ...size.typography,
       textAlign: 'center',
@@ -600,6 +636,15 @@ function makeStyles(size: ButtonSizeSpec) {
       position: 'absolute',
       right: 0,
       top: 0,
+    },
+    trailingIconVisual: {
+      alignItems: 'center',
+      height: size.iconSize,
+      justifyContent: 'center',
+      left: 0,
+      position: 'absolute',
+      top: 0,
+      width: size.iconSize,
     },
   });
 }
