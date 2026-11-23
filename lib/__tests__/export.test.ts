@@ -36,6 +36,7 @@ const meta: ExportMeta = {
 
 const rows: ExportRow[] = [
   {
+    purchaseKey: 'expense-1',
     dateISO: '2026-10-05',
     dateLabel: '5 October',
     place: 'Lidl',
@@ -50,6 +51,7 @@ const rows: ExportRow[] = [
     type: 'Variable',
   },
   {
+    purchaseKey: 'expense-2',
     dateISO: '2026-10-06',
     dateLabel: '6 October',
     place: 'Cafe, Bar',
@@ -391,5 +393,54 @@ describe('buildExpensesPdfHtml', () => {
     expect(html).toContain('<b>—</b> EUR');
     expect(html).toContain('Unavailable: EUR (1)');
     expect(html).not.toContain('<b>0</b> EUR');
+  });
+
+  it('counts purchases and aggregates receipt lines for average and largest metrics', () => {
+    const pdfMeta: ExportMeta = {
+      ...meta,
+      pdf: {
+        report: 'Report',
+        generated: '',
+        totalSpending: 'Total spending',
+        count: 'Purchases',
+        average: 'Average purchase',
+        activeDays: 'Active days',
+        largest: 'Largest purchase',
+        categories: 'Categories',
+        details: 'Details',
+        other: 'Other',
+      },
+    };
+    const pdfRows: ExportRow[] = [
+      {
+        ...rows[0],
+        purchaseKey: 'receipt-1',
+        place: 'Receipt shop',
+        amountRsdCents: 10000,
+      },
+      {
+        ...rows[0],
+        purchaseKey: 'receipt-1',
+        place: 'Receipt shop',
+        amountRsdCents: 5000,
+      },
+      {
+        ...rows[1],
+        purchaseKey: 'manual-expense-1',
+        place: 'Manual shop',
+        amountRsdCents: 20000,
+      },
+    ];
+    const html = buildExpensesPdfHtml(pdfRows, columns, pdfMeta);
+
+    expect(html).toContain(
+      '<div class="stat-label">Purchases</div><div class="stat-value">2</div>',
+    );
+    expect(html).toContain(
+      '<div class="stat-label">Average purchase</div><div class="stat-value">175 RSD</div>',
+    );
+    expect(html).toContain(
+      '<div class="stat-label">Largest purchase</div><div class="stat-value">200 RSD</div><div class="stat-sub">Manual shop</div>',
+    );
   });
 });

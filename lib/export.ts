@@ -8,6 +8,7 @@ import { lightColor } from './theme';
 // resolves labels and money and does the native print/share wiring.
 
 export type ExportRow = {
+  purchaseKey: string; // receipt id for receipt rows, expense id for manual rows
   dateISO: string; // 'YYYY-MM-DD' — for CSV/Excel (sortable)
   dateLabel: string; // localized, e.g. '29 July' — for PDF
   place: string; // merchant name, or '' if none
@@ -353,11 +354,31 @@ export function buildExpensesPdfHtml(
         meta.unavailableLabel ?? 'Unavailable',
       )}: ${eur} (${missingEurCount})</div>`
     : '';
-  const count = rows.length;
-  const avg = count > 0 ? Math.round(totalRsd / count) : 0;
-  const maxRow = rows.reduce<ExportRow | null>(
-    (m, r) =>
-      m === null || r.amountRsdCents > m.amountRsdCents ? r : m,
+  const purchases = new Map<
+    string,
+    { amountRsdCents: number; place: string; category: string }
+  >();
+  for (const row of rows) {
+    const current = purchases.get(row.purchaseKey);
+    const amountRsdCents = (current?.amountRsdCents ?? 0) + row.amountRsdCents;
+    assertCents(amountRsdCents, 'Purchase total');
+    purchases.set(row.purchaseKey, {
+      amountRsdCents,
+      place: current?.place || row.place,
+      category: current?.category || row.category,
+    });
+  }
+  const purchaseCount = purchases.size;
+  const avg = purchaseCount > 0
+    ? Math.round(totalRsd / purchaseCount)
+    : 0;
+  const largestPurchase = [...purchases.values()].reduce<
+    { amountRsdCents: number; place: string; category: string } | null
+  >(
+    (largest, purchase) =>
+      largest === null || purchase.amountRsdCents > largest.amountRsdCents
+        ? purchase
+        : largest,
     null,
   );
 
@@ -402,15 +423,17 @@ export function buildExpensesPdfHtml(
 
   // ---- render pieces ----
   const tiles = [
-    { label: L.count, value: String(count) },
+    { label: L.count, value: String(purchaseCount) },
     { label: L.average, value: `${moneyWholeCents(avg)} ${rsd}` },
     { label: L.activeDays, value: `${daysWithSpend} / ${daysInMonth}` },
     {
       label: L.largest,
-      value: maxRow
-        ? `${moneyWholeCents(maxRow.amountRsdCents)} ${rsd}`
+      value: largestPurchase
+        ? `${moneyWholeCents(largestPurchase.amountRsdCents)} ${rsd}`
         : '—',
-      sub: maxRow ? escapeHtml(maxRow.place || maxRow.category) : '',
+      sub: largestPurchase
+        ? escapeHtml(largestPurchase.place || largestPurchase.category)
+        : '',
     },
   ]
     .map(

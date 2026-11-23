@@ -119,6 +119,7 @@ export default function ReportsScreen() {
     return expenses.map((expense) => {
       const meta = categoryMeta.get(expense.categoryId);
       return {
+        purchaseKey: expense.receiptId ?? expense.id,
         dateISO: expense.occurredOn,
         dateLabel: formatDayMonth(expense.occurredOn, locale),
         place: expense.merchantName ?? '',
