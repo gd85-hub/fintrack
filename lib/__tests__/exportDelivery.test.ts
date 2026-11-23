@@ -172,6 +172,37 @@ describe('web export delivery', () => {
     });
     expect(createObjectUrl).not.toHaveBeenCalled();
   });
+
+  test('falls back to a named Blob download when iOS cannot share files', async () => {
+    const canShare = jest.fn(() => false);
+    const share = jest.fn<(data?: ShareData) => Promise<void>>();
+    setNavigator({
+      canShare,
+      platform: 'iPhone',
+      share,
+      userAgent: 'iPhone Safari',
+    });
+
+    await deliverText('fintrack.csv', 'Продукты', 'text/csv;charset=utf-8');
+
+    expect(canShare).toHaveBeenCalledTimes(1);
+    expect(share).not.toHaveBeenCalled();
+    expect(anchor).toMatchObject({
+      href: 'blob:export',
+      download: 'fintrack.csv',
+    });
+    expect(anchor.click).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not hide a synchronous browser download failure', async () => {
+    anchor.click.mockImplementation(() => {
+      throw new Error('download blocked');
+    });
+
+    await expect(
+      deliverText('fintrack.csv', 'x', 'text/csv;charset=utf-8'),
+    ).rejects.toThrow('download blocked');
+  });
 });
 
 describe('native export delivery', () => {
@@ -234,6 +265,22 @@ describe('native export delivery', () => {
     await expect(
       deliverText('fintrack.csv', 'x', 'text/csv'),
     ).rejects.toBeInstanceOf(ShareUnavailableError);
+  });
+
+  test('does not hide native write or share failures', async () => {
+    mockWriteAsString.mockRejectedValueOnce(new Error('write failed'));
+    await expect(
+      deliverBinary(
+        'fintrack.xlsx',
+        new Uint8Array([0x50, 0x4b]),
+        'application/xlsx',
+      ),
+    ).rejects.toThrow('write failed');
+
+    mockShare.mockRejectedValueOnce(new Error('share failed'));
+    await expect(
+      deliverText('fintrack.csv', 'x', 'text/csv'),
+    ).rejects.toThrow('share failed');
   });
 });
 
