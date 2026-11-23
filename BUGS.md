@@ -19,15 +19,6 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 - **Reproduce:** set the primary currency to GBP or CHF → export a month → the file still contains only RSD/EUR/USD converted columns.
 - **Direction:** define the export currency contract explicitly (original + selected primary/secondary, or a stable universal set), calculate through the same EUR-anchor display helpers, and update characterization tests before changing all three formats.
 
-### BUG-4 · 🔴 Missing EUR anchor is exported as a real zero
-
-- **Severity:** high (data correctness)
-- **Area:** Reports / all export formats
-- **Code:** `app/(app)/reports.tsx:132`
-- **Evidence:** `amountEur: (expense.amountEurCents ?? 0) / 100` converts an unavailable EUR value into `0.00`. CSV/XLSX/PDF cannot distinguish “no EUR conversion” from an actual zero expense; totals are understated.
-- **Reproduce:** export a month containing a legacy expense whose `amount_eur` is NULL → its EUR cell and EUR total use zero.
-- **Direction:** preserve null/unavailable through `ExportRow`, render an explicit empty/unavailable value, exclude it from totals with a visible incomplete-total signal, and add regression tests for all formats.
-
 ### BUG-5 · 🔴 Reference-data localization can translate user-created names
 
 - **Severity:** medium (content integrity / i18n)
@@ -63,6 +54,12 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 ---
 
 ## Fixed
+
+### BUG-4 · ✅ Missing EUR anchor was exported as a real zero
+
+- **Area:** Reports / all export formats
+- **Resolution:** export rows now preserve nullable EUR cents. CSV/XLSX leave the row and incomplete EUR total empty and append a visible unavailable-count warning; PDF shows an em dash for the EUR equivalent plus the same warning. RSD/USD values remain intact.
+- **Coverage:** null EUR in CSV/XLSX/PDF, exact integer-cent totals, Unicode and quoted CSV fields, ZIP/reopen checks, large values, and 1,001-row datasets.
 
 ### BUG-7 · ✅ Expense collection queries could stop at the PostgREST row limit
 

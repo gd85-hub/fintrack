@@ -29,6 +29,7 @@ const meta: ExportMeta = {
   title: 'Fintrack',
   periodLabel: 'October 2026',
   totalsLabel: 'Total',
+  unavailableLabel: 'Unavailable',
   summaryTitle: 'Top categories',
   topCategories: [{ label: 'Groceries', amountRsd: 199.99 }],
 };
@@ -41,11 +42,11 @@ const rows: ExportRow[] = [
     category: 'Groceries',
     group: 'Food',
     description: 'Bread',
-    amountOriginal: 199.99,
+    amountOriginalCents: 19999,
     currencyOriginal: 'RSD',
-    amountRsd: 199.99,
-    amountEur: 1.71,
-    amountUsd: 1.85,
+    amountRsdCents: 19999,
+    amountEurCents: 171,
+    amountUsdCents: 185,
     type: 'Variable',
   },
   {
@@ -55,14 +56,53 @@ const rows: ExportRow[] = [
     category: 'Cafés & restaurants',
     group: 'Food',
     description: 'Coffee',
-    amountOriginal: 250,
+    amountOriginalCents: 25000,
     currencyOriginal: 'RSD',
-    amountRsd: 250,
-    amountEur: 2.14,
-    amountUsd: 2.31,
+    amountRsdCents: 25000,
+    amountEurCents: 214,
+    amountUsdCents: 231,
     type: 'Variable',
   },
 ];
+
+function parseCsv(csv: string): string[][] {
+  const source = csv.startsWith('﻿') ? csv.slice(1) : csv;
+  const parsed: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let quoted = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"' && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        cell += character;
+      }
+    } else if (character === '"') {
+      quoted = true;
+    } else if (character === ',') {
+      row.push(cell);
+      cell = '';
+    } else if (character === '\r' && source[index + 1] === '\n') {
+      row.push(cell);
+      parsed.push(row);
+      row = [];
+      cell = '';
+      index += 1;
+    } else {
+      cell += character;
+    }
+  }
+
+  row.push(cell);
+  parsed.push(row);
+  return parsed;
+}
 
 describe('buildCsv', () => {
   it('writes a BOM, exact header, quoted fields, dot decimals, and totals', () => {
@@ -123,7 +163,7 @@ describe('buildCsv', () => {
     const csvRows: ExportRow[] = [
       {
         ...rows[0],
-        amountRsd: -12.5,
+        amountRsdCents: -1250,
       },
     ];
 
@@ -145,19 +185,19 @@ describe('buildCsv', () => {
     expect(csv).toContain(',Продукты,');
   });
 
-  it('rounds floating-point totals to cents', () => {
+  it('sums integer cents exactly', () => {
     const csvRows: ExportRow[] = [
       {
         ...rows[0],
-        amountRsd: 0.1,
-        amountEur: 0,
-        amountUsd: 0,
+        amountRsdCents: 10,
+        amountEurCents: 0,
+        amountUsdCents: 0,
       },
       {
         ...rows[1],
-        amountRsd: 0.2,
-        amountEur: 0,
-        amountUsd: 0,
+        amountRsdCents: 20,
+        amountEurCents: 0,
+        amountUsdCents: 0,
       },
     ];
 
@@ -165,6 +205,63 @@ describe('buildCsv', () => {
     const totals = csv.slice(1).split('\r\n').at(-1)?.split(',');
 
     expect(totals?.[7]).toBe('0.30');
+  });
+
+  it('round-trips Unicode, quotes, commas, and embedded newlines independently', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        place: 'Магазин, «У дома»',
+        description: 'Строка 1\nSay "hi"',
+      },
+    ];
+
+    const parsed = parseCsv(buildCsv(csvRows, columns, meta));
+
+    expect(parsed).toHaveLength(3);
+    expect(parsed[1][1]).toBe('Магазин, «У дома»');
+    expect(parsed[1][4]).toBe('Строка 1\nSay "hi"');
+    expect(parsed[1][5]).toBe('199.99');
+  });
+
+  it('keeps unavailable EUR cells and the EUR total empty and adds a warning', () => {
+    const csvRows: ExportRow[] = [{ ...rows[0], amountEurCents: null }];
+    const parsed = parseCsv(buildCsv(csvRows, columns, meta));
+
+    expect(parsed[1][8]).toBe('');
+    expect(parsed[2][8]).toBe('');
+    expect(parsed[3][0]).toBe('Unavailable: EUR (1)');
+  });
+
+  it('exports 1,001 rows with an exact row count and exact totals', () => {
+    const manyRows = Array.from({ length: 1001 }, (_, index) => ({
+      ...rows[0],
+      description: `Позиция ${index + 1}`,
+      amountOriginalCents: 123,
+      amountRsdCents: 123,
+      amountEurCents: 1,
+      amountUsdCents: 2,
+    }));
+    const parsed = parseCsv(buildCsv(manyRows, columns, meta));
+
+    expect(parsed).toHaveLength(1003);
+    expect(parsed[1002][7]).toBe('1231.23');
+    expect(parsed[1002][8]).toBe('10.01');
+    expect(parsed[1002][9]).toBe('20.02');
+  });
+
+  it('serializes a large safe-integer amount without grouping or precision drift', () => {
+    const csvRows: ExportRow[] = [
+      {
+        ...rows[0],
+        amountOriginalCents: 987654321098,
+        amountRsdCents: 987654321098,
+      },
+    ];
+    const parsed = parseCsv(buildCsv(csvRows, columns, meta));
+
+    expect(parsed[1][5]).toBe('9876543210.98');
+    expect(parsed[2][7]).toBe('9876543210.98');
   });
 });
 
@@ -182,6 +279,15 @@ describe('buildXlsx', () => {
     // Totals RSD cell (column H, row 4 = header + 2 data rows) is a real number.
     expect(sheet.H4.t).toBe('n');
     expect(sheet.H4.v).toBeCloseTo(449.99, 2);
+  });
+
+  it('returns a ZIP-based XLSX binary with a valid end-of-central-directory record', () => {
+    const bytes = buildXlsx(rows, columns, meta);
+    const binary = Buffer.from(bytes);
+
+    expect(binary.subarray(0, 4).toString('hex')).toBe('504b0304');
+    expect(binary.lastIndexOf(Buffer.from('504b0506', 'hex'))).toBeGreaterThan(0);
+    expect(() => XLSX.read(bytes, { type: 'array' })).not.toThrow();
   });
 
   it('sanitizes forbidden characters in the sheet name', () => {
@@ -213,7 +319,7 @@ describe('buildXlsx', () => {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
     expect(sheet.F2.t).toBe('n');
-    expect(sheet.F2.v).toBe(rows[0].amountOriginal);
+    expect(sheet.F2.v).toBe(rows[0].amountOriginalCents / 100);
   });
 
   it('keeps EUR and USD totals as numeric cells', () => {
@@ -224,6 +330,36 @@ describe('buildXlsx', () => {
 
     expect(sheet[`I${totalsRowNumber}`].t).toBe('n');
     expect(sheet[`J${totalsRowNumber}`].t).toBe('n');
+  });
+
+  it('keeps unavailable EUR cells and the EUR total empty and adds a warning', () => {
+    const bytes = buildXlsx([{ ...rows[0], amountEurCents: null }], columns, meta);
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    expect(sheet.I2.v).toBe('');
+    expect(sheet.I3.v).toBe('');
+    expect(sheet.A4.v).toBe('Unavailable: EUR (1)');
+  });
+
+  it('reopens a 1,001-row Unicode workbook with the expected range and totals', () => {
+    const manyRows = Array.from({ length: 1001 }, (_, index) => ({
+      ...rows[0],
+      place: `Место ${index + 1}`,
+      amountOriginalCents: 123,
+      amountRsdCents: 123,
+      amountEurCents: 1,
+      amountUsdCents: 2,
+    }));
+    const bytes = buildXlsx(manyRows, columns, meta);
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    expect(sheet['!ref']).toBe('A1:K1003');
+    expect(sheet.B1002.v).toBe('Место 1001');
+    expect(sheet.H1003.v).toBeCloseTo(1231.23, 2);
+    expect(sheet.I1003.v).toBeCloseTo(10.01, 2);
+    expect(sheet.J1003.v).toBeCloseTo(20.02, 2);
   });
 });
 
@@ -243,5 +379,17 @@ describe('buildExpensesPdfHtml', () => {
     expect(html).toContain('&lt;x&gt;');
     // No unescaped markup leaked from data.
     expect(html).not.toContain('<x>');
+  });
+
+  it('shows unavailable EUR honestly instead of rendering a zero equivalent', () => {
+    const html = buildExpensesPdfHtml(
+      [{ ...rows[0], amountEurCents: null }],
+      columns,
+      meta,
+    );
+
+    expect(html).toContain('<b>—</b> EUR');
+    expect(html).toContain('Unavailable: EUR (1)');
+    expect(html).not.toContain('<b>0</b> EUR');
   });
 });

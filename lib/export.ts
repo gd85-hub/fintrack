@@ -14,11 +14,11 @@ export type ExportRow = {
   category: string; // already localized (system via catalog, user as-is)
   group: string; // already localized
   description: string; // item/expense description, may be ''
-  amountOriginal: number; // major units, e.g. 1234.56
+  amountOriginalCents: number;
   currencyOriginal: string; // e.g. 'RSD','EUR'
-  amountRsd: number; // major units
-  amountEur: number;
-  amountUsd: number;
+  amountRsdCents: number;
+  amountEurCents: number | null;
+  amountUsdCents: number;
   type: string; // already localized 'Fixed'/'Variable' (or '')
 };
 
@@ -54,22 +54,45 @@ export type ExportMeta = {
   title: string; // e.g. 'Fintrack'
   periodLabel: string; // e.g. 'Октябрь 2026' / 'October 2026'
   totalsLabel: string; // localized 'Итого' / 'Total'
+  unavailableLabel?: string; // localized 'Недоступно' / 'Unavailable'
   summaryTitle?: string; // PDF only, e.g. 'Топ категорий' / 'Top categories'
   topCategories?: { label: string; amountRsd: number }[]; // PDF summary
   pdf?: ExportPdfLabels;
 };
 
-// Round to 2 decimals, dot separator, no grouping. For CSV/Excel values.
-function money2(value: number): string {
-  return value.toFixed(2);
+function assertCents(value: number, label: string): void {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${label} must be an integer number of cents.`);
+  }
 }
 
-function sumBy(
+// Exact dot-decimal serialization without floating-point money arithmetic.
+function cents2(value: number): string {
+  assertCents(value, 'Money');
+  const negative = value < 0;
+  const absolute = Math.abs(value);
+  const whole = Math.floor(absolute / 100);
+  const fraction = String(absolute % 100).padStart(2, '0');
+  return `${negative ? '-' : ''}${whole}.${fraction}`;
+}
+
+function centsNumber(value: number): number {
+  return Number(cents2(value));
+}
+
+function sumCents(
   rows: readonly ExportRow[],
   pick: (row: ExportRow) => number,
 ): number {
-  // Round the running sum to cents to avoid float drift in the totals cell.
-  return Math.round(rows.reduce((total, row) => total + pick(row), 0) * 100) / 100;
+  return rows.reduce((total, row) => {
+    const value = pick(row);
+    assertCents(value, 'Money');
+    const next = total + value;
+    if (!Number.isSafeInteger(next)) {
+      throw new Error('Money total exceeds the safe integer range.');
+    }
+    return next;
+  }, 0);
 }
 
 // ---------- CSV ----------
@@ -77,7 +100,7 @@ function sumBy(
 const CSV_BOM = '﻿';
 
 function csvCell(value: string | number): string {
-  const text = typeof value === 'number' ? money2(value) : value;
+  const text = typeof value === 'number' ? cents2(value) : value;
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
@@ -104,6 +127,9 @@ export function buildCsv(
   ];
 
   const lines: string[][] = [header];
+  const missingEurCount = rows.filter(
+    (row) => row.amountEurCents === null,
+  ).length;
 
   for (const row of rows) {
     lines.push([
@@ -112,11 +138,11 @@ export function buildCsv(
       row.category,
       row.group,
       row.description,
-      money2(row.amountOriginal),
+      cents2(row.amountOriginalCents),
       row.currencyOriginal,
-      money2(row.amountRsd),
-      money2(row.amountEur),
-      money2(row.amountUsd),
+      cents2(row.amountRsdCents),
+      row.amountEurCents === null ? '' : cents2(row.amountEurCents),
+      cents2(row.amountUsdCents),
       row.type,
     ]);
   }
@@ -129,11 +155,20 @@ export function buildCsv(
     '',
     '',
     '',
-    money2(sumBy(rows, (row) => row.amountRsd)),
-    money2(sumBy(rows, (row) => row.amountEur)),
-    money2(sumBy(rows, (row) => row.amountUsd)),
+    cents2(sumCents(rows, (row) => row.amountRsdCents)),
+    missingEurCount === 0
+      ? cents2(sumCents(rows, (row) => row.amountEurCents ?? 0))
+      : '',
+    cents2(sumCents(rows, (row) => row.amountUsdCents)),
     '',
   ]);
+
+  if (missingEurCount > 0) {
+    lines.push([
+      `${meta.unavailableLabel ?? 'Unavailable'}: EUR (${missingEurCount})`,
+      '', '', '', '', '', '', '', '', '', '',
+    ]);
+  }
 
   const body = lines
     .map((cells) => cells.map(csvCell).join(','))
@@ -169,6 +204,9 @@ export function buildXlsx(
   ];
 
   const aoa: (string | number)[][] = [header];
+  const missingEurCount = rows.filter(
+    (row) => row.amountEurCents === null,
+  ).length;
 
   for (const row of rows) {
     aoa.push([
@@ -177,11 +215,11 @@ export function buildXlsx(
       row.category,
       row.group,
       row.description,
-      row.amountOriginal,
+      centsNumber(row.amountOriginalCents),
       row.currencyOriginal,
-      row.amountRsd,
-      row.amountEur,
-      row.amountUsd,
+      centsNumber(row.amountRsdCents),
+      row.amountEurCents === null ? '' : centsNumber(row.amountEurCents),
+      centsNumber(row.amountUsdCents),
       row.type,
     ]);
   }
@@ -194,11 +232,20 @@ export function buildXlsx(
     '',
     '',
     '',
-    sumBy(rows, (row) => row.amountRsd),
-    sumBy(rows, (row) => row.amountEur),
-    sumBy(rows, (row) => row.amountUsd),
+    centsNumber(sumCents(rows, (row) => row.amountRsdCents)),
+    missingEurCount === 0
+      ? centsNumber(sumCents(rows, (row) => row.amountEurCents ?? 0))
+      : '',
+    centsNumber(sumCents(rows, (row) => row.amountUsdCents)),
     '',
   ]);
+
+  if (missingEurCount > 0) {
+    aoa.push([
+      `${meta.unavailableLabel ?? 'Unavailable'}: EUR (${missingEurCount})`,
+      '', '', '', '', '', '', '', '', '', '',
+    ]);
+  }
 
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
 
@@ -253,8 +300,8 @@ function escapeHtml(value: string): string {
 
 // Display formatting for the PDF only: 2 decimals + a thin-space thousands
 // separator. Not used for CSV/Excel (those stay machine-parseable).
-function moneyDisplay(value: number): string {
-  const fixed = value.toFixed(2);
+function moneyDisplayCents(value: number): string {
+  const fixed = cents2(value);
   const negative = fixed.startsWith('-');
   const unsigned = negative ? fixed.slice(1) : fixed;
   const [intPart, decimals] = unsigned.split('.');
@@ -263,8 +310,8 @@ function moneyDisplay(value: number): string {
 }
 
 // Whole RSD with space thousands — for the statement's RSD figures.
-function moneyWhole(value: number): string {
-  const n = Math.round(value);
+function moneyWholeCents(value: number): string {
+  const n = Math.round(value / 100);
   const negative = n < 0;
   const grouped = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return `${negative ? '-' : ''}${grouped}`;
@@ -293,20 +340,34 @@ export function buildExpensesPdfHtml(
   const eur = escapeHtml(columns.eur);
   const usd = escapeHtml(columns.usd);
 
-  const totalRsd = sumBy(rows, (r) => r.amountRsd);
-  const totalEur = sumBy(rows, (r) => r.amountEur);
-  const totalUsd = sumBy(rows, (r) => r.amountUsd);
+  const totalRsd = sumCents(rows, (r) => r.amountRsdCents);
+  const missingEurCount = rows.filter(
+    (row) => row.amountEurCents === null,
+  ).length;
+  const totalEur = missingEurCount === 0
+    ? sumCents(rows, (r) => r.amountEurCents ?? 0)
+    : null;
+  const totalUsd = sumCents(rows, (r) => r.amountUsdCents);
+  const unavailableNote = missingEurCount > 0
+    ? `<div class="unavailable">${escapeHtml(
+        meta.unavailableLabel ?? 'Unavailable',
+      )}: ${eur} (${missingEurCount})</div>`
+    : '';
   const count = rows.length;
-  const avg = count > 0 ? totalRsd / count : 0;
+  const avg = count > 0 ? Math.round(totalRsd / count) : 0;
   const maxRow = rows.reduce<ExportRow | null>(
-    (m, r) => (m === null || r.amountRsd > m.amountRsd ? r : m),
+    (m, r) =>
+      m === null || r.amountRsdCents > m.amountRsdCents ? r : m,
     null,
   );
 
   // ---- by category (top 6 + "Прочее") ----
   const catMap = new Map<string, number>();
   for (const r of rows) {
-    catMap.set(r.category, (catMap.get(r.category) ?? 0) + r.amountRsd);
+    catMap.set(
+      r.category,
+      (catMap.get(r.category) ?? 0) + r.amountRsdCents,
+    );
   }
   const cats = [...catMap.entries()]
     .map(([label, amt]) => ({ label, amt, other: false }))
@@ -323,7 +384,7 @@ export function buildExpensesPdfHtml(
   // ---- active days + detail groups ----
   const dayMap = new Map<string, number>();
   for (const r of rows) {
-    dayMap.set(r.dateISO, (dayMap.get(r.dateISO) ?? 0) + r.amountRsd);
+    dayMap.set(r.dateISO, (dayMap.get(r.dateISO) ?? 0) + r.amountRsdCents);
   }
   const daysWithSpend = dayMap.size;
   const firstISO = rows.map((r) => r.dateISO).sort()[0] ?? '1970-01-01';
@@ -334,7 +395,7 @@ export function buildExpensesPdfHtml(
     const groupRows = rows.filter((r) => r.dateISO === iso);
     return {
       dateLabel: groupRows[0].dateLabel,
-      total: sumBy(groupRows, (r) => r.amountRsd),
+      total: sumCents(groupRows, (r) => r.amountRsdCents),
       rows: groupRows,
     };
   });
@@ -342,11 +403,13 @@ export function buildExpensesPdfHtml(
   // ---- render pieces ----
   const tiles = [
     { label: L.count, value: String(count) },
-    { label: L.average, value: `${moneyWhole(avg)} ${rsd}` },
+    { label: L.average, value: `${moneyWholeCents(avg)} ${rsd}` },
     { label: L.activeDays, value: `${daysWithSpend} / ${daysInMonth}` },
     {
       label: L.largest,
-      value: maxRow ? `${moneyWhole(maxRow.amountRsd)} ${rsd}` : '—',
+      value: maxRow
+        ? `${moneyWholeCents(maxRow.amountRsdCents)} ${rsd}`
+        : '—',
       sub: maxRow ? escapeHtml(maxRow.place || maxRow.category) : '',
     },
   ]
@@ -370,7 +433,7 @@ export function buildExpensesPdfHtml(
         `<span class="cat-name"><span class="dot" style="background:${color}"></span>${escapeHtml(
           c.label,
         )}</span>` +
-        `<span class="cat-amt">${moneyWhole(c.amt)} ${rsd}<span class="cat-pct">${pct.toFixed(
+        `<span class="cat-amt">${moneyWholeCents(c.amt)} ${rsd}<span class="cat-pct">${pct.toFixed(
           1,
         )}%</span></span></div>` +
         `<div class="track"><div class="fill" style="width:${w.toFixed(
@@ -388,10 +451,10 @@ export function buildExpensesPdfHtml(
             `<tr class="${i % 2 ? 'odd' : ''}">` +
             `<td class="place">${escapeHtml(r.place || '—')}</td>` +
             `<td class="cat">${escapeHtml(r.category)}</td>` +
-            `<td class="num orig">${moneyDisplay(r.amountOriginal)} ${escapeHtml(
+            `<td class="num orig">${moneyDisplayCents(r.amountOriginalCents)} ${escapeHtml(
               r.currencyOriginal,
             )}</td>` +
-            `<td class="num rsd">${moneyWhole(r.amountRsd)}</td></tr>`,
+            `<td class="num rsd">${moneyWholeCents(r.amountRsdCents)}</td></tr>`,
         )
         .join('');
       return (
@@ -399,7 +462,7 @@ export function buildExpensesPdfHtml(
         `<td colspan="3"><span class="daydate">${escapeHtml(
           g.dateLabel,
         )}</span></td>` +
-        `<td class="num daytot">${moneyWhole(g.total)} ${rsd}</td></tr>` +
+        `<td class="num daytot">${moneyWholeCents(g.total)} ${rsd}</td></tr>` +
         `${items}</tbody>`
       );
     })
@@ -431,6 +494,7 @@ export function buildExpensesPdfHtml(
   .hero .total-num .cur { font-size: 15px; font-weight: 700; color: ${PDF.sub}; margin-left: 6px; }
   .hero .equiv { color: ${PDF.sub}; font-size: 11px; margin-top: 6px; }
   .hero .equiv b { color: ${PDF.ink}; font-weight: 600; }
+  .hero .unavailable { color: ${PDF.sub}; font-size: 9px; margin-top: 7px; }
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 4px; }
   .stat { background: ${PDF.tile}; border: 1px solid ${PDF.hair}; border-radius: 9px; padding: 9px 11px; }
   .stat-label { font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase; color: ${PDF.faint}; }
@@ -481,8 +545,9 @@ export function buildExpensesPdfHtml(
 
   <div class="hero">
     <div class="eyebrow">${escapeHtml(L.totalSpending)}</div>
-    <div class="total-num">${moneyWhole(totalRsd)}<span class="cur">${rsd}</span></div>
-    <div class="equiv">≈ <b>${moneyWhole(totalEur)}</b> ${eur} · <b>${moneyWhole(totalUsd)}</b> ${usd}</div>
+    <div class="total-num">${moneyWholeCents(totalRsd)}<span class="cur">${rsd}</span></div>
+    <div class="equiv">≈ <b>${totalEur === null ? '—' : moneyWholeCents(totalEur)}</b> ${eur} · <b>${moneyWholeCents(totalUsd)}</b> ${usd}</div>
+    ${unavailableNote}
   </div>
 
   <div class="stats">${tiles}</div>

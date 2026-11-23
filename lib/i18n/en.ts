@@ -564,6 +564,7 @@ export const en = {
     exporting: 'Exporting…',
     failed: "Couldn't export. Try again.",
     shareUnavailable: "Sharing isn't available on this device.",
+    unavailable: 'Unavailable',
     topCategories: 'Top categories',
     pdf: {
       report: 'Expense report',

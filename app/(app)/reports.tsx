@@ -126,11 +126,11 @@ export default function ReportsScreen() {
         group: localizeGroup(meta?.group ?? '', t),
         description:
           expense.description.trim() || expense.rawName?.trim() || '',
-        amountOriginal: expense.originalAmountCents / 100,
+        amountOriginalCents: expense.originalAmountCents,
         currencyOriginal: expense.originalCurrency,
-        amountRsd: expense.amountRsdCents / 100,
-        amountEur: (expense.amountEurCents ?? 0) / 100,
-        amountUsd: expense.amountUsdCents / 100,
+        amountRsdCents: expense.amountRsdCents,
+        amountEurCents: expense.amountEurCents,
+        amountUsdCents: expense.amountUsdCents,
         type: typeLabel(meta?.type),
       };
     });
@@ -161,6 +161,7 @@ export default function ReportsScreen() {
       title: 'Fintrack',
       periodLabel: formatMonthTitle(visibleMonth, locale),
       totalsLabel: t('common.total'),
+      unavailableLabel: t('export.unavailable'),
       pdf: {
         report: t('export.pdf.report'),
         generated: `${t('export.pdf.generated')} ${generatedDate}`,

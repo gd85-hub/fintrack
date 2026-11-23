@@ -578,6 +578,7 @@ export const ru = {
     exporting: 'Экспортируем…',
     failed: 'Не удалось экспортировать. Попробуйте ещё раз.',
     shareUnavailable: 'Отправка недоступна на этом устройстве.',
+    unavailable: 'Недоступно',
     topCategories: 'Топ категорий',
     pdf: {
       report: 'Отчёт о расходах',
