@@ -208,7 +208,7 @@ export default function ReportsScreen() {
       deliverText(
         `fintrack-${visibleMonth}.csv`,
         buildCsv(rows, columns, meta),
-        'text/csv',
+        'text/csv;charset=utf-8',
       ),
     );
   const exportExcel = () =>

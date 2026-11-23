@@ -5,33 +5,33 @@ _Обновлено: 2026-11-23 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-DS-SYNC-01 синхронизирует существующий `components/ds/Button.tsx` с актуальным Figma Component Set `591:1212` (60 вариантов). Публичный API и все продуктовые места использования сохранены.
+EXPORT audit выполняется атомарными шагами. Первый шаг исправляет доставку CSV/XLSX/PDF без изменения валютного контракта или данных отчёта.
 
 ## Только что сделано
 
-- Проверены 6 типов × 2 размера × 5 состояний, свойства icon/trailing icon, loading и focused, включая внутренние Auto Layout-слои и variable bindings.
-- Outline теперь использует `action.secondary.border` и `action.secondary.disabledBorder`, как в Figma; глобальные theme-токены не менялись.
-- Иконки 20/24 px размещены в layout-слотах 16/20 px: leading смещён на −4, trailing остаётся на 0. Render callback получает локальный Button stroke 1.5; Feather-имена и deprecated `icon`/`iconPosition` сохранены.
-- Остальная геометрия уже совпадала с Figma и не переписывалась: высота 48/56, radius 14/16, padding 20/24, gap 8, typography, spinner, focus ring, hug/full-width и блокировка повторного loading press.
-- Button-секция `/ds-playground` расширена полной матрицей четырёх icon-конфигураций для всех типов/размеров и короткими/длинными подписями.
-- Целевые тесты проверяют все 60 цветовых комбинаций и реальную анатомию icon slots; TypeScript и Web export проходят.
+- Web больше не отзывает Blob URL в том же task: URL живёт 60 секунд, затем освобождается.
+- iOS Safari/PWA при поддержке Web Share получает настоящий именованный `File`; при отсутствии поддержки остаётся обычная browser-download ветка.
+- CSV явно доставляется как UTF-8 (`text/csv;charset=utf-8`), BOM в builder сохранён.
+- Native CSV/XLSX продолжают писаться в cache с запрошенным именем; отсутствие cache/share теперь даёт явную ошибку.
+- Native PDF копируется из временного URI Expo Print в `fintrack-YYYY-MM.pdf` до открытия share sheet.
+- Добавлены regression-тесты Web/iOS/native delivery, MIME, имени, base64 и отложенного revoke.
 
 ## Состояние origin/main
 
-Ветка `main`, исходная точка — `a6b6d9a`; DS-SYNC-01 зафиксирован атомарным коммитом и готовится к push в `origin/main`. Локальный `supabase/.temp/cli-latest` не относится к задаче и не входит в коммит; `.env` не менялся.
+Ветка `main`, исходная точка `2886127`; первый EXPORT-коммит готовится к push. Локальный `supabase/.temp/cli-latest` не относится к задаче и не входит в коммит.
 
 ## Следующий шаг
 
-После публикации — ручное визуальное ревью `/ds-playground` на настоящем Web viewport 1024/375 в Light/Dark и Android на устройстве, затем следующий DS-компонент.
+Сохранить `NULL` EUR как недоступное значение во всех форматах, перевести расчёты builder на integer cents и проверить CSV/XLSX на наборах 1 и 1 001+ строк.
 
 ## Открытые решения и риски
 
-- In-app браузер не имеет доступа к Windows localhost:8082, а повторная навигация к оставшейся вкладке localhost:8081 была заблокирована browser policy. Поэтому реальные mouse/Tab/Space и DOM-измерения 1024/375 не заявляются выполненными; interaction contracts проверены синтетически, Web bundle собран.
-- Стандартный полный Jest-прогон встретил известный холодный 5-секундный timeout первого теста `expenseEditorScreen.test.tsx`; этот неизменённый suite проходит с `--testTimeout=30000`. Button suites проходят 87/87 с обычным timeout.
-- Android на устройстве не запускался. Feather остаётся icon-font и не умеет применять stroke 1.5; точная метрика передаётся SVG render callback.
+- Web PDF по-прежнему использует системный print/save-as-PDF flow: без нового PDF-движка браузер не может напрямую построить бинарный PDF. Это не заявляется как прямое скачивание.
+- Фиксированные RSD/EUR/USD колонки — подтверждённый BUG-3 и требуют отдельного продуктового решения о новом контракте колонок.
+- Реальные iOS/Android устройства не запускались; платформенные ветки проверены unit-тестами с API-contract mocks.
 
 ## Не трогать
 
-- Не менять глобальный `theme.scale.stroke.icon` ради Button и не переносить локальный stroke 1.5 в IconButton/InputField/Checkbox.
-- Не удалять deprecated `icon`/`iconPosition` до отдельной миграции callers.
-- Не включать `supabase/.temp/*`, `.env` или другие локальные файлы в коммит.
+- Не менять валютный набор колонок без продуктового решения и общей миграции CSV/XLSX/PDF.
+- Не подменять отсутствующие anchors нулями и не пересчитывать frozen anchors по новым курсам.
+- Не включать `supabase/.temp/*`, `.env` или временные audit-файлы в коммит.

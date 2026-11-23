@@ -17,9 +17,10 @@ export class ShareUnavailableError extends Error {
 
 const BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const OBJECT_URL_LIFETIME_MS = 60_000;
 
 // Encode bytes to base64 without relying on btoa/Buffer (absent on native).
-function uint8ToBase64(bytes: Uint8Array): string {
+export function uint8ToBase64(bytes: Uint8Array): string {
   let output = '';
   for (let index = 0; index < bytes.length; index += 3) {
     const byte0 = bytes[index];
@@ -38,15 +39,75 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return output;
 }
 
-function downloadInBrowser(blob: Blob, filename: string): void {
+function isIosBrowser(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+async function shareInIosBrowser(
+  blob: Blob,
+  filename: string,
+): Promise<boolean> {
+  if (
+    !isIosBrowser() ||
+    typeof File === 'undefined' ||
+    typeof navigator.share !== 'function' ||
+    typeof navigator.canShare !== 'function'
+  ) {
+    return false;
+  }
+
+  const file = new File([blob], filename, { type: blob.type });
+  const shareData: ShareData = { files: [file] };
+  if (!navigator.canShare(shareData)) {
+    return false;
+  }
+
+  try {
+    await navigator.share(shareData);
+    return true;
+  } catch (error: unknown) {
+    // Cancelling the native share sheet is a completed user choice, not an
+    // export failure and not a reason to start an unexpected download.
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return true;
+    }
+    return false;
+  }
+}
+
+export async function downloadInBrowser(
+  blob: Blob,
+  filename: string,
+): Promise<void> {
+  if (await shareInIosBrowser(blob, filename)) {
+    return;
+  }
+
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
+  anchor.rel = 'noopener';
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
+  // Revoking in the same task can invalidate the navigation before Safari or
+  // Chromium has consumed the Blob. Keep it alive long enough for the browser
+  // to finish the download, then release it.
+  setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_LIFETIME_MS);
+}
+
+function nativeCacheUri(filename: string): string {
+  if (!FileSystem.cacheDirectory) {
+    throw new ShareUnavailableError();
+  }
+  return `${FileSystem.cacheDirectory}${filename}`;
 }
 
 async function shareNativeFile(uri: string, mimeType: string): Promise<void> {
@@ -62,10 +123,10 @@ export async function deliverText(
   mimeType: string,
 ): Promise<void> {
   if (Platform.OS === 'web') {
-    downloadInBrowser(new Blob([content], { type: mimeType }), filename);
+    await downloadInBrowser(new Blob([content], { type: mimeType }), filename);
     return;
   }
-  const uri = `${FileSystem.cacheDirectory ?? ''}${filename}`;
+  const uri = nativeCacheUri(filename);
   await FileSystem.writeAsStringAsync(uri, content, {
     encoding: FileSystem.EncodingType.UTF8,
   });
@@ -79,10 +140,13 @@ export async function deliverBinary(
 ): Promise<void> {
   if (Platform.OS === 'web') {
     // Copy into a fresh ArrayBuffer-backed view so the Blob part type is exact.
-    downloadInBrowser(new Blob([new Uint8Array(data)], { type: mimeType }), filename);
+    await downloadInBrowser(
+      new Blob([new Uint8Array(data)], { type: mimeType }),
+      filename,
+    );
     return;
   }
-  const uri = `${FileSystem.cacheDirectory ?? ''}${filename}`;
+  const uri = nativeCacheUri(filename);
   await FileSystem.writeAsStringAsync(uri, uint8ToBase64(data), {
     encoding: FileSystem.EncodingType.Base64,
   });
@@ -143,5 +207,9 @@ export async function deliverPdf(
     return;
   }
   const { uri } = await Print.printToFileAsync({ html });
-  await shareNativeFile(uri, 'application/pdf');
+  const namedUri = nativeCacheUri(filename);
+  if (uri !== namedUri) {
+    await FileSystem.copyAsync({ from: uri, to: namedUri });
+  }
+  await shareNativeFile(namedUri, 'application/pdf');
 }
