@@ -320,7 +320,7 @@ const PDF_FALLBACK: ExportPdfLabels = {
   largest: 'Largest expense',
   categories: 'Spending by category',
   details: 'Details',
-  other: 'Other',
+  other: 'Other categories',
 };
 
 export function buildExpensesPdfHtml(

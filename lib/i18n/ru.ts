@@ -590,7 +590,7 @@ export const ru = {
       largest: 'Крупнейшая покупка',
       categories: 'Структура расходов',
       details: 'Детализация',
-      other: 'Прочее',
+      other: 'Остальные категории',
     },
   },
   dsPlayground: {

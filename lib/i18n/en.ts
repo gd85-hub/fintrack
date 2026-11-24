@@ -576,7 +576,7 @@ export const en = {
       largest: 'Largest purchase',
       categories: 'Spending by category',
       details: 'Details',
-      other: 'Other',
+      other: 'Other categories',
     },
   },
   dsPlayground: {

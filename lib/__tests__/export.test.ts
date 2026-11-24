@@ -9,6 +9,8 @@ import {
   type ExportMeta,
   type ExportRow,
 } from '../export';
+import { en } from '../i18n/en';
+import { ru } from '../i18n/ru';
 
 const columns: ExportColumns = {
   date: 'Date',
@@ -474,7 +476,7 @@ describe('buildExpensesPdfHtml', () => {
     );
   });
 
-  it('preserves cents when lower-ranked categories are combined into Other', () => {
+  it('preserves cents when lower-ranked categories are combined into Other categories', () => {
     const categoryAmounts = [800, 700, 600, 500, 400, 300, 225, 150];
     const html = buildExpensesPdfHtml(
       categoryAmounts.map((amountRsdCents, index) => ({
@@ -487,8 +489,55 @@ describe('buildExpensesPdfHtml', () => {
       meta,
     );
 
-    expect(html).toContain('>Other</span>');
+    expect(html).toContain('>Other categories</span>');
     expect(html).toContain('<span class="cat-amt">3.75 RSD');
+  });
+
+  function expectDistinctOtherCategory(
+    realCategory: string,
+    aggregateLabel: string,
+    categoriesLabel: string,
+  ) {
+    const categoryAmounts = [1000, 900, 800, 700, 600, 500, 400, 300];
+    const pdfMeta: ExportMeta = {
+      ...meta,
+      pdf: {
+        report: 'Report',
+        generated: '',
+        totalSpending: 'Total spending',
+        count: 'Purchases',
+        average: 'Average purchase',
+        activeDays: 'Active days',
+        largest: 'Largest purchase',
+        categories: categoriesLabel,
+        details: 'Details',
+        other: aggregateLabel,
+      },
+    };
+    const html = buildExpensesPdfHtml(
+      categoryAmounts.map((amountRsdCents, index) => ({
+        ...rows[0],
+        purchaseKey: `manual-${index}`,
+        category: index === 0 ? realCategory : `Category ${index + 1}`,
+        amountRsdCents,
+      })),
+      columns,
+      pdfMeta,
+    );
+
+    expect(html.match(new RegExp(`>${realCategory}</span>`, 'g'))).toHaveLength(1);
+    expect(html.match(new RegExp(`>${aggregateLabel}</span>`, 'g'))).toHaveLength(1);
+    expect(html).toContain('<span class="cat-name"><span class="dot" style="background:#');
+    expect(html).toContain(`${realCategory}</span><span class="cat-amt">10.00 RSD`);
+    expect(html).toContain(`${aggregateLabel}</span><span class="cat-amt">7.00 RSD`);
+  }
+
+  it('keeps a real English Other category distinct from the aggregated group', () => {
+    expectDistinctOtherCategory('Other', en.export.pdf.other, 'Categories');
+  });
+
+  it('keeps a real Russian Прочее category distinct from the aggregated group', () => {
+    expectDistinctOtherCategory('Прочее', ru.export.pdf.other, 'Категории');
   });
 
   it('counts purchases and aggregates receipt lines for average and largest metrics', () => {
