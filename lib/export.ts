@@ -1,5 +1,10 @@
 import * as XLSX from 'xlsx';
 
+import {
+  assertCents,
+  buildPdfReportModel,
+  sumCents,
+} from './exportPdfModel';
 import { lightColor } from './theme';
 
 // Pure export builders: take already-prepared, already-localized rows plus
@@ -61,12 +66,6 @@ export type ExportMeta = {
   pdf?: ExportPdfLabels;
 };
 
-function assertCents(value: number, label: string): void {
-  if (!Number.isSafeInteger(value)) {
-    throw new Error(`${label} must be an integer number of cents.`);
-  }
-}
-
 // Exact dot-decimal serialization without floating-point money arithmetic.
 function cents2(value: number): string {
   assertCents(value, 'Money');
@@ -79,21 +78,6 @@ function cents2(value: number): string {
 
 function centsNumber(value: number): number {
   return Number(cents2(value));
-}
-
-function sumCents(
-  rows: readonly ExportRow[],
-  pick: (row: ExportRow) => number,
-): number {
-  return rows.reduce((total, row) => {
-    const value = pick(row);
-    assertCents(value, 'Money');
-    const next = total + value;
-    if (!Number.isSafeInteger(next)) {
-      throw new Error('Money total exceeds the safe integer range.');
-    }
-    return next;
-  }, 0);
 }
 
 // ---------- CSV ----------
@@ -310,121 +294,45 @@ function moneyDisplayCents(value: number): string {
   return `${negative ? '-' : ''}${grouped}.${decimals}`;
 }
 
-const PDF_FALLBACK: ExportPdfLabels = {
-  report: 'Expense report',
-  generated: '',
-  totalSpending: 'Total spending',
-  count: 'Transactions',
-  average: 'Average',
-  activeDays: 'Spending days',
-  largest: 'Largest expense',
-  categories: 'Spending by category',
-  details: 'Details',
-  other: 'Other categories',
-};
-
 export function buildExpensesPdfHtml(
   rows: readonly ExportRow[],
   columns: ExportColumns,
   meta: ExportMeta,
 ): string {
-  const L = meta.pdf ?? PDF_FALLBACK;
+  const model = buildPdfReportModel(rows, columns, meta);
+  const L = model.labels;
   const rsd = escapeHtml(columns.rsd);
   const eur = escapeHtml(columns.eur);
   const usd = escapeHtml(columns.usd);
-
-  const totalRsd = sumCents(rows, (r) => r.amountRsdCents);
-  const missingEurCount = rows.filter(
-    (row) => row.amountEurCents === null,
-  ).length;
-  const totalEur = missingEurCount === 0
-    ? sumCents(rows, (r) => r.amountEurCents ?? 0)
-    : null;
-  const totalUsd = sumCents(rows, (r) => r.amountUsdCents);
-  const unavailableNote = missingEurCount > 0
+  const totalRsd = model.totals.rsdCents;
+  const totalEur = model.totals.eurCents;
+  const totalUsd = model.totals.usdCents;
+  const unavailableNote = model.totals.unavailableEurCount > 0
     ? `<div class="unavailable">${escapeHtml(
-        meta.unavailableLabel ?? 'Unavailable',
-      )}: ${eur} (${missingEurCount})</div>`
+        model.unavailableLabel,
+      )}: ${eur} (${model.totals.unavailableEurCount})</div>`
     : '';
-  const purchases = new Map<
-    string,
-    { amountRsdCents: number; place: string; category: string }
-  >();
-  for (const row of rows) {
-    const current = purchases.get(row.purchaseKey);
-    const amountRsdCents = (current?.amountRsdCents ?? 0) + row.amountRsdCents;
-    assertCents(amountRsdCents, 'Purchase total');
-    purchases.set(row.purchaseKey, {
-      amountRsdCents,
-      place: current?.place || row.place,
-      category: current?.category || row.category,
-    });
-  }
-  const purchaseCount = purchases.size;
-  const avg = purchaseCount > 0
-    ? Math.round(totalRsd / purchaseCount)
-    : 0;
-  const largestPurchase = [...purchases.values()].reduce<
-    { amountRsdCents: number; place: string; category: string } | null
-  >(
-    (largest, purchase) =>
-      largest === null || purchase.amountRsdCents > largest.amountRsdCents
-        ? purchase
-        : largest,
-    null,
-  );
-
-  // ---- by category (top 6 + "Прочее") ----
-  const catMap = new Map<string, number>();
-  for (const r of rows) {
-    catMap.set(
-      r.category,
-      (catMap.get(r.category) ?? 0) + r.amountRsdCents,
-    );
-  }
-  const cats = [...catMap.entries()]
-    .map(([label, amt]) => ({ label, amt, other: false }))
-    .sort((a, b) => b.amt - a.amt);
-  const MAX_ROWS = 7;
-  let shown = cats;
-  if (cats.length > MAX_ROWS) {
-    const head = cats.slice(0, MAX_ROWS - 1);
-    const restAmt = cats.slice(MAX_ROWS - 1).reduce((t, c) => t + c.amt, 0);
-    shown = [...head, { label: L.other, amt: restAmt, other: true }];
-  }
-  const catMax = Math.max(...shown.map((c) => c.amt), 1);
-
-  // ---- active days + detail groups ----
-  const dayMap = new Map<string, number>();
-  for (const r of rows) {
-    dayMap.set(r.dateISO, (dayMap.get(r.dateISO) ?? 0) + r.amountRsdCents);
-  }
-  const daysWithSpend = dayMap.size;
-  const firstISO = rows.map((r) => r.dateISO).sort()[0] ?? '1970-01-01';
-  const [yy, mm] = firstISO.split('-').map((p) => Number(p));
-  const daysInMonth = new Date(yy, mm, 0).getDate();
-
-  const groups = [...dayMap.keys()].sort().map((iso) => {
-    const groupRows = rows.filter((r) => r.dateISO === iso);
-    return {
-      dateLabel: groupRows[0].dateLabel,
-      total: sumCents(groupRows, (r) => r.amountRsdCents),
-      rows: groupRows,
-    };
-  });
 
   // ---- render pieces ----
   const tiles = [
-    { label: L.count, value: String(purchaseCount) },
-    { label: L.average, value: `${moneyDisplayCents(avg)} ${rsd}` },
-    { label: L.activeDays, value: `${daysWithSpend} / ${daysInMonth}` },
+    { label: L.count, value: String(model.purchases.count) },
+    {
+      label: L.average,
+      value: `${moneyDisplayCents(model.purchases.averageRsdCents)} ${rsd}`,
+    },
+    {
+      label: L.activeDays,
+      value: `${model.period.daysWithSpend} / ${model.period.daysInPeriod}`,
+    },
     {
       label: L.largest,
-      value: largestPurchase
-        ? `${moneyDisplayCents(largestPurchase.amountRsdCents)} ${rsd}`
+      value: model.purchases.largest
+        ? `${moneyDisplayCents(model.purchases.largest.amountRsdCents)} ${rsd}`
         : '—',
-      sub: largestPurchase
-        ? escapeHtml(largestPurchase.place || largestPurchase.category)
+      sub: model.purchases.largest
+        ? escapeHtml(
+            model.purchases.largest.place || model.purchases.largest.category,
+          )
         : '',
     },
   ]
@@ -438,27 +346,27 @@ export function buildExpensesPdfHtml(
     )
     .join('');
 
-  const catRows = shown
+  const catRows = model.categories
     .map((c, i) => {
-      const pct = totalRsd > 0 ? (c.amt / totalRsd) * 100 : 0;
-      const w = (c.amt / catMax) * 100;
-      const color = c.other ? PDF.faint : PDF.cat[i % PDF.cat.length];
+      const color = c.isAggregatedOther
+        ? PDF.faint
+        : PDF.cat[i % PDF.cat.length];
       return (
         `<div class="catrow"><div class="cat-top">` +
         `<span class="cat-name"><span class="dot" style="background:${color}"></span>${escapeHtml(
           c.label,
         )}</span>` +
-        `<span class="cat-amt">${moneyDisplayCents(c.amt)} ${rsd}<span class="cat-pct">${pct.toFixed(
+        `<span class="cat-amt">${moneyDisplayCents(c.amountRsdCents)} ${rsd}<span class="cat-pct">${c.sharePercent.toFixed(
           1,
         )}%</span></span></div>` +
-        `<div class="track"><div class="fill" style="width:${w.toFixed(
+        `<div class="track"><div class="fill" style="width:${c.relativeWidthPercent.toFixed(
           1,
         )}%;background:${color}"></div></div></div>`
       );
     })
     .join('');
 
-  const detail = groups
+  const detail = model.days
     .map((g) => {
       const items = g.rows
         .map(
@@ -477,7 +385,7 @@ export function buildExpensesPdfHtml(
         `<td colspan="3"><span class="daydate">${escapeHtml(
           g.dateLabel,
         )}</span></td>` +
-        `<td class="num daytot">${moneyDisplayCents(g.total)} ${rsd}</td></tr>` +
+        `<td class="num daytot">${moneyDisplayCents(g.totalRsdCents)} ${rsd}</td></tr>` +
         `${items}</tbody>`
       );
     })
