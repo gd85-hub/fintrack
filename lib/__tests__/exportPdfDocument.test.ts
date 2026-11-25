@@ -183,12 +183,32 @@ describe('buildPdfDocument', () => {
     expect((leadTable.body as readonly unknown[]).length).toBe(2);
     expect(remainder).toBeDefined();
     expect(isRecord(remainder?.table) && remainder.table.dontBreakRows).toBe(true);
-    expect(collectText(document.header(2))).toEqual(expect.arrayContaining([
+    expect(collectText(document.header(2)).filter(Boolean)).toEqual([]);
+    expect(collectText(document.header(3))).toEqual(expect.arrayContaining([
       'Place',
       'Category',
       'Original amount',
       'RSD',
     ]));
+
+    const detailWidths = collectRecords([
+      document.content,
+      document.header(3),
+    ])
+      .map((record) => record.widths)
+      .filter(
+        (widths): widths is readonly number[] =>
+          Array.isArray(widths) &&
+          widths.length === 4 &&
+          widths.every((width) => typeof width === 'number'),
+      );
+    expect(detailWidths.length).toBeGreaterThan(0);
+    for (const widths of detailWidths) {
+      expect(widths).toEqual([130, 105, 137, 95]);
+      expect(
+        widths.reduce((total, width) => total + width, 0) + 4 * 2 * 7,
+      ).toBeLessThanOrEqual(595.28 - 2 * 36);
+    }
   });
 
   it('renders an empty period without inventing financial values', () => {

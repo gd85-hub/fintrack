@@ -34,6 +34,8 @@ const PAGE_WIDTH = 595.28;
 const PAGE_MARGIN_X = 36;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN_X * 2;
 const CATEGORY_BAR_WIDTH = CONTENT_WIDTH;
+const DETAIL_CELL_PADDING_X = 7;
+const DETAIL_COLUMN_WIDTHS = [130, 105, 137, 95] as const;
 
 function money(valueCents: number): string {
   assertCents(valueCents, 'PDF money');
@@ -177,8 +179,8 @@ const detailTableLayout = {
     index === 0 || index === node.table.body.length ? 0 : 0.5,
   vLineWidth: () => 0,
   hLineColor: () => PDF.line,
-  paddingLeft: () => 7,
-  paddingRight: () => 7,
+  paddingLeft: () => DETAIL_CELL_PADDING_X,
+  paddingRight: () => DETAIL_CELL_PADDING_X,
   paddingTop: () => 6,
   paddingBottom: () => 6,
 } as const;
@@ -186,7 +188,7 @@ const detailTableLayout = {
 function detailColumnHeader(model: PdfReportModel): Record<string, unknown> {
   return {
     table: {
-      widths: [165, 135, 112, 91],
+      widths: DETAIL_COLUMN_WIDTHS,
       body: [[
         { text: model.columns.place, style: 'tableHeader' },
         { text: model.columns.category, style: 'tableHeader' },
@@ -206,8 +208,8 @@ function detailColumnHeader(model: PdfReportModel): Record<string, unknown> {
       hLineWidth: (index: number) => (index === 1 ? 0.5 : 0),
       vLineWidth: () => 0,
       hLineColor: () => PDF.line,
-      paddingLeft: () => 7,
-      paddingRight: () => 7,
+      paddingLeft: () => DETAIL_CELL_PADDING_X,
+      paddingRight: () => DETAIL_CELL_PADDING_X,
       paddingTop: () => 4,
       paddingBottom: () => 6,
     },
@@ -278,7 +280,7 @@ function detailDayTables(
       headerRows: 1,
       keepWithHeaderRows: 1,
       dontBreakRows: true,
-      widths: [165, 135, 112, 91],
+      widths: DETAIL_COLUMN_WIDTHS,
       body: [dayHeader, firstRow],
     },
     layout: detailTableLayout,
@@ -293,7 +295,7 @@ function detailDayTables(
     {
       table: {
         dontBreakRows: true,
-        widths: [165, 135, 112, 91],
+        widths: DETAIL_COLUMN_WIDTHS,
         body: remainingRows,
       },
       layout: detailTableLayout,
@@ -505,7 +507,7 @@ export function buildPdfDocument(
       ...details(model),
     ],
     header: (currentPage: number) =>
-      currentPage === 1
+      currentPage < (model.rows.length > 20 ? 3 : 2)
         ? { text: '' }
         : {
             ...detailColumnHeader(model),

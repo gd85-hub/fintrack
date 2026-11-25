@@ -164,9 +164,14 @@ const datasets = [
       makeRow(1, {
         place: `LONG-PLACE-START ${'Очень длинное название магазина '.repeat(6)} LONG-PLACE-END`,
         category: `LONG-CATEGORY-START ${'Категория с подробным названием '.repeat(4)} LONG-CATEGORY-END`,
+        amountOriginalCents: 9007199254740900,
+        amountRsdCents: 9007199254740900,
+        amountEurCents: 76984609014879,
+        amountUsdCents: 83399993099453,
+        currencyOriginal: 'RSD',
       }),
     ],
-    rowTokens: ['LONG-PLACE-START', 'LONG-PLACE-END', 'LONG-CATEGORY-START', 'LONG-CATEGORY-END'],
+    rowTokens: ['LONG-PLACE-START', 'PLACE-END', 'LONG-CATEGORY-START', 'LONG-CATEGORY-END'],
   },
   {
     name: 'other-categories',
@@ -271,6 +276,13 @@ function manifestEntry(dataset, model, byteLength) {
     })),
     rowTokens: dataset.rowTokens,
     requiredText: [...new Set(requiredText)],
+    detailsLabel: model.labels.details,
+    detailHeaders: [
+      model.columns.place,
+      model.columns.category,
+      model.columns.amount,
+      model.columns.rsd,
+    ],
   };
 }
 
