@@ -5,34 +5,36 @@ _Обновлено: 2026-11-25 · автор витка: ChatGPT · испол�
 
 ## Где мы
 
-REPORTS-02.2c устранил переполнение печатной области и дублирование шапки в production-quality векторном PDF; renderer проверен, но ещё не подключён к Reports UI и delivery.
+REPORTS-02.3 подключил готовый векторный PDF к Reports на Web. Desktop Web получает прямое скачивание, iOS Safari/PWA — двухфазные Generate → Save PDF; Android сохраняет прежний HTML/`expo-print`/share flow.
 
 ## Только что сделано
 
-- Подтверждён дефект геометрии pdfmake: прежние ширины колонок `165 + 135 + 112 + 91` с горизонтальным padding по 7 pt давали таблицу 559 pt при доступных 523.28 pt; правая граница реального PDF доходила до края A4 (`x=595`).
-- Все заголовки и строки детализации переведены на единую конфигурацию `130 + 105 + 137 + 95`: вместе с padding таблица занимает 523 pt и остаётся внутри полей (`x=36…559.28`).
-- На принудительной странице начала Details осталась одна inline-шапка; на последующих страницах повторяется одна page header. Дневная группа удерживает только заголовок с первой строкой, а длинный день свободно продолжается дальше.
-- Validation harness теперь проверяет координаты текста и линий через `pdfplumber`, наличие ровно одной шапки на каждой странице детализации и экстремально длинные суммы/названия.
-- Реальные PDF на 1, 180 и 1003 строки независимо прочитаны `pypdf`/`pdfplumber`: строки и суммы не потеряны, таблица не пересекает поля, отчёты занимают 1, 8 и 37 страниц. Визуально проверены summary, начало Details, continuation большого дня и long-labels/large-money case.
+- Добавлена platform-specific граница `exportPdfIntegration`: Web строит `PdfReportModel`, lazy-load генератор и бинарный `application/pdf`; native/default продолжает вызывать `buildExpensesPdfHtml()` и `deliverPdf()`.
+- Desktop Web после генерации проверяет MIME, непустой Blob и `%PDF-` signature, затем запускает именованное скачивание `fintrack-YYYY-MM.pdf` без print dialog.
+- На iOS генерация создаёт один подготовленный Blob/Object URL и показывает отдельную кнопку «Сохранить PDF» / Save PDF. Нажатие синхронно вызывает Web Share с именованным File либо download fallback; отмена не считается ошибкой, а повторное сохранение не запускает pdfmake заново.
+- Подготовленный PDF освобождается при смене месяца, повторной генерации, уходе с экрана и размонтировании. Завершившийся после смены месяца старый результат уничтожается и не может сохраниться под новым именем.
+- Общий export lock блокирует параллельные CSV/XLSX/PDF операции; ошибки генерации и недоступность сохранения продолжают отображаться существующим export error UI.
+- Добавлены unit-тесты Web/native adapters и lifecycle: desktop filename/MIME/signature, iOS File Share/fallback/cancel/retry, stale month cleanup и неизменный Android HTML path.
+- Production PDF harness повторно проверил 10 бинарных PDF (до 1003 строк) через `pypdf`/`pdfplumber`; визуальный рендер корректен.
 
 ## Состояние origin/main
 
-Ветка `main`; REPORTS-02.2b опубликован как `38006c5`, REPORTS-02.2c подготовлен одним атомарным коммитом. Локальный `supabase/.temp/cli-latest` не относится к задаче и не входит в коммит.
+Ветка `main`; REPORTS-02.2c опубликован как `e8a6768`, REPORTS-02.3 подготовлен одним атомарным коммитом. Локальный `supabase/.temp/cli-latest` не относится к задаче и не входит в коммит.
 
 ## Следующий шаг
 
-REPORTS-02.3: подключить готовый Web PDF Blob к реальному экспорту с `fintrack-YYYY-MM.pdf`, корректным browser download и Safari/iOS PWA fallback; Android HTML/`expo-print` оставить прежним до отдельного решения.
+Ручная проверка после отдельного Web deploy: Chrome Desktop — реальное скачивание и повторные форматы; физический iPhone Safari и installed PWA — Share/Save, отмена и fallback. Затем выпускать только отдельной задачей.
 
 ## Открытые решения и риски
 
-- Пользователь пока получает старый HTML print/save-as-PDF: новый renderer намеренно не подключён к Reports UI или delivery.
-- Для наборов больше 20 строк Details начинает новую страницу: это обход подтверждённого поведения `pdfmake@0.3.15`, которое иначе продолжало таблицу поверх верхнего поля после высокого summary.
-- Векторный PDF сохраняет текущий RSD/EUR/USD контракт и nullable EUR; BUG-3 про фиксированные валютные колонки этим этапом не решается.
-- Typecheck, 43 целевых теста и независимая PDF-валидация зелёные. Platform bundles не перестраивались: imports/dependencies и Web/Android entry points не менялись.
+- Chrome Desktop и физический iPhone в этом этапе не автоматизировались по прямому запрету; unit-тесты и production builders подтверждены, но фактическое browser/OS сохранение остаётся manual verification.
+- Browser download API не сообщает приложению, сохранил ли пользователь файл после запуска; отсутствие исключения означает только успешный старт механизма, не подтверждение файла на диске.
+- Web export зелёный и оставляет `pdfmake`/VFS отдельными lazy chunks (846,768 и 854,652 bytes). Android export зелёный; в Android bundle нет `pdfmake`, VFS или Web adapter symbols.
+- Typecheck, 66 целевых тестов и полный Jest 857/857 зелёные. Полный suite запускался с `--testTimeout=30000`: стандартные 5 секунд нестабильны для существующего первого `expenseEditorScreen` render-теста в этом окружении, изолированный production-unrelated timeout подтверждён до повторного зелёного прогона.
 
 ## Не трогать
 
-- Не дублировать финансовые расчёты в renderer: document builder принимает только готовую `PdfReportModel`.
-- Не импортировать `exportPdfReport.web.ts` из Android/general entry; подключение выполняется отдельным REPORTS-02.3.
-- Не менять HTML PDF, `exportDelivery.ts`, Reports UI, CSV/XLSX или валютный контракт в рамках подключения Web Blob.
-- Не включать `supabase/.temp/*`, `.env`, сгенерированные PDF/PNG или временные audit/output-директории в коммит.
+- Не переносить pdfmake/VFS в общий или native entry; Web engine должен оставаться lazy-loaded.
+- Не менять `PdfReportModel`, финансовые расчёты, layout PDF, CSV/XLSX builders или Android HTML generation при ручной проверке.
+- Не считать unit mocks доказательством физического скачивания или iOS Share; фиксировать результаты отдельно после проверки на устройствах.
+- Не включать `supabase/.temp/*`, `.env`, сгенерированные PDF/PNG или временные Expo output-директории в коммит.

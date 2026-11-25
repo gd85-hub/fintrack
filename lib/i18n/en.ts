@@ -562,6 +562,7 @@ export const en = {
     subtitle: "Export this month's expenses to a spreadsheet or PDF.",
     empty: 'No expenses to export this month.',
     exporting: 'Exporting…',
+    savePdf: 'Save PDF',
     failed: "Couldn't export. Try again.",
     shareUnavailable: "Sharing isn't available on this device.",
     unavailable: 'Unavailable',

@@ -39,7 +39,7 @@ export function uint8ToBase64(bytes: Uint8Array): string {
   return output;
 }
 
-function isIosBrowser(): boolean {
+export function isIosBrowser(): boolean {
   if (typeof navigator === 'undefined') {
     return false;
   }
@@ -47,6 +47,25 @@ function isIosBrowser(): boolean {
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   );
+}
+
+export function downloadObjectUrlInBrowser(
+  url: string,
+  filename: string,
+): void {
+  if (typeof document === 'undefined') {
+    throw new ShareUnavailableError();
+  }
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    document.body.removeChild(anchor);
+  }
 }
 
 async function shareInIosBrowser(
@@ -90,13 +109,12 @@ export async function downloadInBrowser(
   }
 
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
+  try {
+    downloadObjectUrlInBrowser(url, filename);
+  } catch (error: unknown) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
   // Revoking in the same task can invalidate the navigation before Safari or
   // Chromium has consumed the Blob. Keep it alive long enough for the browser
   // to finish the download, then release it.

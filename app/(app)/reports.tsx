@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator,
@@ -25,7 +25,6 @@ import {
 } from '../../lib/db';
 import {
   buildCsv,
-  buildExpensesPdfHtml,
   buildXlsx,
   type ExportColumns,
   type ExportMeta,
@@ -33,10 +32,19 @@ import {
 } from '../../lib/export';
 import {
   deliverBinary,
-  deliverPdf,
   deliverText,
   ShareUnavailableError,
 } from '../../lib/exportDelivery';
+import {
+  beginPdfExport,
+  disposePreparedPdf,
+  savePreparedPdf,
+  type PreparedPdfExport,
+} from '../../lib/exportPdfIntegration';
+import {
+  createPreparedPdfLifecycle,
+  type PreparedPdfLifecycle,
+} from '../../lib/exportPdfLifecycle';
 import { theme, type Colors } from '../../lib/theme';
 
 type CategoryMeta = { group: string; type: ExpenseCategoryType };
@@ -59,6 +67,39 @@ export default function ReportsScreen() {
   const [loadError, setLoadError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [preparedPdf, setPreparedPdf] = useState<PreparedPdfExport | null>(
+    null,
+  );
+  const [savingPdf, setSavingPdf] = useState(false);
+  const exportingRef = useRef(false);
+  const savingPdfRef = useRef(false);
+  const pdfLifecycleRef = useRef<PreparedPdfLifecycle<PreparedPdfExport> | null>(
+    null,
+  );
+  if (pdfLifecycleRef.current === null) {
+    pdfLifecycleRef.current = createPreparedPdfLifecycle(disposePreparedPdf);
+  }
+
+  const invalidatePreparedPdf = useCallback(() => {
+    pdfLifecycleRef.current?.invalidate();
+    setPreparedPdf(null);
+  }, []);
+
+  useEffect(
+    () => () => {
+      pdfLifecycleRef.current?.invalidate();
+    },
+    [],
+  );
+
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        invalidatePreparedPdf();
+      },
+      [invalidatePreparedPdf],
+    ),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -185,9 +226,10 @@ export default function ReportsScreen() {
       meta: ExportMeta,
     ) => Promise<void>,
   ) {
-    if (!hasExpenses || exporting) {
+    if (!hasExpenses || exportingRef.current) {
       return;
     }
+    exportingRef.current = true;
     setExporting(true);
     setExportError('');
     try {
@@ -201,6 +243,7 @@ export default function ReportsScreen() {
           : t('export.failed'),
       );
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   }
@@ -221,15 +264,71 @@ export default function ReportsScreen() {
         XLSX_MIME,
       ),
     );
-  const exportPdf = () =>
-    void runExport((rows, columns, meta) =>
-      deliverPdf(
-        buildExpensesPdfHtml(rows, columns, meta),
-        `fintrack-${visibleMonth}.pdf`,
-      ),
-    );
+  const exportPdf = () => {
+    if (!hasExpenses || exportingRef.current) {
+      return;
+    }
+    const generation = pdfLifecycleRef.current?.begin() ?? 0;
+    setPreparedPdf(null);
+    exportingRef.current = true;
+    setExporting(true);
+    setExportError('');
+    const rows = buildRows();
+    const filename = `fintrack-${visibleMonth}.pdf`;
 
-  const buttonsDisabled = !hasExpenses || exporting || loading;
+    void beginPdfExport({
+      rows,
+      columns: buildColumns(),
+      meta: buildMeta(rows),
+      filename,
+    })
+      .then((prepared) => {
+        if (!prepared) {
+          return;
+        }
+        if (pdfLifecycleRef.current?.accept(generation, prepared)) {
+          setPreparedPdf(prepared);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Unable to generate PDF export:', error);
+        setExportError(t('export.failed'));
+      })
+      .finally(() => {
+        exportingRef.current = false;
+        setExporting(false);
+      });
+  };
+
+  const savePdf = () => {
+    const prepared = pdfLifecycleRef.current?.current();
+    if (!prepared || savingPdfRef.current) {
+      return;
+    }
+    savingPdfRef.current = true;
+    setSavingPdf(true);
+    setExportError('');
+    void savePreparedPdf(prepared)
+      .catch((error: unknown) => {
+        console.error('Unable to save prepared PDF export:', error);
+        setExportError(
+          error instanceof ShareUnavailableError
+            ? t('export.shareUnavailable')
+            : t('export.failed'),
+        );
+      })
+      .finally(() => {
+        savingPdfRef.current = false;
+        setSavingPdf(false);
+      });
+  };
+
+  const buttonsDisabled = !hasExpenses || exporting || savingPdf || loading;
+
+  const selectMonth = (month: string) => {
+    invalidatePreparedPdf();
+    setVisibleMonth(month);
+  };
 
   return (
     <View style={styles.screen}>
@@ -319,6 +418,22 @@ export default function ReportsScreen() {
               </View>
             ) : null}
 
+            {preparedPdf ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={savingPdf || exporting}
+                onPress={savePdf}
+                style={({ pressed }) => [
+                  styles.exportButton,
+                  (pressed || savingPdf || exporting) && styles.disabled,
+                ]}
+              >
+                <Text style={styles.exportButtonText}>
+                  {t('export.savePdf')}
+                </Text>
+              </Pressable>
+            ) : null}
+
             {exportError ? (
               <Text accessibilityRole="alert" style={styles.errorText}>
                 {exportError}
@@ -331,7 +446,7 @@ export default function ReportsScreen() {
       <MonthPicker
         currentMonth={currentMonth}
         onClose={() => setMonthPickerVisible(false)}
-        onSelect={setVisibleMonth}
+        onSelect={selectMonth}
         selectedMonth={visibleMonth}
         visible={monthPickerVisible}
       />

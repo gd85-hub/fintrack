@@ -202,6 +202,8 @@ describe('web export delivery', () => {
     await expect(
       deliverText('fintrack.csv', 'x', 'text/csv;charset=utf-8'),
     ).rejects.toThrow('download blocked');
+    expect(removeChild).toHaveBeenCalledWith(anchor);
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:export');
   });
 });
 
