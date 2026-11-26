@@ -55,9 +55,11 @@ jest.mock('../../contexts/ToastContext', () => ({
   useToast: () => ({ error: mockToastError, success: mockToastSuccess }),
 }));
 
-const mockUser = { id: 'user-1' };
+// Mutable auth holder so a test can change the signed-in account on a mounted
+// screen and re-render.
+const mockAuth: { user: { id: string } | null } = { user: { id: 'user-1' } };
 jest.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: mockUser }),
+  useAuth: () => ({ user: mockAuth.user }),
 }));
 
 const mockHomeCurrency = { value: 'RSD' };
@@ -170,6 +172,17 @@ async function renderEditor(expenseId?: string) {
   return tree;
 }
 
+// Re-renders the same tree (e.g. after the signed-in account changed), so the
+// account boundary can remount the editor body.
+async function updateScreen(
+  tree: ReturnType<typeof create>,
+  expenseId?: string,
+) {
+  await act(async () => {
+    tree.update(<ExpenseEditorScreen expenseId={expenseId} />);
+  });
+}
+
 // Re-enters the screen the way Expo Router does: runs the previous focus's
 // cleanup, then the focus callback, and flushes the async currency resolution.
 async function focusScreen() {
@@ -265,6 +278,7 @@ beforeEach(() => {
   mockRememberLastManualCurrency.mockResolvedValue(undefined);
   mockFocusState.callback = null;
   mockFocusState.cleanup = undefined;
+  mockAuth.user = { id: 'user-1' };
 });
 
 describe('Expense editor buttons', () => {
@@ -537,6 +551,14 @@ describe('Expense editor remembered currency across refocus', () => {
       press(tree.root, 'common.save');
     });
     expect(mockInsertExpense).toHaveBeenCalledTimes(1);
+    expect(mockRememberLastManualCurrency).toHaveBeenCalledWith(
+      'user-1',
+      'USD',
+    );
+
+    // The account-scoped cache now returns the saved currency (its real
+    // semantics are covered in lastCurrency.test.ts).
+    mockReadLastManualCurrency.mockResolvedValue('USD');
 
     // Reopen the same mounted screen.
     await blurScreen();
@@ -597,6 +619,9 @@ describe('Expense editor remembered currency across refocus', () => {
     expect(mockInsertExpense).toHaveBeenCalledTimes(1);
     expect(mockBack).toHaveBeenCalledTimes(1);
 
+    // The account-scoped cache holds the saved currency synchronously, so the
+    // reopen reads it even though the write is still pending.
+    mockReadLastManualCurrency.mockResolvedValue('USD');
     await focusScreen();
     expect(currencyValue(tree.root)).toBe('USD');
   });
@@ -626,5 +651,44 @@ describe('Expense editor remembered currency across refocus', () => {
 
     expect(currencyValue(tree.root)).toBe('EUR');
     expect(mockReadLastManualCurrency).not.toHaveBeenCalled();
+  });
+
+  test('changing account on a mounted screen reinitializes from the new account', async () => {
+    mockHomeCurrency.value = 'RSD';
+    mockReadLastManualCurrency.mockImplementation(async (accountId) =>
+      accountId === 'user-1' ? 'USD' : 'JPY',
+    );
+
+    const tree = await renderEditor();
+    expect(currencyValue(tree.root)).toBe('USD');
+    expect(mockReadLastManualCurrency).toHaveBeenCalledWith('user-1');
+
+    // The signed-in account changes while the screen stays rendered.
+    mockAuth.user = { id: 'user-2' };
+    await updateScreen(tree);
+
+    expect(currencyValue(tree.root)).toBe('JPY');
+    expect(mockReadLastManualCurrency).toHaveBeenCalledWith('user-2');
+  });
+
+  test('the remembered currency write is scoped to the active account', async () => {
+    mockReadLastManualCurrency.mockResolvedValue(null);
+
+    const tree = await renderEditor();
+    changeCurrency(tree.root, 'USD');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    expect(mockRememberLastManualCurrency).toHaveBeenCalledWith(
+      'user-1',
+      'USD',
+    );
+    expect(mockRememberLastManualCurrency).not.toHaveBeenCalledWith(
+      'user-2',
+      'USD',
+    );
   });
 });

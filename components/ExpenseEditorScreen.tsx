@@ -74,9 +74,6 @@ type ExpenseFormProps = {
   initialCurrency: string;
   // Account the saved currency is remembered under; null when signed out.
   accountId: string | null;
-  // Called with the currency of a just-created manual expense, so the still
-  // mounted screen can reopen in it without waiting for the AsyncStorage write.
-  onManualCurrencySaved?: (currency: string) => void;
 };
 
 type ConversionPreview =
@@ -95,7 +92,6 @@ function ExpenseForm({
   initialMerchants,
   initialCurrency,
   accountId,
-  onManualCurrencySaved,
 }: ExpenseFormProps) {
   const router = useRouter();
   const { locale, t } = useLanguage();
@@ -292,12 +288,12 @@ function ExpenseForm({
         await updateExpense(initialExpense.id, input);
       } else {
         await insertExpense(input);
-        // Remember the currency only after a successful manual creation. The
-        // in-memory notify is synchronous, so an immediate reopen of the still
-        // mounted screen sees it even before the write lands; the write is
-        // fire-and-forget and swallows its own errors, so a storage failure
-        // never turns a saved expense into a failed save.
-        onManualCurrencySaved?.(currency);
+        // Remember the currency only after a successful manual creation.
+        // rememberLastManualCurrency updates the account-scoped in-memory cache
+        // synchronously, so an immediate reopen (even a new screen instance)
+        // sees it before the write lands; the write is fire-and-forget and
+        // swallows its own errors, so a storage failure never turns a saved
+        // expense into a failed save.
         void rememberLastManualCurrency(accountId, currency);
       }
       toast.success(
@@ -549,15 +545,37 @@ function ExpenseForm({
   );
 }
 
+// A thin account boundary: remounting the body whenever the authenticated
+// account changes resets every piece of its state, so a mounted editor can
+// never show the previous account's currency, categories, merchants or expense.
 export function ExpenseEditorScreen({
   expenseId,
 }: ExpenseEditorScreenProps) {
+  const { user } = useAuth();
+  const accountId = user?.id ?? null;
+
+  return (
+    <ExpenseEditorBody
+      accountId={accountId}
+      expenseId={expenseId}
+      key={accountId ?? 'anonymous'}
+    />
+  );
+}
+
+type ExpenseEditorBodyProps = {
+  accountId: string | null;
+  expenseId?: string;
+};
+
+function ExpenseEditorBody({
+  accountId,
+  expenseId,
+}: ExpenseEditorBodyProps) {
   const router = useRouter();
   const { t } = useLanguage();
   const { styles } = useExpenseEditorTheme();
-  const { user } = useAuth();
   const { homeCurrency } = useHomeCurrency();
-  const accountId = user?.id ?? null;
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -570,16 +588,8 @@ export function ExpenseEditorScreen({
   // this matching the current focusKey, so a just-focused screen never shows a
   // form carrying currency from an earlier visit.
   const [currencyResolvedFocus, setCurrencyResolvedFocus] = useState(-1);
-  // The currency of an expense created during this mounted session. Preferred
-  // over storage so an immediate reopen cannot race the pending AsyncStorage
-  // write and restore an older value.
-  const sessionCurrencyRef = useRef<string | null>(null);
   // Guards the async currency read: only the latest focus session may apply.
   const currencySessionRef = useRef(0);
-
-  const handleManualCurrencySaved = useCallback((saved: string) => {
-    sessionCurrencyRef.current = saved;
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -642,9 +652,10 @@ export function ExpenseEditorScreen({
     let active = true;
 
     void (async () => {
-      const remembered =
-        sessionCurrencyRef.current ??
-        (await readLastManualCurrency(accountId));
+      // readLastManualCurrency prefers the account's in-session value, so a
+      // currency just saved here (even via another screen instance) is returned
+      // before its AsyncStorage write lands.
+      const remembered = await readLastManualCurrency(accountId);
       // Drop a response from a focus session that a newer one has superseded.
       if (!active || session !== currencySessionRef.current) {
         return;
@@ -699,7 +710,6 @@ export function ExpenseEditorScreen({
       initialExpense={expense}
       initialMerchants={merchants}
       key={focusKey}
-      onManualCurrencySaved={handleManualCurrencySaved}
     />
   );
 }
