@@ -28,15 +28,6 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 - **Reproduce:** create a custom category named `Продукты` (slug NULL) → switch to English → surfaces using `localizeCategoryName` show “Groceries”.
 - **Direction:** pass stable category provenance/slug into the display layer and translate only seeded personal copies with known slugs; keep slug-NULL user content raw. Groups need equivalent provenance/context rather than blind text matching.
 
-### BUG-6 · 🔴 Serbian grouped amount input is rejected
-
-- **Severity:** medium (manual-entry UX)
-- **Area:** money input parsing
-- **Code:** `lib/money.ts:91-110`, characterized in `lib/__tests__/money.test.ts:53-67`
-- **Evidence:** `AMOUNT_PATTERN` accepts only ungrouped unsigned decimals. `1.234,56`, `1 234,56`, and negative values return `null`.
-- **Reproduce:** type `1.234,56` into a money field → validation rejects the amount, while `1234,56` succeeds.
-- **Direction:** decide the accepted locale formats, normalize separators unambiguously in `parseAmountInput`, and add boundary/ambiguity tests. Refunds remain a separate product/schema decision.
-
 ---
 
 ## Requires manual or environment verification
@@ -54,6 +45,15 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 ---
 
 ## Fixed
+
+### BUG-6 · ✅ Serbian grouped amount input was rejected
+
+- **Area:** money input parsing
+- **Resolution:** `parseAmountInput` now accepts correctly grouped unsigned amounts through an explicit contract and still produces integer cents without floating-point money arithmetic. Group separators are removed only after the shape is confirmed, then the decimal separator is normalized.
+- **Accepted grouped formats:** Serbian dot grouping with a comma decimal (`1.234`, `1.234,56`, `12.345,67`, `1.234.567,89`) and space grouping with a comma or dot decimal (`1 234`, `1 234,56`, `1 234.56`, `1 234 567,89`), including NBSP (` `) and narrow NBSP (` `) separators pasted from formatted text. Ungrouped values (`1234`, `1234,56`, `1234.56`, `12,5`, `12.5`) are unchanged.
+- **Still rejected:** empty input, comma thousands format (`1,234.56`), malformed grouping (`1.23,45`, `1.234,567`, `12.34.567`, `1..234`, `1 23,45`, `1 234 56`), trailing/leading separators (`12,`, `.5`), three-decimal-digit values (`12,555`), letters/currency symbols, and values exceeding `Number.MAX_SAFE_INTEGER` cents.
+- **Out of scope:** refunds / negative amounts remain a separate product/schema decision; `-5` and other negatives stay rejected.
+- **Coverage:** table-driven accepted/rejected cases in `lib/__tests__/money.test.ts`, including NBSP/narrow NBSP, zero, leading zeros, the `MAX_SAFE_INTEGER` boundary (`90071992547409,91`), and overflow (`90071992547409,92`, `99999999999999999`). Existing ungrouped accepted forms and existing negative rejections are retained.
 
 ### BUG-8 · ✅ PDF monetary values were rounded to whole currency units
 

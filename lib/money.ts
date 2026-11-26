@@ -88,20 +88,53 @@ export type ConvertedAmounts = {
   eur: number;
 };
 
-const AMOUNT_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
+// No grouping: a plain integer, optionally followed by a 1–2 digit decimal
+// using either separator (`1234`, `1234,56`, `1234.56`, `12,5`).
+const UNGROUPED_PATTERN = /^\d+(?:[.,]\d{1,2})?$/;
+
+// Serbian dot grouping: a 1–3 digit lead group then one or more exact 3-digit
+// groups (`1.234`, `12.345`, `1.234.567`); the decimal separator, when present,
+// must be a comma (`1.234,56`).
+const DOT_GROUPED_PATTERN = /^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/;
+
+// Space grouping, including NBSP/narrow NBSP already normalised to a plain
+// space (`1 234`, `1 234 567`); the decimal separator may be a comma or a dot
+// (`1 234,56`, `1 234.56`).
+const SPACE_GROUPED_PATTERN = /^\d{1,3}(?: \d{3})+(?:[.,]\d{1,2})?$/;
+
+// Unicode thousands separators a user may paste from formatted text.
+const GROUPING_SPACES = /[  ]/g;
 
 export function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);
 }
 
+// Parses a user-entered amount into integer cents, or null when the input is
+// not an unambiguously valid unsigned amount. Accepted shapes: ungrouped
+// values, Serbian dot grouping (comma decimal), and space grouping (comma or
+// dot decimal). Comma thousands separators (`1,234.56`), negatives, and
+// malformed grouping are rejected. See BUG-6 and lib/__tests__/money.test.ts.
 export function parseAmountInput(text: string): number | null {
-  const normalized = text.trim();
+  const trimmed = text.trim();
 
-  if (!AMOUNT_PATTERN.test(normalized)) {
+  if (trimmed === '') {
     return null;
   }
 
-  const [whole, fraction = ''] = normalized.replace(',', '.').split('.');
+  const normalized = trimmed.replace(GROUPING_SPACES, ' ');
+
+  let canonical: string;
+  if (UNGROUPED_PATTERN.test(normalized)) {
+    canonical = normalized.replace(',', '.');
+  } else if (DOT_GROUPED_PATTERN.test(normalized)) {
+    canonical = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (SPACE_GROUPED_PATTERN.test(normalized)) {
+    canonical = normalized.replace(/ /g, '').replace(',', '.');
+  } else {
+    return null;
+  }
+
+  const [whole, fraction = ''] = canonical.split('.');
   const paddedFraction = fraction.padEnd(2, '0');
   const cents = Number(whole) * 100 + Number(paddedFraction);
 

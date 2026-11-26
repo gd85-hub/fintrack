@@ -39,32 +39,69 @@ describe('isCurrency', () => {
 });
 
 describe('parseAmountInput', () => {
-  it('accepts comma and dot decimal separators identically', () => {
-    expect(parseAmountInput('12,5')).toBe(1250);
-    expect(parseAmountInput('12.5')).toBe(1250);
+  const accepted: readonly [string, number][] = [
+    // Ungrouped values keep working with either decimal separator.
+    ['1234', 123400],
+    ['1234,56', 123456],
+    ['1234.56', 123456],
+    ['12,5', 1250],
+    ['12.5', 1250],
+    ['25', 2500],
+    ['0,01', 1],
+    ['12.50', 1250],
+    // Serbian dot grouping (comma decimal).
+    ['1.234', 123400],
+    ['1.234,56', 123456],
+    ['12.345,67', 1234567],
+    ['1.234.567,89', 123456789],
+    // Space grouping with comma or dot decimal.
+    ['1 234', 123400],
+    ['1 234,56', 123456],
+    ['1 234.56', 123456],
+    ['1 234 567,89', 123456789],
+    // Unicode thousands separators pasted from formatted text.
+    ['1 234,56', 123456], // NBSP
+    ['1 234 567,89', 123456789], // narrow NBSP
+    ['1 234 567', 123456700], // mixed plain space + NBSP groups
+    // Trimming, zero, and leading zeros.
+    [' 12,50 ', 1250],
+    ['0', 0],
+    ['0,00', 0],
+    ['007', 700],
+    ['00,05', 5],
+    // Maximum safe boundary: 9_007_199_254_740_991 cents.
+    ['90071992547409,91', Number.MAX_SAFE_INTEGER],
+  ];
+
+  it.each(accepted)('accepts %p as %p cents', (input, cents) => {
+    expect(parseAmountInput(input)).toBe(cents);
   });
 
-  it('accepts whole values and two decimal places', () => {
-    expect(parseAmountInput('25')).toBe(2500);
-    expect(parseAmountInput('0,01')).toBe(1);
-    expect(parseAmountInput('12.50')).toBe(1250);
-  });
+  const rejected: readonly string[] = [
+    '', // empty
+    '-5', // negatives remain a separate product concern (refunds)
+    '12,555', // three decimal digits
+    '1.23,45', // malformed dot grouping
+    '1.234,567', // three decimal digits after dot grouping
+    '12.34.567', // 2-digit middle group
+    '1..234', // doubled separator
+    '1 23,45', // 2-digit lead group in space grouping
+    '1 234 56', // 2-digit trailing group in space grouping
+    '12,', // trailing separator
+    '.5', // leading decimal
+    '1,234.56', // comma thousands format is out of scope
+    '12,345', // comma used as a grouping separator
+    '1 000.5.5', // multiple decimals
+    'abc', // letters
+    '12$', // currency symbol
+    '1 234,', // trailing decimal after grouping
+    // Overflow: MAX_SAFE_INTEGER + 1 cents and far beyond.
+    '90071992547409,92',
+    '99999999999999999',
+  ];
 
-  it('rejects invalid input and thousands separators', () => {
-    expect(parseAmountInput('')).toBeNull();
-    expect(parseAmountInput('12,555')).toBeNull();
-    expect(parseAmountInput('1 000')).toBeNull();
-    expect(parseAmountInput('-5')).toBeNull();
-  });
-
-  it('characterizes grouped separators and boundary input shapes', () => {
-    // Contrary to AGENTS.md, grouped Serbian input is currently rejected.
-    expect(parseAmountInput('1.234,56')).toBeNull();
-    expect(parseAmountInput('1.234')).toBeNull();
-    expect(parseAmountInput(' 12,50 ')).toBe(1250);
-    expect(parseAmountInput('007')).toBe(700);
-    expect(parseAmountInput('.5')).toBeNull();
-    expect(parseAmountInput('12,')).toBeNull();
+  it.each(rejected)('rejects %p', (input) => {
+    expect(parseAmountInput(input)).toBeNull();
   });
 });
 
