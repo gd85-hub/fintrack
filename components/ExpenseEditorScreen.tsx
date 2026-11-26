@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -74,6 +74,9 @@ type ExpenseFormProps = {
   initialCurrency: string;
   // Account the saved currency is remembered under; null when signed out.
   accountId: string | null;
+  // Called with the currency of a just-created manual expense, so the still
+  // mounted screen can reopen in it without waiting for the AsyncStorage write.
+  onManualCurrencySaved?: (currency: string) => void;
 };
 
 type ConversionPreview =
@@ -92,6 +95,7 @@ function ExpenseForm({
   initialMerchants,
   initialCurrency,
   accountId,
+  onManualCurrencySaved,
 }: ExpenseFormProps) {
   const router = useRouter();
   const { locale, t } = useLanguage();
@@ -288,9 +292,12 @@ function ExpenseForm({
         await updateExpense(initialExpense.id, input);
       } else {
         await insertExpense(input);
-        // Remember the currency only after a successful manual creation. This
-        // is fire-and-forget and swallows its own errors, so a storage failure
+        // Remember the currency only after a successful manual creation. The
+        // in-memory notify is synchronous, so an immediate reopen of the still
+        // mounted screen sees it even before the write lands; the write is
+        // fire-and-forget and swallows its own errors, so a storage failure
         // never turns a saved expense into a failed save.
+        onManualCurrencySaved?.(currency);
         void rememberLastManualCurrency(accountId, currency);
       }
       toast.success(
@@ -556,10 +563,23 @@ export function ExpenseEditorScreen({
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [expense, setExpense] = useState<Expense | null>(null);
-  // Resolved during loading so the form opens with the right currency and a
-  // late storage read can never overwrite a user's in-form selection.
+  // The currency a new form opens with, resolved per focus (below).
   const [initialCurrency, setInitialCurrency] = useState(homeCurrency);
   const [focusKey, setFocusKey] = useState(0);
+  // The focus session `initialCurrency` was resolved for. The form is gated on
+  // this matching the current focusKey, so a just-focused screen never shows a
+  // form carrying currency from an earlier visit.
+  const [currencyResolvedFocus, setCurrencyResolvedFocus] = useState(-1);
+  // The currency of an expense created during this mounted session. Preferred
+  // over storage so an immediate reopen cannot race the pending AsyncStorage
+  // write and restore an older value.
+  const sessionCurrencyRef = useRef<string | null>(null);
+  // Guards the async currency read: only the latest focus session may apply.
+  const currencySessionRef = useRef(0);
+
+  const handleManualCurrencySaved = useCallback((saved: string) => {
+    sessionCurrencyRef.current = saved;
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -567,6 +587,9 @@ export function ExpenseEditorScreen({
     }, []),
   );
 
+  // Categories, merchants and the edited expense are loaded once (and when the
+  // account or target expense changes) — never re-fetched merely to refresh the
+  // currency on a later focus.
   useEffect(() => {
     let active = true;
 
@@ -574,36 +597,21 @@ export function ExpenseEditorScreen({
       listCategories(),
       listMerchants(),
       expenseId ? getExpense(expenseId) : Promise.resolve(null),
-      // Only a new expense restores a remembered currency; editing keeps the
-      // expense's own original currency.
-      expenseId
-        ? Promise.resolve(null)
-        : readLastManualCurrency(accountId),
     ])
-      .then(
-        ([
-          loadedCategories,
-          loadedMerchants,
-          loadedExpense,
-          lastCurrency,
-        ]) => {
-          if (!active) {
-            return;
-          }
+      .then(([loadedCategories, loadedMerchants, loadedExpense]) => {
+        if (!active) {
+          return;
+        }
 
-          if (expenseId && !loadedExpense) {
-            setErrorMessage(t('editor.notFound'));
-            return;
-          }
+        if (expenseId && !loadedExpense) {
+          setErrorMessage(t('editor.notFound'));
+          return;
+        }
 
-          setCategories(loadedCategories);
-          setMerchants(loadedMerchants);
-          setExpense(loadedExpense);
-          if (!expenseId) {
-            setInitialCurrency(lastCurrency ?? homeCurrency);
-          }
-        },
-      )
+        setCategories(loadedCategories);
+        setMerchants(loadedMerchants);
+        setExpense(loadedExpense);
+      })
       .catch((error: unknown) => {
         console.error('Unable to load expense editor:', error);
         if (active) {
@@ -619,7 +627,40 @@ export function ExpenseEditorScreen({
     return () => {
       active = false;
     };
-  }, [accountId, expenseId, homeCurrency, t]);
+  }, [expenseId, t]);
+
+  // Resolve the remembered currency for every new-expense focus, before the
+  // form is shown. Editing keeps the expense's own currency and reads nothing.
+  useEffect(() => {
+    if (expenseId) {
+      return;
+    }
+
+    const session = currencySessionRef.current + 1;
+    currencySessionRef.current = session;
+    const focus = focusKey;
+    let active = true;
+
+    void (async () => {
+      const remembered =
+        sessionCurrencyRef.current ??
+        (await readLastManualCurrency(accountId));
+      // Drop a response from a focus session that a newer one has superseded.
+      if (!active || session !== currencySessionRef.current) {
+        return;
+      }
+      setInitialCurrency(remembered ?? homeCurrency);
+      setCurrencyResolvedFocus(focus);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [accountId, expenseId, focusKey, homeCurrency]);
+
+  // A new form is ready only once its currency is resolved for this focus.
+  const currencyReady =
+    expenseId !== undefined || currencyResolvedFocus === focusKey;
 
   if (loading) {
     return <LoadingScreen />;
@@ -644,6 +685,12 @@ export function ExpenseEditorScreen({
     );
   }
 
+  // Data is loaded and valid, but a new form still waits for its currency so it
+  // never renders with a currency carried over from an earlier focus.
+  if (!currencyReady) {
+    return <LoadingScreen />;
+  }
+
   return (
     <ExpenseForm
       accountId={accountId}
@@ -652,6 +699,7 @@ export function ExpenseEditorScreen({
       initialExpense={expense}
       initialMerchants={merchants}
       key={focusKey}
+      onManualCurrencySaved={handleManualCurrencySaved}
     />
   );
 }

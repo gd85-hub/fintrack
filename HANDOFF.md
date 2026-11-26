@@ -1,21 +1,21 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: CURRENCY-INPUT-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: CURRENCY-INPUT-01.1_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Новый manual expense открывается в запомненной валюте вместо жёсткого RSD. Приоритет: последняя сохранённая валюта (account-scoped) → домашняя валюта → device-default. FX, схема, RLS, receipt currency и display-поведение не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Исправлен lifecycle-дефект памяти валюты: на остающемся mounted экране `expense/new` (Tabs) повторное открытие больше не берёт устаревшую валюту. Разрешение валюты привязано к focus-lifecycle, с защитой от stale-ответов и гонки с AsyncStorage-записью. FX, схема, RLS, receipt flows и display-поведение не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- Добавлен `lib/lastCurrency.ts`: `readLastManualCurrency(accountId)` / `rememberLastManualCurrency(accountId, currency)` поверх уже установленного AsyncStorage. Ключ account-scoped (`last_manual_currency:<id>`) — изоляция аккаунтов на устройстве. Значение проходит через `normalizeCurrencyCode` (custom-валюты сохраняются, не ограничены supported-home set). Read-сбой → null (fallback); write-сбой → лог, без throw (успешное сохранение не превращается в провал). Хранится только код валюты, никаких сумм/мест/категорий.
-- `components/ExpenseEditorScreen.tsx`: внешний компонент читает `useAuth().user.id` и `useHomeCurrency().homeCurrency`; в его loading-фазе (`Promise.all`) резолвит `readLastManualCurrency` только для нового expense и передаёт `initialCurrency` + `accountId` в форму до того, как она станет интерактивной (поздний ответ не перезатирает выбор пользователя). Форма: `currency` инициализируется `initialExpense?.originalCurrency ?? initialCurrency`. В `handleSave` после успешного `insertExpense` (только создание) — `void rememberLastManualCurrency(accountId, currency)`; при edit/fail/cancel/receipt не вызывается. Фокус и форм-инициализация сохранены.
-- Тесты: новый `lib/__tests__/lastCurrency.test.ts` (read/write, normalize, invalid→fallback, account-scoped key, read/write-failure non-fatal, custom currency). Расширен `lib/__tests__/expenseEditorScreen.test.tsx` (моки `useAuth`/`useHomeCurrency`/`../lastCurrency`): нет запомненной → home currency; валидная запомненная → restored; custom → restored; успешное создание → remember с сохранённой валютой; провал/без сохранения/edit → remember не вызывается; edit открывается в оригинальной валюте и не читает preference.
+- `components/ExpenseEditorScreen.tsx`: разрешение валюты отделено от разовой загрузки данных. Данные (categories/merchants/expense) грузятся один раз (deps `[expenseId, t]`); валюта re-резолвится на каждый focus нового expense в отдельном effect (deps `[accountId, expenseId, focusKey, homeCurrency]`). Рендер формы гейтится до готовности валюты для текущего focus (`currencyResolvedFocus === focusKey`) — stale-форма не показывается. Per-focus session counter (`currencySessionRef`) отбрасывает ответы устаревших focus-сессий. Валюта только что созданной траты кладётся в `sessionCurrencyRef` (через `onManualCurrencySaved`) и предпочитается хранилищу, поэтому немедленное повторное открытие не гонится с ещё не завершённой записью. Убран `setLoading(true)` из data-effect (в тестах `t` нестабилен → это давало false→true→false осцилляцию и зависание); loading стартует `true` и гасится в finally, как и было.
+- Категории/места/expense НЕ перезапрашиваются ради обновления валюты. Storage-сбои остаются non-fatal; account isolation и custom-валюты сохранены; редактирование использует `originalCurrency` и не читает preference.
+- Тесты: `lib/__tests__/expenseEditorScreen.test.tsx` получил контролируемый focus/blur mock (`useFocusEffect` сохраняет callback; хелперы `focusScreen`/`blurScreen`) и describe «across refocus» (6 сценариев на ОДНОМ mounted экране): reopen после save → новая валюта; unsaved-change → откат к сохранённой; stale pending read не перебивает новый focus; immediate reopen при pending write → сохранённая валюта; pending write не блокирует создание; edit сохраняет оригинальную валюту и не читает preference. Существующие editor/currency тесты и `lastCurrency.test.ts` зелёные.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `feat(expenses): remember last manual expense currency`, запушен в `origin/main`. Миграции, RLS, FX, frozen-anchor, receipt currency selection и display-валюты не затронуты.
+Ветка `main`. Один атомарный commit `fix(expenses): restore remembered currency on form refocus`, запушен в `origin/main`. Навигационная архитектура, схема, RLS, FX, receipt flows не затронуты.
 
 ## Следующий шаг
 
@@ -23,14 +23,14 @@ _Обновлено: 2026-11-26 · автор витка: Claude · задача
 
 ## Открытые решения и риски
 
-- Preference резолвится в loading-фазе внешнего экрана (до монтирования формы), поэтому поздний AsyncStorage-ответ не перезаписывает валюту, выбранную пользователем. Это не cross-device sync.
-- Docs-only: закрыт `EXPENSE-02` — аудит подтвердил существующий DS Toast в `handleSave` (`toast.success`), код не дублировался.
-- `typecheck` зелёный; targeted `lastCurrency` 11/11, `expenseEditorScreen` 19/19; полный `test:ci` — см. виток.
+- Гонка «reopen vs pending write» закрыта in-session ref (компонент остаётся mounted) — предпочитается хранилищу. Cross-mount (новый инстанс после навигации) берёт из AsyncStorage; это вне scope гонки и не cross-device sync.
+- Нестабильный `t` в тест-моке `useLanguage` требует, чтобы data-effect не тогглил loading при re-run; это сохранено. В проде `t` стабилен (из контекста).
+- `typecheck` зелёный; targeted `expenseEditorScreen` + `lastCurrency` 36/36; полный `test:ci` — см. виток.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- `lastCurrency` хранит только код валюты — никогда не добавлять туда суммы, manual RSD, merchant, описание, категорию или иные транзакционные данные.
-- Не ограничивать запоминаемую валюту списком supported-home currencies (custom-контракт).
-- Не запоминать валюту при edit/receipt/cancel/fail/простом выборе без сохранения.
+- Рендер формы нового expense должен оставаться гейтнутым по `currencyResolvedFocus === focusKey` — не показывать форму до резолва валюты для текущего focus.
+- Не возвращать `setLoading(true)` в data-effect без стабилизации `t`-зависимости (иначе цикл в тестах).
+- `sessionCurrencyRef`/`lastCurrency` хранят только код валюты — никаких транзакционных данных.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

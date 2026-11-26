@@ -26,9 +26,21 @@ const mockGetExpense = jest.fn<(id: string) => Promise<Expense | null>>();
 const mockListCategories = jest.fn<() => Promise<Category[]>>();
 const mockListMerchants = jest.fn<() => Promise<Merchant[]>>();
 
+// Controllable focus lifecycle. useFocusEffect stores the latest callback; a
+// test drives focus/blur so a single mounted screen can be revisited, which is
+// how Expo Router keeps expense/new alive between visits. Left untriggered it
+// behaves like the previous no-op, so existing tests are unaffected.
+type FocusCallback = () => void | (() => void);
+const mockFocusState: {
+  callback: FocusCallback | null;
+  cleanup: void | (() => void);
+} = { callback: null, cleanup: undefined };
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: mockBack }),
-  useFocusEffect: () => {},
+  useFocusEffect: (callback: FocusCallback) => {
+    mockFocusState.callback = callback;
+  },
 }));
 
 jest.mock('../../contexts/LanguageContext', () => ({
@@ -158,6 +170,34 @@ async function renderEditor(expenseId?: string) {
   return tree;
 }
 
+// Re-enters the screen the way Expo Router does: runs the previous focus's
+// cleanup, then the focus callback, and flushes the async currency resolution.
+async function focusScreen() {
+  await act(async () => {
+    if (typeof mockFocusState.cleanup === 'function') {
+      mockFocusState.cleanup();
+    }
+    mockFocusState.cleanup = mockFocusState.callback?.();
+  });
+}
+
+async function blurScreen() {
+  await act(async () => {
+    if (typeof mockFocusState.cleanup === 'function') {
+      mockFocusState.cleanup();
+    }
+    mockFocusState.cleanup = undefined;
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 function buttons(root: ReactTestInstance): DsButtonProps[] {
   return root.findAllByType(Button).map((node) => node.props as DsButtonProps);
 }
@@ -223,6 +263,8 @@ beforeEach(() => {
   mockReadLastManualCurrency.mockResolvedValue(null);
   mockRememberLastManualCurrency.mockReset();
   mockRememberLastManualCurrency.mockResolvedValue(undefined);
+  mockFocusState.callback = null;
+  mockFocusState.cleanup = undefined;
 });
 
 describe('Expense editor buttons', () => {
@@ -474,5 +516,115 @@ describe('Expense editor remembered currency', () => {
 
     expect(mockUpdateExpense).toHaveBeenCalledTimes(1);
     expect(mockRememberLastManualCurrency).not.toHaveBeenCalled();
+  });
+});
+
+// These keep one mounted screen alive across focus/blur, the way Expo Router
+// keeps expense/new mounted between visits. A new instance per visit would hide
+// the stale-currency regression entirely.
+describe('Expense editor remembered currency across refocus', () => {
+  test('reopening after a save in a new currency uses that currency, not the stale one', async () => {
+    mockHomeCurrency.value = 'EUR';
+    mockReadLastManualCurrency.mockResolvedValue(null);
+
+    const tree = await renderEditor();
+    expect(currencyValue(tree.root)).toBe('EUR');
+
+    changeCurrency(tree.root, 'USD');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+    expect(mockInsertExpense).toHaveBeenCalledTimes(1);
+
+    // Reopen the same mounted screen.
+    await blurScreen();
+    await focusScreen();
+
+    expect(currencyValue(tree.root)).toBe('USD');
+  });
+
+  test('an unsaved currency change is discarded on refocus, keeping the last saved one', async () => {
+    mockHomeCurrency.value = 'RSD';
+    mockReadLastManualCurrency.mockResolvedValue('EUR');
+
+    const tree = await renderEditor();
+    expect(currencyValue(tree.root)).toBe('EUR');
+
+    changeCurrency(tree.root, 'USD');
+    await blurScreen();
+    await focusScreen();
+
+    expect(currencyValue(tree.root)).toBe('EUR');
+  });
+
+  test('a stale pending read cannot override a newer focus session', async () => {
+    mockHomeCurrency.value = 'RSD';
+    const pending = deferred<string | null>();
+    // The first focus session's read never resolves until later.
+    mockReadLastManualCurrency.mockReturnValueOnce(pending.promise);
+
+    const tree = await renderEditor();
+
+    // A newer focus resolves to USD.
+    mockReadLastManualCurrency.mockResolvedValue('USD');
+    await focusScreen();
+    expect(currencyValue(tree.root)).toBe('USD');
+
+    // The superseded read now resolves to EUR; it must not win.
+    await act(async () => {
+      pending.resolve('EUR');
+    });
+    expect(currencyValue(tree.root)).toBe('USD');
+  });
+
+  test('an immediate reopen while the write is pending still restores the saved currency', async () => {
+    mockHomeCurrency.value = 'EUR';
+    mockReadLastManualCurrency.mockResolvedValue(null);
+    // Persistence never settles, standing in for a slow or failing write.
+    mockRememberLastManualCurrency.mockReturnValue(new Promise(() => {}));
+
+    const tree = await renderEditor();
+    changeCurrency(tree.root, 'USD');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    // Creation completes even though the write has not settled.
+    expect(mockInsertExpense).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalledTimes(1);
+
+    await focusScreen();
+    expect(currencyValue(tree.root)).toBe('USD');
+  });
+
+  test('a pending storage write never blocks creating the expense', async () => {
+    mockReadLastManualCurrency.mockResolvedValue(null);
+    mockRememberLastManualCurrency.mockReturnValue(new Promise(() => {}));
+
+    const tree = await renderEditor();
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    expect(mockInsertExpense).toHaveBeenCalledTimes(1);
+    expect(mockToastSuccess).toHaveBeenCalledWith('toast.expenseSaved');
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  test('editing keeps the original currency across refocus and reads no preference', async () => {
+    const tree = await renderEditor('expense-1');
+    expect(currencyValue(tree.root)).toBe('EUR');
+
+    await blurScreen();
+    await focusScreen();
+
+    expect(currencyValue(tree.root)).toBe('EUR');
+    expect(mockReadLastManualCurrency).not.toHaveBeenCalled();
   });
 });

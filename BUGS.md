@@ -46,6 +46,13 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Fixed
 
+### BUG-12 · ✅ Remembered manual currency went stale on a re-opened editor
+
+- **Area:** manual expense editor (`components/ExpenseEditorScreen.tsx`)
+- **Evidence:** `expense/new` is an Expo Router `Tabs.Screen`, so the editor can stay mounted between visits. `useFocusEffect` bumped `focusKey` to remount `ExpenseForm`, but the remembered-currency read lived in a `useEffect` keyed on `[accountId, expenseId, homeCurrency, t]` — not on focus. So after saving in a new currency and reopening the same mounted screen, the form could reinitialize with the previous visit's stale currency. Existing tests mocked `useFocusEffect` as a no-op and never exercised this lifecycle.
+- **Resolution:** currency resolution is now tied to the focus lifecycle. The one-time load of categories/merchants/expense is separated from a focus-driven currency read that re-resolves on every new-expense focus. The form render is gated until the currency is resolved for the current focus (`currencyResolvedFocus === focusKey`), so a just-focused form never shows a currency carried over from an earlier visit. A per-focus session counter drops superseded async reads, and the currency of a just-created expense is held in an in-session ref preferred over storage, so an immediate reopen cannot race the still-pending AsyncStorage write. Storage failures stay non-fatal; account isolation, custom currencies and existing-expense editing are preserved; categories/merchants/expense are not re-fetched merely to refresh the currency.
+- **Coverage:** controllable focus/blur lifecycle on one mounted instance — save in a new currency then reopen uses it; an unsaved change is discarded on refocus; a stale pending read cannot override a newer focus; an immediate reopen during a pending write still restores the saved currency; a pending/failing write never blocks creation; editing keeps its original currency and reads no preference.
+
 ### BUG-11 · ✅ Reports gave no way to retry a failed data load
 
 - **Area:** Reports (`app/(app)/reports.tsx`)
