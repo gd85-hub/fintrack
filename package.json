@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "validate:export": "node scripts/export-validation.js",
     "typecheck": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "test:ci": "jest --runInBand --testTimeout=30000"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

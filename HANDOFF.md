@@ -1,36 +1,35 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: MONEY-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: CI-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Ввод денежных сумм теперь принимает корректно сгруппированный сербский формат. Модель integer cents, FX, схема и UI-экраны не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+В репозитории появился лёгкий GitHub Actions CI: typecheck + Jest на каждый push/PR в `main`. Прикладной код, сборка и деплой не затрагиваются. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `parseAmountInput` (`lib/money.ts`) переписан под явный контракт разбора. Принимаются: ungrouped (`1234`, `1234,56`, `1234.56`, `12,5`), dot-grouping с запятой-десятичным (`1.234`, `1.234,56`, `12.345,67`, `1.234.567,89`) и space-grouping с запятой или точкой (`1 234`, `1 234,56`, `1 234.56`, `1 234 567,89`), включая NBSP ` ` и narrow NBSP ` `. Разделители удаляются только после подтверждения формы; десятичный разделитель нормализуется; центы собираются без floating-point арифметики.
-- Отклоняются: пустая строка, `-5` (возвраты вне scope), `12,555`, `1.23,45`, `1.234,567`, `12.34.567`, `1..234`, `1 23,45`, `1 234 56`, trailing/leading separator (`12,`, `.5`), comma-thousands (`1,234.56`), буквы/символы валют и значения свыше `Number.MAX_SAFE_INTEGER` центов.
-- `lib/__tests__/money.test.ts` переведён на табличные accepted/rejected кейсы (NBSP, zero, leading zeros, MAX_SAFE boundary, overflow). Прежние ungrouped-формы и отклонение отрицательных сохранены.
-- `BUG-6` перенесён из Open в Fixed в `BUGS.md`.
-- UI не менялся: поля суммы (`ExpenseEditorScreen.tsx`, `receipt/review.tsx`) хранят сырой текст, валидируют через `parseAmountInput`, `inputMode="decimal"`, `maxLength={20}` (длиннейший вход `1.234.567,89` = 12 символов), без фильтра, срезающего разделители — вставка/ввод поддерживаемых символов уже технически возможны.
+- Добавлен `.github/workflows/ci.yml`: один job `typecheck-and-test` на `ubuntu-latest`, Node `24` через `actions/setup-node@v4` (npm cache), шаги checkout → setup-node → `npm ci` → `npm run typecheck` → `npm run test:ci`. Триггеры: `push` в `main` и `pull_request` в `main`. `permissions: contents: read`, `timeout-minutes: 15`, concurrency `ci-${{ github.workflow }}-${{ github.ref }}` с `cancel-in-progress: true`. Без матриц, build, EAS, миграций, deploy, secrets и coverage-порогов.
+- В `package.json` добавлен скрипт `"test:ci": "jest --runInBand --testTimeout=30000"`; `"test": "jest"` оставлен для локальной разработки без изменений.
+- Совместимость с Node 24 подтверждена: все `engines` из `package-lock.json` (строжайший — `^24.3.0`) выполняются на локальном Node 24.18.0; зависимости не менялись.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(money): accept grouped Serbian amounts`, запушен в `origin/main`. Приложение, миграции, Edge Functions, схема и зависимости не затронуты.
+Ветка `main`. Один атомарный commit `ci: add automated typecheck and tests`, запушен в `origin/main`. Application code, схема, миграции, Edge Functions и зависимости не затронуты.
 
 ## Следующий шаг
 
-Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy (Chrome Desktop — реальное скачивание; физический iPhone Safari и installed PWA — Share/Save, отмена и fallback).
+Убедиться, что первый запуск workflow на GitHub зелёный (см. статус в отчёте витка). Затем вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy.
 
 ## Открытые решения и риски
 
-- Контракт разбора намеренно строгий: смешение точечной и пробельной группировки в одном числе принимается только через нормализованные пробелы (все пробел-разделители → ASCII-пробел); точечная группировка остаётся отдельной. Произвольные malformed значения не угадываются.
-- `typecheck` зелёный; targeted `money.test.ts` 67/67; полный Jest 897/897 за ~8.4 c с дефолтным timeout — известный cold-start timeout `expenseEditorScreen` в этот раз не воспроизвёлся, `--testTimeout=30000` не потребовался.
+- CI намеренно минимальный: только typecheck и Jest, без build/Android/Web/EAS/миграций. Расширение (lint, coverage, матрицы) — отдельная задача.
+- `test:ci` использует `--runInBand` и `--testTimeout=30000` — последовательно и стабильно, но медленнее (~52 c локально против ~8 c у параллельного `npm test`); это осознанный размен ради отсутствия случайного red build из-за cold-start timeout первого render-теста.
+- Локально: `npm ci` ok, `typecheck` зелёный, `test:ci` 897/897, YAML распарсен `js-yaml` (уже транзитивная зависимость, ничего не ставилось).
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не трогать `formatMoney`, `centsToInput`, FX conversion, `decimalToCents` и схему — задача касалась только `parseAmountInput`.
-- Не вводить поддержку отрицательных сумм / возвратов здесь — это отдельная продуктовая/схемная задача.
+- Не добавлять в CI build, Android, Web, EAS, Supabase migrations, deploy, secrets, env, coverage-порог, lint или новые npm-зависимости без отдельной задачи.
+- Не менять `"test": "jest"` — это локальный быстрый прогон.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.
