@@ -566,6 +566,7 @@ export const en = {
     exporting: 'Exporting…',
     savePdf: 'Save PDF',
     failed: "Couldn't export. Try again.",
+    loadFailed: "Couldn't load report data. Try again.",
     shareUnavailable: "Sharing isn't available on this device.",
     unavailable: 'Unavailable',
     topCategories: 'Top categories',

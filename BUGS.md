@@ -46,6 +46,13 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Fixed
 
+### BUG-11 · ✅ Reports gave no way to retry a failed data load
+
+- **Area:** Reports (`app/(app)/reports.tsx`)
+- **Evidence:** Home, Analytics, Categories and Merchants each offer a Retry action when a data load fails; Reports did not. Its load-error `StatusBanner` had no action, so a transient failure left the screen stuck with no recovery short of navigating away and back. The failure also reused `export.failed` ("couldn't export"), which mislabels a failed data load as a failed export.
+- **Resolution:** Reports now follows the established retry pattern — a `retryKey` in the data-loading focus-effect dependencies, a Retry action on the load-error banner (`home.retry`) that refetches both `listExpensesByMonth` and `listCategoriesForManagement` for the selected month, clears the error and shows the loading indicator, and keeps export actions unavailable until both requests succeed. A dedicated `export.loadFailed` string describes the data-load failure; `export.failed` is unchanged for real export failures. The active-request cancellation guard and prepared-PDF lifecycle are preserved, and Retry never triggers CSV/XLSX/PDF generation.
+- **Coverage:** a failed load exposes Retry with the data-load copy; Retry refetches both datasets for the selected month; loading returns and export stays unavailable during retry; a successful retry restores the export actions or the empty state; repeated failure stays recoverable; Retry triggers no export delivery.
+
 ### BUG-10 · ✅ Failed receipt save could leave an orphan merchant
 
 - **Area:** receipt save (`lib/db/fiscalReceipts.ts` → `saveFiscalReceipt`)

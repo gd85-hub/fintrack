@@ -66,6 +66,7 @@ export default function ReportsScreen() {
   );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [preparedPdf, setPreparedPdf] = useState<PreparedPdfExport | null>(
@@ -130,7 +131,7 @@ export default function ReportsScreen() {
         .catch((error: unknown) => {
           console.error('Unable to load expenses for export:', error);
           if (active) {
-            setLoadError(t('export.failed'));
+            setLoadError(t('export.loadFailed'));
           }
         })
         .finally(() => {
@@ -142,7 +143,7 @@ export default function ReportsScreen() {
       return () => {
         active = false;
       };
-    }, [t, visibleMonth]),
+    }, [retryKey, t, visibleMonth]),
   );
 
   const hasExpenses = expenses.length > 0;
@@ -361,7 +362,14 @@ export default function ReportsScreen() {
         ) : null}
 
         {loadError ? (
-          <StatusBanner message={loadError} tone="error" />
+          <StatusBanner
+            action={{
+              label: t('home.retry'),
+              onPress: () => setRetryKey((current) => current + 1),
+            }}
+            message={loadError}
+            tone="error"
+          />
         ) : null}
 
         {!loading && !loadError && !hasExpenses ? (

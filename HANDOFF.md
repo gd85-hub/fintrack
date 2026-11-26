@@ -1,21 +1,22 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: RECEIPT-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: RETRY-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-`saveFiscalReceipt` теперь удаляет merchant, созданный именно этим save-flow, если сохранение чека не завершилось успешно. Схема, RLS, FX, receipt parsing/editing, merge/duplicate logic и UI не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Экран «Отчёты» получил Retry при ошибке загрузки данных — теперь все пять аудированных read-экранов (Home, Analytics, Categories, Merchants, Reports) имеют load-error recovery. Экспортные форматы/builders/delivery, FX, схема, RLS, PDF и другие экраны не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `lib/db/fiscalReceipts.ts` → `saveFiscalReceipt`: добавлен `createdMerchantId` (non-null только когда merchant создан этим вызовом). В compensating cleanup (`catch`): если receipt создавался — чистятся expenses, затем receipt (прежняя последовательность), с флагом `dependentCleanupOk`. Созданный merchant удаляется (`delete().eq('id').eq('user_id')`) только когда `createdMerchantId !== null` и зависимые строки убраны успешно (или receipt вообще не создавался). Existing merchant (`{ existingId }`) не трогается. Ошибка merchant-cleanup логируется (`Unable to clean up newly created merchant:`) и не заменяет исходную save-ошибку.
-- Тесты: в `lib/__tests__/receiptDisplayNames.test.ts` добавлен блок `saveFiscalReceipt failure cleanup` (A–E): new+receipt-fail → merchant удалён, expenses insert не вызван; new+expense-fail → cleanup expenses/receipt → merchant удалён; existing+expense-fail → merchant delete не вызван; dependent-cleanup-fail → merchant сохранён; merchant-cleanup-fail → исходная ошибка всё равно брошена (+ scoped `console.error` spy с restore).
-- `BUGS.md`: добавлен `BUG-10` (fixed).
+- `app/(app)/reports.tsx`: добавлен `retryKey` (в зависимостях data-loading focus-effect); на load-error `StatusBanner` добавлен action `home.retry` → `setRetryKey(+1)`, который перезапрашивает `listExpensesByMonth(visibleMonth)` и `listCategoriesForManagement()` за выбранный месяц, чистит ошибку и показывает индикатор загрузки. Сообщение загрузки переведено с `export.failed` на новый `export.loadFailed`. Экспорт остаётся недоступен (`!loading && !loadError`) до успеха обоих запросов. Active-request cancellation guard и prepared-PDF lifecycle сохранены; Retry не запускает CSV/XLSX/PDF.
+- i18n: добавлен `export.loadFailed` в `ru.ts`/`en.ts` (EN «Couldn't load report data. Try again.», RU «Не удалось загрузить данные отчёта. Попробуйте ещё раз.»); `export.failed` без изменений.
+- Тесты: новый `lib/__tests__/reportsRetry.test.tsx` рендерит реальный экран с моками db/exportDelivery/exportPdfIntegration и `useFocusEffect` как effect. Покрыто: failed load → Retry с `export.loadFailed`; Retry рефетчит оба датасета за выбранный месяц; во время retry загрузка восстановлена и экспорт недоступен; успешный retry восстанавливает экспорт или empty-state; повторный сбой остаётся recoverable; Retry не вызывает export delivery.
+- `BUGS.md`: добавлен `BUG-11` (fixed).
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(receipts): clean up orphan merchants on failed save`, запушен в `origin/main`. Схема, миграции, RLS, FX, receipt parsing/editing, merge/duplicate detection и UI не затронуты.
+Ветка `main`. Один атомарный commit `fix(reports): allow retry after data loading failure`, запушен в `origin/main`. Экспорт, FX, схема, RLS, другие экраны и StatusBanner-компонент не затронуты.
 
 ## Следующий шаг
 
@@ -23,14 +24,13 @@ _Обновлено: 2026-11-26 · автор витка: Claude · задача
 
 ## Открытые решения и риски
 
-- Это НЕ транзакция: при частичном сбое cleanup (expenses/receipt) merchant сознательно сохраняется, чтобы не оставить зависимую строку без ссылки. Полная SQL-транзакция save — отдельная архитектурная задача, если понадобится.
-- Docs-only: закрыты два audit-only backlog-пункта — `EXPENSE-01` (RLS уже ограничивает `user_id = auth.uid()`, второй filter не добавлялся) и `CATEGORY-01` (repository trim/required валидация есть; дубли имён намеренно разрешены и решаются через Merge). Application code для них не менялся.
-- `typecheck` зелёный; targeted `receiptDisplayNames` 10/10; полный `test:ci` — см. ниже.
+- Docs-only: закрыт `DELETE-01` — аудит подтвердил `ConfirmDialog` на всех необратимых удалениях (покупка на Home, ручная трата, категория, место); код не менялся.
+- Retry переиспользует существующий паттерн (Home/Analytics); StatusBanner не редизайнился, его опциональный `action` уже поддерживался.
+- `typecheck` зелёный; targeted `reportsRetry` 6/6; полный `test:ci` — см. виток.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не превращать `saveFiscalReceipt` в SQL-транзакцию/RPC без отдельной задачи; не менять merge/duplicate logic, `MerchantAlreadyExistsError`, receipt parsing/editing, FX, схему, RLS, UI.
-- Не удалять existing merchant (`{ existingId }`) в cleanup ни при каких обстоятельствах.
-- Не удалять созданный merchant, если cleanup зависимых строк не удался.
+- Не менять export builders/delivery, filenames, FX, схему, RLS, PDF-движок, другие экраны и `StatusBanner`-компонент.
+- Не использовать `export.failed` для ошибок загрузки данных — для этого есть `export.loadFailed`.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.
