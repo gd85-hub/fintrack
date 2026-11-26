@@ -10,6 +10,7 @@ import {
   formatMoney,
   formatRate,
   isCurrency,
+  isPositiveCents,
   normalizeCurrencyCode,
   parseAmountInput,
 } from '../money';
@@ -102,6 +103,27 @@ describe('parseAmountInput', () => {
 
   it.each(rejected)('rejects %p', (input) => {
     expect(parseAmountInput(input)).toBeNull();
+  });
+});
+
+describe('isPositiveCents', () => {
+  const accepted: readonly number[] = [1, 100, 123456, Number.MAX_SAFE_INTEGER];
+
+  it.each(accepted)('accepts %p', (value) => {
+    expect(isPositiveCents(value)).toBe(true);
+  });
+
+  const rejected: readonly [string, number][] = [
+    ['zero', 0],
+    ['negative', -1],
+    ['fractional', 1.5],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['above MAX_SAFE_INTEGER', Number.MAX_SAFE_INTEGER + 1],
+  ];
+
+  it.each(rejected)('rejects %s', (_label, value) => {
+    expect(isPositiveCents(value)).toBe(false);
   });
 });
 

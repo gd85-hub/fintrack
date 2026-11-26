@@ -262,6 +262,53 @@ describe('receipt display-name persistence', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  test('rejects a receipt save with a zero-amount item before any write', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+    ratesMock.mockResolvedValue({
+      date: '2026-08-02',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: {
+          ok: true,
+          source: 'fiscal_qr',
+          merchantName: 'UNIVEREXPORT',
+          taxId: '101692669',
+          occurredAt: '2026-08-02T12:00:00+02:00',
+          totalCents: 10_000,
+          currency: 'RSD',
+          paymentType: 'Карточка',
+          items: [],
+        },
+        merchant: { existingId: 'merchant-1' },
+        expenses: [
+          {
+            amountCents: 10_000,
+            categoryId: 'groceries',
+            description: 'Хлеб',
+            rawName: 'HLEB',
+          },
+          {
+            amountCents: 0,
+            categoryId: 'groceries',
+            description: 'Пустая позиция',
+            rawName: 'EMPTY',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Исправьте суммы выбранных позиций.');
+
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
   test('creates one brand merchant and keeps each branch label', async () => {
     getSessionMock.mockImplementation(async () => ({
       data: { session: { user: { id: 'user-1' } } },

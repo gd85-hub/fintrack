@@ -7,6 +7,7 @@ import {
   decimalToCents,
   distributeCents,
   isCurrency,
+  isPositiveCents,
   normalizeCurrencyCode,
 } from '../money';
 import {
@@ -239,6 +240,14 @@ export async function saveFiscalReceipt(
 ): Promise<void> {
   if (input.expenses.length === 0) {
     throw new Error('Выберите хотя бы одну позицию чека.');
+  }
+  // Enforce the positive integer-cent invariant before any FX/network call,
+  // merchant creation or receipt/expense rows, so an invalid amount can never
+  // leave a partial receipt behind.
+  if (
+    !input.expenses.every((expense) => isPositiveCents(expense.amountCents))
+  ) {
+    throw new Error('Исправьте суммы выбранных позиций.');
   }
 
   const occurredOn = parsedReceiptDate(input.receipt);
@@ -610,8 +619,7 @@ function validateReceiptEditExpenses(
     if (
       expense.included &&
       (expense.amountCents === null ||
-        !Number.isSafeInteger(expense.amountCents) ||
-        expense.amountCents <= 0)
+        !isPositiveCents(expense.amountCents))
     ) {
       throw new Error('Исправьте суммы включённых позиций.');
     }

@@ -6,6 +6,7 @@ import {
   centsToDecimal,
   decimalToCents,
   isCurrency,
+  isPositiveCents,
   normalizeCurrencyCode,
 } from '../money';
 import { supabase } from '../supabase';
@@ -118,6 +119,9 @@ export async function insertExpense(input: ExpenseInput): Promise<void> {
   if (!currency) {
     throw new Error('Укажите трёхбуквенный код валюты.');
   }
+  if (!isPositiveCents(input.amountCents)) {
+    throw new Error('Сумма должна быть больше нуля.');
+  }
   const [userId, converted] = await Promise.all([
     authenticatedUserId(),
     conversionPayload(input, currency),
@@ -150,6 +154,9 @@ export async function updateExpense(
   const currency = normalizeCurrencyCode(input.currency);
   if (!currency) {
     throw new Error('Укажите трёхбуквенный код валюты.');
+  }
+  if (!isPositiveCents(input.amountCents)) {
+    throw new Error('Сумма должна быть больше нуля.');
   }
   const { data, error: fetchError } = await supabase
     .from('expenses')

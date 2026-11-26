@@ -109,6 +109,16 @@ export function roundHalfUp(value: number): number {
   return Math.floor(value + 0.5);
 }
 
+// The write-layer invariant for a stored expense amount: a positive, exact
+// number of cents. Fintrack keeps money in integer cents and a user expense is
+// strictly greater than zero (refunds/negatives are out of scope). This is the
+// single contract reused by expense and receipt write paths; it is NOT the
+// reports-only exportPdfModel.assertCents contract, and it deliberately differs
+// from convertAll's input, where zero is a valid amount for pure conversion.
+export function isPositiveCents(value: number): boolean {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
 // Parses a user-entered amount into integer cents, or null when the input is
 // not an unambiguously valid unsigned amount. Accepted shapes: ungrouped
 // values, Serbian dot grouping (comma decimal), and space grouping (comma or

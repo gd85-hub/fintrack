@@ -272,4 +272,25 @@ describe('merchant usage recency', () => {
     expect(ratesMock).not.toHaveBeenCalled();
     expect(fromMock).not.toHaveBeenCalled();
   });
+
+  test('rejects a zero-amount insert before any FX or write', async () => {
+    await expect(
+      insertExpense({ ...input, amountCents: 0 }),
+    ).rejects.toThrow('Сумма должна быть больше нуля.');
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects an update with a non-safe-integer amount before any read or write', async () => {
+    await expect(
+      updateExpense('expense-1', {
+        ...input,
+        amountCents: Number.MAX_SAFE_INTEGER + 1,
+      }),
+    ).rejects.toThrow('Сумма должна быть больше нуля.');
+    expect(ratesMock).not.toHaveBeenCalled();
+    expect(anchorRateMock).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
+  });
 });

@@ -1,34 +1,38 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: BACKLOG-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: EXPENSE-AMOUNT-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-В `BACKLOG.md` заведена постоянная очередь «Small high-value contributions» — компактная таблица маленьких низкорисковых улучшений, к которой возвращаемся между большими фичами. Это docs-only виток: прикладной код не менялся. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+На write-слое введён единый инвариант: сохраняемая сумма расхода — строго положительное safe-integer число центов. Применён к ручным тратам и новым позициям чека. Схема, FX-формулы, refunds-модель и UI не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- Добавлен новый раздел `# Small high-value contributions` в конец `BACKLOG.md` (существующий backlog не тронут, только дополнен): таблица ID/Status/Area/Value/Size/What-Why + правила ведения очереди.
-- Отмечены как ✅ Done: TEMP-01 (`2b8bd4b`), MONEY-01 (`b09e395`), CI-01 (`b48708d`), REPORTS-UI-01 (`b4e7e69`), MERCHANT-01 (`5657892`). Остальные — ⬜ Todo или 🔎 Verify first.
-- `CHANGELOG.md` — короткая запись в `### Changed`. `BUGS.md` не менялся.
+- В `lib/money.ts` добавлен чистый helper `isPositiveCents(value): boolean` = `Number.isSafeInteger(value) && value > 0`. Это write-layer contract, отдельный от reports-only `exportPdfModel.assertCents`; `convertAll` сознательно не трогался (для чистой конверсии ноль допустим).
+- `lib/db/expenses.ts`: `insertExpense` и `updateExpense` отклоняют невалидную сумму (`Сумма должна быть больше нуля.`) сразу после проверки валюты — **до** FX (`ratesForExpense`/`anchorRateForExpense`), чтения существующей строки и записи в Supabase.
+- `lib/db/fiscalReceipts.ts`: `saveFiscalReceipt` проверяет каждую `input.expenses[].amountCents` через `isPositiveCents` сразу после проверки непустого списка — **до** FX, создания merchant и любых receipt/expense rows (partial receipt не создаётся). Сообщение `Исправьте суммы выбранных позиций.`
+- `updateFiscalReceipt`/`validateReceiptEditExpenses`: поведение и сообщение не менялись; только убрано дублирование — `!Number.isSafeInteger(x) || x <= 0` заменено на `!isPositiveCents(x)` при сохранённой `=== null` проверке (для числа это тождественно).
+- Тесты: `money.test.ts` — unit-таблица helper (accepted `1`/`100`/`MAX_SAFE_INTEGER`; rejected `0`/`-1`/`1.5`/`NaN`/`Infinity`/`MAX_SAFE+1`); `merchantRecency.test.ts` — insert `0` и update overflow отклоняются до FX/записи (`fromMock` не вызван); `receiptDisplayNames.test.ts` — receipt-item `0` отклоняется до любого write.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `docs(backlog): add small high-value contribution queue`, запушен в `origin/main`. Изменены только `.md`-файлы.
+Ветка `main`. Один атомарный commit `fix(expenses): enforce positive amounts on write`, запушен в `origin/main`. Схема, миграции, FX-формулы, currency support, receipt reconciliation, UI, export и analytics не затронуты.
 
 ## Следующий шаг
 
-Брать задачи из очереди по одной отдельными task prompt. 🔎 Verify first нельзя реализовывать без аудита текущего кода. Параллельно остаётся висящий ручной этап REPORTS-02.3 (проверка Web PDF после отдельного Web deploy).
+Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy.
 
 ## Открытые решения и риски
 
-- Очередь — живой документ: Status обновляется по мере выполнения, подтверждённые дефекты уходят в `BUGS.md`, выросшие до schema/feature задачи — в основной backlog.
-- Production-тесты не запускались: меняются только `.md` (разрешено правилами проекта).
+- DB constraint `original_amount >= 0` по-прежнему допускает ноль на уровне БД — это осознанно не трогалось (задача без schema/migrations); гарантия обеспечивается приложением на write-слое.
+- `convertAll` оставлен non-negative (ноль валиден для чистой математики); инвариант применяется только к financial write paths.
+- `typecheck` зелёный; targeted money/expense/receipt тесты зелёные; полный `test:ci` 916/916.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не удалять `✅ Done` из очереди — это история небольших improvements.
-- Не менять существующие backlog priorities/формулировки без необходимости; новый раздел дополняет, а не заменяет.
+- Не менять `convertAll` на positive-only без аудита всех его callers; ноль там валиден.
+- Не трогать DB schema/migrations, FX-формулы, refunds-модель, receipt reconciliation, UI, export, analytics.
+- `isPositiveCents` — единый write-invariant; не заводить параллельные проверки с другим контрактом.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.
