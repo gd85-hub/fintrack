@@ -46,6 +46,13 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Fixed
 
+### BUG-10 · ✅ Failed receipt save could leave an orphan merchant
+
+- **Area:** receipt save (`lib/db/fiscalReceipts.ts` → `saveFiscalReceipt`)
+- **Evidence:** a new merchant was inserted before the `try/catch` that writes the receipt and expense rows, but the compensating cleanup only deleted the expenses and receipt. A failed receipt insert left an empty merchant with nothing cleaned up; a failed expense insert cleaned the receipt but kept the new merchant. Both left an orphan place in the list, and a retry could then collide with the duplicate merchant.
+- **Resolution:** `saveFiscalReceipt` now tracks whether this call created the merchant (`createdMerchantId`). On a failed save the compensating cleanup deletes that merchant, scoped by `id` and `user_id` — but only when it is safe: either the receipt was never created, or its dependent rows were cleaned up successfully. If a dependent cleanup step itself fails, the merchant is kept so a row that may still reference it is not orphaned worse. An existing merchant passed via `{ existingId }` is never deleted. A failing merchant cleanup is logged and never replaces the original save error.
+- **Coverage:** new merchant + receipt-insert failure (merchant removed, no expense insert); new merchant + expense-insert failure (expenses then receipt cleaned, then merchant removed); existing merchant + expense failure (no merchant delete); a failing dependent cleanup (merchant kept); a failing merchant cleanup (original error still thrown). Not a transaction/RPC — a full SQL-transaction save remains a separate architectural task.
+
 ### BUG-9 · ✅ Management/reference reads could stop at the PostgREST row limit
 
 - **Area:** category & merchant management (usage counts) and category/merchant merge/delete reference snapshots

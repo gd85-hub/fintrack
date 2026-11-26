@@ -1,23 +1,21 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: PAGINATION-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: RECEIPT-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Оставшиеся unpaginated чтения больших пользовательских коллекций (management usage counts и merge/delete reference snapshots) переведены на общий `fetchAllRows`. Это расширяет BUG-7 (Home/Analytics/Reports) на management/merge/delete пути. Схема, RLS, mutation/restore семантика, pagination strategy (offset) и Home/Analytics/Reports не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+`saveFiscalReceipt` теперь удаляет merchant, созданный именно этим save-flow, если сохранение чека не завершилось успешно. Схема, RLS, FX, receipt parsing/editing, merge/duplicate logic и UI не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `lib/db/categories.ts`: `listCategoriesForManagement` читает expense-references через `fetchAllRows` (`select('id,category_id')`, `eq('user_id')`, `order('id')`, `range`); список категорий остаётся single-read (малый справочник). `loadCategoryReferences` (expenses/subscriptions/item_category_rules) переписан на `fetchAllRows` с теми же фильтрами + `order('id')`/`range`. Тип `ExpenseCategoryReferenceRow` расширен до `id,category_id`.
-- `lib/db/merchants.ts`: `listMerchantsForManagement` читает expense-references через `fetchAllRows` (`select('id,merchant_id')`, явный `eq('user_id')` для consistency, `not('merchant_id','is',null)`, `order('id')`, `range`). `loadMerchantReferences` (expenses/receipts/subscriptions) переписан на `fetchAllRows` + `order('id')`/`range`. Тип `ExpenseMerchantReferenceRow` расширен до `id,merchant_id`.
-- Mutation/restore код (`.update()`/`.delete()` и compensating cleanup) не тронут — ему теперь доступен полный snapshot. Контракт `fetchAllRows` сохранён: ошибка любой страницы бросается, merge/delete не начинает мутации.
-- Тесты: расширены `categoryManagement.test.ts` и `merchantManagement.test.ts` table-keyed dispatch-моками (paginating clients, stateless по `from`, с `serverLimit`/`errorFrom`). Добавлены: multi-page usage count (category + merchant), multi-page merge `affectedExpenses` (category + merchant), later-page error → без мутаций (category + merchant). `pagination.test.ts` (контракт `fetchAllRows`) не менялся.
-- `BUGS.md`: добавлен `BUG-9` (fixed). Заодно stale `BUG-7 Commit: PENDING` заменён на фактический `8f27e38` (коммит, добавивший `lib/db/pagination.ts`) — это закрывает backlog `BUGDOC-01`.
+- `lib/db/fiscalReceipts.ts` → `saveFiscalReceipt`: добавлен `createdMerchantId` (non-null только когда merchant создан этим вызовом). В compensating cleanup (`catch`): если receipt создавался — чистятся expenses, затем receipt (прежняя последовательность), с флагом `dependentCleanupOk`. Созданный merchant удаляется (`delete().eq('id').eq('user_id')`) только когда `createdMerchantId !== null` и зависимые строки убраны успешно (или receipt вообще не создавался). Existing merchant (`{ existingId }`) не трогается. Ошибка merchant-cleanup логируется (`Unable to clean up newly created merchant:`) и не заменяет исходную save-ошибку.
+- Тесты: в `lib/__tests__/receiptDisplayNames.test.ts` добавлен блок `saveFiscalReceipt failure cleanup` (A–E): new+receipt-fail → merchant удалён, expenses insert не вызван; new+expense-fail → cleanup expenses/receipt → merchant удалён; existing+expense-fail → merchant delete не вызван; dependent-cleanup-fail → merchant сохранён; merchant-cleanup-fail → исходная ошибка всё равно брошена (+ scoped `console.error` spy с restore).
+- `BUGS.md`: добавлен `BUG-10` (fixed).
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(data): paginate management reference reads`, запушен в `origin/main`. Схема, миграции, RLS, FX, receipt reconciliation, Home/Analytics/Reports pagination не затронуты.
+Ветка `main`. Один атомарный commit `fix(receipts): clean up orphan merchants on failed save`, запушен в `origin/main`. Схема, миграции, RLS, FX, receipt parsing/editing, merge/duplicate detection и UI не затронуты.
 
 ## Следующий шаг
 
@@ -25,14 +23,14 @@ _Обновлено: 2026-11-26 · автор витка: Claude · задача
 
 ## Открытые решения и риски
 
-- Offset-пагинация полна для стабильного набора, но не snapshot-isolated от конкурентных записей — как и в BUG-7 (не меняли на cursor/RPC/транзакцию, вне scope).
-- Merchant usage read теперь явно фильтрует `user_id` (поверх RLS) для consistency с category management; это не ownership-refactor.
-- `typecheck` зелёный; targeted `categoryManagement`/`merchantManagement`/`pagination` зелёные; полный `test:ci` 926/926 (serial, ~13 мин).
+- Это НЕ транзакция: при частичном сбое cleanup (expenses/receipt) merchant сознательно сохраняется, чтобы не оставить зависимую строку без ссылки. Полная SQL-транзакция save — отдельная архитектурная задача, если понадобится.
+- Docs-only: закрыты два audit-only backlog-пункта — `EXPENSE-01` (RLS уже ограничивает `user_id = auth.uid()`, второй filter не добавлялся) и `CATEGORY-01` (repository trim/required валидация есть; дубли имён намеренно разрешены и решаются через Merge). Application code для них не менялся.
+- `typecheck` зелёный; targeted `receiptDisplayNames` 10/10; полный `test:ci` — см. ниже.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не менять mutation/restore семантику merge/delete и не переписывать их на RPC/транзакцию без отдельной задачи.
-- Не пагинировать малые справочники (списки категорий/мест) — это single-read по построению.
-- Не трогать Home/Analytics/Reports pagination и не менять offset→cursor.
+- Не превращать `saveFiscalReceipt` в SQL-транзакцию/RPC без отдельной задачи; не менять merge/duplicate logic, `MerchantAlreadyExistsError`, receipt parsing/editing, FX, схему, RLS, UI.
+- Не удалять existing merchant (`{ existingId }`) в cleanup ни при каких обстоятельствах.
+- Не удалять созданный merchant, если cleanup зависимых строк не удался.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

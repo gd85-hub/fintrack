@@ -290,6 +290,10 @@ export async function saveFiscalReceipt(
         )
       : input.expenses.map(() => null);
   let merchantId: string;
+  // Non-null only when this call created the merchant, so compensating cleanup
+  // can remove it on a failed save. An existing merchant passed in via
+  // { existingId } is never deleted.
+  let createdMerchantId: string | null = null;
   let learnedAliases: string[] | null = null;
 
   if ('existingId' in input.merchant) {
@@ -323,6 +327,7 @@ export async function saveFiscalReceipt(
     }
     const row = data as unknown as { id: string };
     merchantId = row.id;
+    createdMerchantId = row.id;
   }
 
   let receiptId: string | null = null;
@@ -393,12 +398,17 @@ export async function saveFiscalReceipt(
       }
     }
   } catch (error: unknown) {
+    // Dependent rows must be gone before the merchant can be safely removed: a
+    // surviving receipt/expense row could still reference it. Any cleanup
+    // failure here is logged but never replaces the original save error.
+    let dependentCleanupOk = true;
     if (receiptId) {
       const { error: cleanupExpensesError } = await supabase
         .from('expenses')
         .delete()
         .eq('receipt_id', receiptId);
       if (cleanupExpensesError) {
+        dependentCleanupOk = false;
         console.error(
           'Unable to clean up receipt expenses:',
           cleanupExpensesError.message,
@@ -409,9 +419,27 @@ export async function saveFiscalReceipt(
         .delete()
         .eq('id', receiptId);
       if (cleanupReceiptError) {
+        dependentCleanupOk = false;
         console.error(
           'Unable to clean up receipt:',
           cleanupReceiptError.message,
+        );
+      }
+    }
+    // Remove the merchant only if this call created it and nothing may still
+    // reference it (receipt never existed, or its dependent rows were cleaned
+    // up). A pre-existing merchant is never touched. A failed merchant cleanup
+    // is logged and the original save error is still thrown.
+    if (createdMerchantId && dependentCleanupOk) {
+      const { error: cleanupMerchantError } = await supabase
+        .from('merchants')
+        .delete()
+        .eq('id', createdMerchantId)
+        .eq('user_id', userId);
+      if (cleanupMerchantError) {
+        console.error(
+          'Unable to clean up newly created merchant:',
+          cleanupMerchantError.message,
         );
       }
     }

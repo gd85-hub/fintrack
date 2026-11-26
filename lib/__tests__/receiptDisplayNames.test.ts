@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  test,
+} from '@jest/globals';
 
 import { anchorRateForExpense } from '../anchorRates';
 import { saveFiscalReceipt } from '../db';
@@ -451,5 +458,266 @@ describe('receipt display-name persistence', () => {
     );
     expect(recencyUpdateMock).toHaveBeenCalledTimes(1);
     expect(recencyEqMock).toHaveBeenCalledWith('id', 'merchant-brand');
+  });
+});
+
+describe('saveFiscalReceipt failure cleanup', () => {
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+
+  beforeEach(() => {
+    ratesMock.mockReset();
+    anchorRateMock.mockReset();
+    getSessionMock.mockReset();
+    fromMock.mockReset();
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+    ratesMock.mockResolvedValue({
+      date: '2026-08-02',
+      usdRsd: 110,
+      eurRsd: 117,
+    });
+    anchorRateMock.mockImplementation(async (currency, dateISO) => ({
+      date: dateISO,
+      quote: currency,
+      ratePerEur: currency === 'RSD' ? 117 : 1.064,
+    }));
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  // from('merchants').insert().select().single()
+  function merchantInsertClient(id = 'merchant-new') {
+    const single = jest.fn(async () => ({ data: { id }, error: null }));
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    return { client: { insert }, insert };
+  }
+
+  // from('merchants').select('name,aliases').eq('id').single()
+  function merchantAliasReadClient(data: {
+    aliases: string[];
+    name: string;
+  }) {
+    const single = jest.fn(async () => ({ data, error: null }));
+    const eq = jest.fn(() => ({ single }));
+    const select = jest.fn(() => ({ eq }));
+    return { client: { select } };
+  }
+
+  // from('receipts').insert().select().single()
+  function receiptInsertClient(result: unknown) {
+    const single = jest.fn(async () => result);
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    return { client: { insert }, insert };
+  }
+
+  // from('expenses').insert()
+  function expenseInsertClient(error: unknown = null) {
+    const insert = jest.fn(async () => ({ error }));
+    return { client: { insert }, insert };
+  }
+
+  // Cleanup of expenses/receipts: delete().eq()
+  function deleteEqClient(error: unknown = null) {
+    const eq = jest.fn(async () => ({ error }));
+    const deleteRows = jest.fn(() => ({ eq }));
+    return { client: { delete: deleteRows }, deleteRows, eq };
+  }
+
+  // Cleanup of a newly-created merchant: delete().eq('id').eq('user_id')
+  function merchantDeleteClient(error: unknown = null) {
+    const secondEq = jest.fn(async () => ({ error }));
+    const firstEq = jest.fn(() => ({ eq: secondEq }));
+    const deleteRows = jest.fn(() => ({ eq: firstEq }));
+    return { client: { delete: deleteRows }, deleteRows, firstEq, secondEq };
+  }
+
+  function newMerchantReceipt() {
+    return {
+      ok: true as const,
+      source: 'fiscal_qr' as const,
+      merchantName: 'NOVO',
+      taxId: '1',
+      occurredAt: '2026-08-02T12:00:00+02:00',
+      totalCents: 10_000,
+      currency: 'RSD',
+      paymentType: 'Карточка',
+      items: [],
+    };
+  }
+
+  const newMerchantExpenses = [
+    {
+      amountCents: 10_000,
+      categoryId: 'groceries',
+      description: 'Хлеб',
+      rawName: 'HLEB',
+    },
+  ];
+
+  function tableCalls(table: string): number {
+    return fromMock.mock.calls.filter((call) => call[0] === table).length;
+  }
+
+  test('A: new merchant + receipt insert fails deletes the created merchant', async () => {
+    const merchantInsert = merchantInsertClient('merchant-new');
+    const receiptInsert = receiptInsertClient({
+      data: null,
+      error: { message: 'receipt failed' },
+    });
+    const merchantDelete = merchantDeleteClient();
+    fromMock
+      .mockReturnValueOnce(merchantInsert.client)
+      .mockReturnValueOnce(receiptInsert.client)
+      .mockReturnValueOnce(merchantDelete.client);
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: newMerchantReceipt(),
+        merchant: { name: 'Novo Mesto' },
+        expenses: newMerchantExpenses,
+      }),
+    ).rejects.toEqual({ message: 'receipt failed' });
+
+    expect(merchantInsert.insert).toHaveBeenCalled();
+    expect(receiptInsert.insert).toHaveBeenCalled();
+    // No expense insert happened.
+    expect(tableCalls('expenses')).toBe(0);
+    // The merchant created by this save-flow was removed, scoped to the user.
+    expect(merchantDelete.firstEq).toHaveBeenCalledWith('id', 'merchant-new');
+    expect(merchantDelete.secondEq).toHaveBeenCalledWith(
+      'user_id',
+      'user-1',
+    );
+  });
+
+  test('B: new merchant + expense insert fails cleans up receipt then the merchant', async () => {
+    const merchantInsert = merchantInsertClient('merchant-new');
+    const receiptInsert = receiptInsertClient({
+      data: { id: 'receipt-1' },
+      error: null,
+    });
+    const expenseInsert = expenseInsertClient({ message: 'expense failed' });
+    const expenseCleanup = deleteEqClient();
+    const receiptCleanup = deleteEqClient();
+    const merchantDelete = merchantDeleteClient();
+    fromMock
+      .mockReturnValueOnce(merchantInsert.client)
+      .mockReturnValueOnce(receiptInsert.client)
+      .mockReturnValueOnce(expenseInsert.client)
+      .mockReturnValueOnce(expenseCleanup.client)
+      .mockReturnValueOnce(receiptCleanup.client)
+      .mockReturnValueOnce(merchantDelete.client);
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: newMerchantReceipt(),
+        merchant: { name: 'Novo Mesto' },
+        expenses: newMerchantExpenses,
+      }),
+    ).rejects.toEqual({ message: 'expense failed' });
+
+    expect(expenseCleanup.eq).toHaveBeenCalledWith('receipt_id', 'receipt-1');
+    expect(receiptCleanup.eq).toHaveBeenCalledWith('id', 'receipt-1');
+    expect(merchantDelete.firstEq).toHaveBeenCalledWith('id', 'merchant-new');
+    expect(merchantDelete.secondEq).toHaveBeenCalledWith(
+      'user_id',
+      'user-1',
+    );
+  });
+
+  test('C: existing merchant + expense insert fails never deletes the merchant', async () => {
+    const aliasRead = merchantAliasReadClient({ name: 'NOVO', aliases: [] });
+    const receiptInsert = receiptInsertClient({
+      data: { id: 'receipt-1' },
+      error: null,
+    });
+    const expenseInsert = expenseInsertClient({ message: 'expense failed' });
+    const expenseCleanup = deleteEqClient();
+    const receiptCleanup = deleteEqClient();
+    fromMock
+      .mockReturnValueOnce(aliasRead.client)
+      .mockReturnValueOnce(receiptInsert.client)
+      .mockReturnValueOnce(expenseInsert.client)
+      .mockReturnValueOnce(expenseCleanup.client)
+      .mockReturnValueOnce(receiptCleanup.client);
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: newMerchantReceipt(),
+        merchant: { existingId: 'merchant-1' },
+        expenses: newMerchantExpenses,
+      }),
+    ).rejects.toEqual({ message: 'expense failed' });
+
+    expect(expenseCleanup.eq).toHaveBeenCalledWith('receipt_id', 'receipt-1');
+    expect(receiptCleanup.eq).toHaveBeenCalledWith('id', 'receipt-1');
+    // Only the alias read touched merchants: no merchant delete.
+    expect(tableCalls('merchants')).toBe(1);
+  });
+
+  test('D: a failing dependent cleanup keeps the merchant and the original error', async () => {
+    const merchantInsert = merchantInsertClient('merchant-new');
+    const receiptInsert = receiptInsertClient({
+      data: { id: 'receipt-1' },
+      error: null,
+    });
+    const expenseInsert = expenseInsertClient({ message: 'expense failed' });
+    // Cleanup of the expenses rows itself fails: the merchant must not be
+    // removed, because a surviving expense row could still reference it.
+    const expenseCleanup = deleteEqClient({ message: 'cleanup failed' });
+    const receiptCleanup = deleteEqClient();
+    fromMock
+      .mockReturnValueOnce(merchantInsert.client)
+      .mockReturnValueOnce(receiptInsert.client)
+      .mockReturnValueOnce(expenseInsert.client)
+      .mockReturnValueOnce(expenseCleanup.client)
+      .mockReturnValueOnce(receiptCleanup.client);
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: newMerchantReceipt(),
+        merchant: { name: 'Novo Mesto' },
+        expenses: newMerchantExpenses,
+      }),
+    ).rejects.toEqual({ message: 'expense failed' });
+
+    // Exactly one merchants call (the insert): no delete was attempted.
+    expect(tableCalls('merchants')).toBe(1);
+  });
+
+  test('E: a failing merchant cleanup still throws the original save error', async () => {
+    const merchantInsert = merchantInsertClient('merchant-new');
+    const receiptInsert = receiptInsertClient({
+      data: null,
+      error: { message: 'receipt failed' },
+    });
+    const merchantDelete = merchantDeleteClient({
+      message: 'merchant cleanup failed',
+    });
+    fromMock
+      .mockReturnValueOnce(merchantInsert.client)
+      .mockReturnValueOnce(receiptInsert.client)
+      .mockReturnValueOnce(merchantDelete.client);
+
+    await expect(
+      saveFiscalReceipt({
+        receipt: newMerchantReceipt(),
+        merchant: { name: 'Novo Mesto' },
+        expenses: newMerchantExpenses,
+      }),
+    ).rejects.toEqual({ message: 'receipt failed' });
+
+    expect(merchantDelete.deleteRows).toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Unable to clean up newly created merchant:',
+      'merchant cleanup failed',
+    );
   });
 });
