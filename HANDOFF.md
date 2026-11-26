@@ -1,34 +1,34 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: MERCHANT-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: BACKLOG-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Валидация имени места (merchant) на запись сведена к единому helper: создание и переименование ведут себя одинаково. Остальная merchant-логика (aliases, collision detection, merge/delete, receipt resolution, схема, RLS, UI, i18n) не тронута. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+В `BACKLOG.md` заведена постоянная очередь «Small high-value contributions» — компактная таблица маленьких низкорисковых улучшений, к которой возвращаемся между большими фичами. Это docs-only виток: прикладной код не менялся. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- В `lib/merchantManagement.ts` добавлен чистый helper `requireMerchantName(name: string): string`: `trim()`, при пустом/из одних пробелов результате бросает существующее сообщение «Укажите название места.», иначе возвращает trimmed-строку.
-- `lib/db/merchants.ts`: `createMerchant` теперь валидирует имя через `requireMerchantName` до обращения к Supabase (раньше делал только `name.trim()` и вставлял результат — пустое имя могло просочиться). `renameMerchant` использует тот же helper вместо собственной inline-проверки. Валидация больше не дублируется.
-- `lib/__tests__/merchantManagement.test.ts`: добавлены unit-тесты helper (`'LIDL'`→`'LIDL'`, `' LIDL '`→`'LIDL'`, Unicode `' Кафе Москва '`→`'Кафе Москва'`, `''`/`' '`/`'\t\n'`→throws). Существующий `createMerchant`-тест (`'  Новое место  '` → insert `name: 'Новое место'`) по-прежнему проходит, подтверждая неизменное поведение. Большой mocked-Supabase harness ради этой задачи не вводился.
+- Добавлен новый раздел `# Small high-value contributions` в конец `BACKLOG.md` (существующий backlog не тронут, только дополнен): таблица ID/Status/Area/Value/Size/What-Why + правила ведения очереди.
+- Отмечены как ✅ Done: TEMP-01 (`2b8bd4b`), MONEY-01 (`b09e395`), CI-01 (`b48708d`), REPORTS-UI-01 (`b4e7e69`), MERCHANT-01 (`5657892`). Остальные — ⬜ Todo или 🔎 Verify first.
+- `CHANGELOG.md` — короткая запись в `### Changed`. `BUGS.md` не менялся.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(merchants): reject blank names`, запушен в `origin/main`. Схема, миграции, RLS, UI, i18n, aliases/merge/delete и receipt resolution не затронуты.
+Ветка `main`. Один атомарный commit `docs(backlog): add small high-value contribution queue`, запушен в `origin/main`. Изменены только `.md`-файлы.
 
 ## Следующий шаг
 
-Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy.
+Брать задачи из очереди по одной отдельными task prompt. 🔎 Verify first нельзя реализовывать без аудита текущего кода. Параллельно остаётся висящий ручной этап REPORTS-02.3 (проверка Web PDF после отдельного Web deploy).
 
 ## Открытые решения и риски
 
-- Helper валидирует только пустоту/пробелы; нормализация, дедупликация и collision detection остаются отдельными (`normalizeMerchantName`, `findMerchantRenameCollision`) и не менялись.
-- `typecheck` зелёный; targeted `merchantManagement.test.ts` 11/11; полный `test:ci` 903/903.
+- Очередь — живой документ: Status обновляется по мере выполнения, подтверждённые дефекты уходят в `BUGS.md`, выросшие до schema/feature задачи — в основной backlog.
+- Production-тесты не запускались: меняются только `.md` (разрешено правилами проекта).
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не трогать merchant aliases, collision detection, merge/delete, receipt merchant resolution, схему/миграции, RLS, UI, i18n и category logic.
-- `requireMerchantName` — единственный путь валидации имени на запись; не возвращать inline-проверки в `createMerchant`/`renameMerchant`.
+- Не удалять `✅ Done` из очереди — это история небольших improvements.
+- Не менять существующие backlog priorities/формулировки без необходимости; новый раздел дополняет, а не заменяет.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

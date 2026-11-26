@@ -74,3 +74,60 @@ Cost tags: **[схема]** migration/data model · **[ИИ]** vision/LLM · **[
 ---
 
 *Реализованное переносить в историю выше, а не удалять молча. Баги и инженерный долг вести в `BUGS.md`; production-готовность не выводить только из наличия кода в `main`.*
+
+---
+
+# Small high-value contributions
+
+Долговременная очередь маленьких улучшений, к которой можно возвращаться между большими фичами. Критерии попадания: очевидная польза, малый/средний scope, минимум архитектурного риска, желательно без новой схемы и зависимостей, укладывается в один атомарный commit, удобно для коротких заходов — и это реальное улучшение, а не дробление ради activity. Детали каждой задачи формируются отдельным task prompt позже.
+
+| ID | Status | Area | Value | Size | What / Why |
+|---|---|---|---|---|---|
+| TEMP-01 | ✅ Done | DX | ★★★★★ | XS | Убрать `supabase/.temp/` из Git и добавить в `.gitignore` — локальное состояние Supabase CLI засоряло `git status`. `2b8bd4b` |
+| MONEY-01 | ✅ Done | Frontend / Data | ★★★★★ | S | Принимать сербский сгруппированный формат сумм (`1.234,56`, `1 234,56`, NBSP) — раньше отклонялся. `b09e395` |
+| CI-01 | ✅ Done | DX / CI | ★★★★★ | S | GitHub Actions: typecheck + Jest на push/PR — автоматически ловит регрессии каждого следующего contribution. `b48708d` |
+| REPORTS-UI-01 | ✅ Done | Frontend / Design System | ★★★★☆ | XS/S | Перевести CSV/Excel/PDF/Save PDF на общий DS Button — убрана параллельная самодельная реализация кнопок. `b4e7e69` |
+| MERCHANT-01 | ✅ Done | Backend / Data integrity | ★★★★☆ | XS | Единый helper `requireMerchantName()` для create+rename; пустые/whitespace имена отклоняются, trimmed Unicode сохраняется, покрыто тестами. Раньше `createMerchant()` мог отправить в БД пустую строку после `.trim()`. `5657892` |
+| I18N-01 | ⬜ Todo | i18n / Data integrity | ★★★★★ | S/M | Не переводить пользовательскую category, если её имя совпало с seeded (custom `Продукты` не должна стать `Groceries`). Связано с `BUG-5`. |
+| I18N-02 | ⬜ Todo | i18n / Data integrity | ★★★★★ | S/M | То же для пользовательских group names (custom `Еда` остаётся пользовательским текстом). Вторая часть `BUG-5`. |
+| UNCAT-01 | ⬜ Todo | Frontend / Data quality | ★★★★★ | S | Показывать количество расходов/позиций в «Не распознано» — плохие данные сейчас легко забыть. Первый шаг backlog «пинок по Не распознано». |
+| UNCAT-02 | ⬜ Todo | Frontend / Navigation | ★★★★☆ | S | Сделать индикатор «Не распознано» кликабельным: переход сразу к соответствующим расходам/review flow. Зависит от UNCAT-01. |
+| REPEAT-01 | ⬜ Todo | Frontend / Everyday input | ★★★★★ | S/M | Добавить «Repeat expense» для manual expense — первый шаг backlog «Быстрый повтор/шаблоны». Без templates в этой задаче. |
+| CURRENCY-INPUT-01 | 🔎 Verify first | Frontend / Input UX | ★★★★☆ | XS/S | Проверить, запоминается ли последняя выбранная валюта manual expense; если нет и это логично — сохранять для следующего ввода. Не реализовывать без проверки текущего поведения. |
+| DUP-01 | ⬜ Todo | Backend / Data trust | ★★★★★ | S | Чистый deterministic helper для определения вероятного дубля чека (total, date/time, merchant, metadata) + tests. Только detection, без auto-merge/delete. Первый шаг P0 «QR + photo duplicate protection». |
+| DUP-02 | ⬜ Todo | Frontend / Data trust | ★★★★★ | S/M | Подключить DUP-01 к save flow и показывать предупреждение о вероятном дубле; пользователь решает сам. Без automatic merge. |
+| REPORTS-EMPTY-01 | ⬜ Todo | Frontend / Reports UX | ★★★☆☆ | XS | Улучшить empty state Reports: почему экспорт недоступен и что появится после добавления расходов. Без redesign страницы. |
+| REPORTS-LOADING-01 | ⬜ Todo | Frontend / Reports UX | ★★★☆☆ | XS | Format-specific loading copy (Preparing CSV… / Excel… / Generating PDF…) — PDF генерируется заметно дольше. Не менять export state machine сверх нужного. |
+| INPUT-LIMITS-01 | 🔎 Verify first | Frontend / Data integrity | ★★★★☆ | S | Проверить max length для description/category name/merchant name/notes; добавить разумные limits, если их нет. Защита UI, exports и PDF от гигантских строк. Audit до ограничений. |
+| DB-INDEX-01 | 🔎 Verify first | Backend / Database | ★★★★☆ | S | Проверять hot queries на недостающий индекс; добавлять только при частом использовании и понятном query pattern. `expenses(user_id, occurred_on)` уже есть — не дублировать. |
+| BUGDOC-01 | ⬜ Todo | DX / Documentation | ★★☆☆☆ | XS | Заменить stale `BUG-7 Commit: PENDING` в `BUGS.md` на фактический SHA. Лучше вместе с ближайшим подходящим docs-update, а не отдельным commit. |
+| MERCHANT-02 | 🔎 Verify first | Backend / Data integrity | ★★★★☆ | S | Проверить обработку case-insensitive дубля merchant (в БД есть `merchants_user_name_uniq on (user_id, lower(name))`): если пользователь получает generic error — добавить понятный сценарий. Не дублировать DB constraint. |
+| CATEGORY-01 | 🔎 Verify first | Backend / Data integrity | ★★★★☆ | S | Audit создания custom category: пустой name, пустой group, whitespace-only, duplicate user-visible names. Часть валидации уже есть — фиксить только подтверждённый gap. |
+| RECEIPT-01 | 🔎 Verify first | Backend / Data trust | ★★★★★ | S | Проверить тестами compensating cleanup при неуспешном сохранении receipt+expenses (expense insert fails, cleanup expense fails, cleanup receipt fails). Если coverage достаточный — закрыть без кода. |
+| EXPENSE-01 | 🔎 Verify first | Backend / Ownership | ★★★★★ | S | Проверить update/delete manual expense на явное user-ownership условие в запросах (RLS уже защищает БД). Audit до любого дублирования RLS. |
+| EXPENSE-02 | ⬜ Todo | Frontend / UX | ★★★★☆ | XS/S | Короткий однозначный success feedback (существующий DS Toast) после создания/редактирования manual expense, если его сейчас нет. Без нового notification framework. |
+| DELETE-01 | 🔎 Verify first | Frontend / Data safety | ★★★★★ | S | Проверить delete expense/merchant/category: accidental single-tap deletion невозможен там, где операция необратима. Добавлять confirmation только где его реально нет. |
+| ERROR-01 | 🔎 Verify first | Frontend / Error UX | ★★★★☆ | S | Найти flows, где db/network error виден только через `console.error`/generic text, хотя пользователь может действовать. Чинить по одному flow. Без глобального error-system rewrite. |
+| RETRY-01 | 🔎 Verify first | Frontend / Reliability | ★★★★☆ | XS/S | Проверить read-экраны с load error (Home/Reports/Analytics/management) на наличие Retry; добавлять по одному экрану, начиная с самого частого. |
+| ACCESSIBILITY-01 | 🔎 Verify first | Frontend / Accessibility | ★★★★☆ | XS/S | Проверять интерактивные controls на accessibilityRole/accessibilityLabel/disabled semantics; чинить по одному экрану/компоненту. Без огромного audit одним commit. |
+| TOUCH-01 | 🔎 Verify first | Frontend / Mobile UX | ★★★★☆ | XS/S | Найти слишком маленькие touch targets (inline icons, chevrons, remove actions, compact controls); чинить точечно через DS-размеры/hitSlop. |
+| EMPTY-01 | 🔎 Verify first | Frontend / UX | ★★★☆☆ | XS | Проверять пустые состояния: что здесь будет, почему сейчас пусто, что пользователь может сделать. Улучшать по одному экрану. |
+| LOADING-01 | 🔎 Verify first | Frontend / UX | ★★★☆☆ | XS/S | Найти экраны, прыгающие empty→content при загрузке; чинить подтверждённые случаи (правильный loading state, без ложного empty-state flash). |
+| DATE-01 | 🔎 Verify first | Frontend / Data correctness | ★★★★★ | S | Проверить boundary дат: конец/начало месяца, DST, UTC timestamp → Europe/Belgrade. Date helpers и tests уже есть — фикс только при реальном gap. |
+| PAGINATION-01 | 🔎 Verify first | Backend / Data reliability | ★★★★★ | S | После BUG-7 проверить, что все финансовые коллекции используют общий paginated helper, а не одиночные `.select()` для потенциально больших наборов. По одному query path; справочники малого объёма не трогать. |
+| SEARCH-01 | ⬜ Todo | Frontend / Everyday use | ★★★★★ | M | Первый шаг backlog «Поиск по тратам»: поиск только в уже загруженном периоде по description/merchant/category. Без server-side FTS и новой схемы. Сначала проверить перф и структуру Home. |
+| COPY-01 | 🔎 Verify first | Frontend / UX writing | ★★★☆☆ | XS | Заменять generic сообщения (`Ошибка`, `Не удалось`, `Something went wrong`) на actionable copy по одному flow, если пользователь может что-то сделать. Не менять тексты ради стилистики. |
+| DS-MIGRATION-01 | 🔎 Verify first | Frontend / Design System | ★★★★☆ | XS/S | Мигрировать самодельные controls на существующие DS (Button/Input/Checkbox/Radio/Toggle/SearchField/IconButton); один экран/один тип за commit. REPORTS-UI-01 — выполненный пример. |
+| CI-02 | ⬜ Todo | DX | ★★★☆☆ | XS | Позже обновить `actions/checkout@v4` и `actions/setup-node@v4` до актуальных major, если остаётся deprecation annotation про internal Node runtime. CI зелёный — priority низкий. |
+| EXPORT-VERIFY-01 | ⬜ Todo | Reports / Testing | ★★★★☆ | S | Лёгкая deterministic валидация свежих CSV/XLSX (parseable, reopenable, равные row counts, totals reconcile). Проверить переиспользование существующего harness в CI без browser/export delivery. Без browser automation. |
+| PDF-UX-01 | ⬜ Todo | Reports / Frontend | ★★★★★ | M | Redesign PDF как premium financial report. Отдельная большая задача после маленькой очереди; не дробить визуальный redesign на бессмысленные commit-ы. |
+
+### Правила этой очереди
+
+1. `✅ Done` не удалять сразу — оставлять как историю небольших improvements.
+2. Если задача выросла до большой feature/schema work — переносить в основной backlog выше.
+3. Подтверждённый defect переносить в `BUGS.md`.
+4. `🔎 Verify first` нельзя реализовывать без проверки текущего кода.
+5. Один contribution должен иметь самостоятельную пользовательскую или инженерную ценность.
+6. Не дробить один логический фикс только ради количества commits.
+7. После выполнения обновлять Status и при необходимости указывать short commit SHA.
