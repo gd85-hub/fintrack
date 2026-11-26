@@ -12,6 +12,7 @@ import {
 
 import { MonthPicker } from '../../components/MonthPicker';
 import { ScreenHeader } from '../../components/ScreenHeader';
+import { Button } from '../../components/ds/Button';
 import { StatusBanner } from '../../components/ds/StatusBanner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useColors } from '../../contexts/ThemeContext';
@@ -371,39 +372,36 @@ export default function ReportsScreen() {
           <View style={styles.exportBlock}>
             <Text style={styles.sectionTitle}>{t('settings.export')}</Text>
             <View style={styles.actions}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={buttonsDisabled}
-                onPress={exportCsv}
-                style={({ pressed }) => [
-                  styles.exportButton,
-                  (pressed || buttonsDisabled) && styles.disabled,
-                ]}
-              >
-                <Text style={styles.exportButtonText}>CSV</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={buttonsDisabled}
-                onPress={exportExcel}
-                style={({ pressed }) => [
-                  styles.exportButton,
-                  (pressed || buttonsDisabled) && styles.disabled,
-                ]}
-              >
-                <Text style={styles.exportButtonText}>Excel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                disabled={buttonsDisabled}
-                onPress={exportPdf}
-                style={({ pressed }) => [
-                  styles.exportButton,
-                  (pressed || buttonsDisabled) && styles.disabled,
-                ]}
-              >
-                <Text style={styles.exportButtonText}>PDF</Text>
-              </Pressable>
+              <View style={styles.actionItem}>
+                <Button
+                  disabled={buttonsDisabled}
+                  fullWidth
+                  label="CSV"
+                  onPress={exportCsv}
+                  size="medium"
+                  variant="primary"
+                />
+              </View>
+              <View style={styles.actionItem}>
+                <Button
+                  disabled={buttonsDisabled}
+                  fullWidth
+                  label="Excel"
+                  onPress={exportExcel}
+                  size="medium"
+                  variant="primary"
+                />
+              </View>
+              <View style={styles.actionItem}>
+                <Button
+                  disabled={buttonsDisabled}
+                  fullWidth
+                  label="PDF"
+                  onPress={exportPdf}
+                  size="medium"
+                  variant="primary"
+                />
+              </View>
             </View>
 
             {exporting ? (
@@ -419,19 +417,15 @@ export default function ReportsScreen() {
             ) : null}
 
             {preparedPdf ? (
-              <Pressable
-                accessibilityRole="button"
-                disabled={savingPdf || exporting}
+              <Button
+                disabled={exporting}
+                fullWidth
+                label={t('export.savePdf')}
+                loading={savingPdf}
                 onPress={savePdf}
-                style={({ pressed }) => [
-                  styles.exportButton,
-                  (pressed || savingPdf || exporting) && styles.disabled,
-                ]}
-              >
-                <Text style={styles.exportButtonText}>
-                  {t('export.savePdf')}
-                </Text>
-              </Pressable>
+                size="medium"
+                variant="primary"
+              />
             ) : null}
 
             {exportError ? (
@@ -455,6 +449,15 @@ export default function ReportsScreen() {
 }
 
 const makeStyles = (c: Colors) => StyleSheet.create({
+  actionItem: {
+    // Each DS Button owns its own height and min width; the wrapper only
+    // carries the row/wrap layout the screen needs. flexBasis 0 + flexGrow 1
+    // makes CSV | Excel | PDF share the row as equal columns on a wide screen,
+    // while the control min width lets them wrap on a narrow one.
+    flexBasis: 0,
+    flexGrow: 1,
+    minWidth: theme.scale.size.controlMinWidth,
+  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -467,9 +470,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     padding: theme.spacing.lg,
     width: '100%',
   },
-  disabled: {
-    opacity: theme.opacity.disabled,
-  },
   emptyText: {
     color: c.text.secondary,
     fontSize: theme.fontSizes.body,
@@ -480,21 +480,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   exportBlock: {
     gap: theme.spacing.md,
-  },
-  exportButton: {
-    alignItems: 'center',
-    backgroundColor: c.action.primary.fill,
-    borderRadius: theme.radii.button,
-    flexGrow: 1,
-    justifyContent: 'center',
-    minHeight: theme.sizes.buttonHeight,
-    minWidth: theme.sizes.iconButton,
-    paddingHorizontal: theme.spacing.lg,
-  },
-  exportButtonText: {
-    color: c.action.primary.content,
-    fontSize: theme.fontSizes.button,
-    fontWeight: '700',
   },
   exportingRow: {
     alignItems: 'center',
