@@ -1,21 +1,22 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: CURRENCY-INPUT-01.2_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: REPORTS-LOADING-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Кэш последней валуты manual expense стал account-scoped и живёт в `lib/lastCurrency.ts` (module-level), а экран редактора обёрнут в account-keyed boundary. Это закрывает: утечку валюты между аккаунтами, гонку «новый инстанс экрана vs ещё не завершённая запись», и показ данных предыдущего аккаунта после его смены. Схема, RLS, FX, receipt flows не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Прогресс экспорта на экране «Отчёты» теперь зависит от формата (CSV/Excel/PDF) вместо общего сообщения. Экспортные builders, доставка, схема, FX и retry-логика не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `lib/lastCurrency.ts`: добавлен account-scoped in-memory кэш (`Map<accountId, currency>`, module-level — переживает unmount/remount). `rememberLastManualCurrency` синхронно обновляет нормализованное значение ДО `await AsyncStorage`, затем сериализует запись per-account цепочкой промисов (каждая запись пишет текущее новейшее значение, поэтому старая запись не перезатирает новую). `readLastManualCurrency` предпочитает in-session значение текущего аккаунта; если чтение стартовало до более нового save — возвращает новое (re-check после await). Read/write-сбои non-fatal; custom-валюты сохранены; транзакционные данные не кэшируются. Добавлен test-only `__resetLastManualCurrencyCacheForTests()`.
-- `components/ExpenseEditorScreen.tsx`: удалены screen-local `sessionCurrencyRef` и `onManualCurrencySaved` (их роль теперь у module-кэша). Экран разделён на тонкий `ExpenseEditorScreen` (берёт `accountId` из `useAuth`) и `ExpenseEditorBody`, рендеримый с `key={accountId ?? 'anonymous'}` — смена аккаунта полностью ремаунтит тело (сброс loading/categories/merchants/expense/currency), поэтому данные предыдущего аккаунта не показываются. Focus-driven разрешение валюты, loading-gating (`currencyResolvedFocus === focusKey`) и stale-response защита (session counter) сохранены. `rememberLastManualCurrency(accountId, currency)` по-прежнему вызывается только после успешного создания.
-- Тесты: `lastCurrency.test.ts` расширен (account isolation; in-session предпочтение без чтения storage; read-in-flight vs новый save; overlapping-writes ordering; reopen при pending write; per-account write keys; custom). `expenseEditorScreen.test.tsx`: auth-mock стал mutable holder (`mockAuth.user`), добавлены тесты смены аккаунта на mounted экране и account-scoped записи; refocus-after-save/immediate-reopen тесты теперь симулируют кэш через read-мок (реальная семантика — в `lastCurrency.test.ts`).
+- `app/(app)/reports.tsx`: введён типизированный `ExportFormat = 'csv' | 'xlsx' | 'pdf'` и состояние `activeFormat` (вместо булева `exporting`, который теперь производный: `exporting = activeFormat !== null` — без дублирования состояния). `runExport(format, deliver)` и `exportPdf` ставят/снимают `activeFormat`; строка прогресса выводит `t(EXPORTING_MESSAGE_KEY[activeFormat])`. Карта ключей: csv→`export.preparingCsv`, xlsx→`export.preparingXlsx`, pdf→`export.generatingPdf`.
+- i18n: добавлены `export.preparingCsv` / `preparingXlsx` / `generatingPdf` в `en.ts`/`ru.ts` (EN: Preparing CSV… / Preparing Excel… / Generating PDF…; RU: Подготавливаем CSV… / Подготавливаем Excel… / Создаём PDF…). Старый `export.exporting` оставлен нетронутым.
+- Сохранено без изменений: синхронная дубликат-защита (`exportingRef`), `buttonsDisabled`, обработка ошибок (`export.failed`/`shareUnavailable`), prepared-PDF lifecycle, отдельное состояние Save PDF (`savingPdf`), CSV/XLSX/PDF builders и доставка, выбор месяца и retry загрузки.
+- Тесты: в `lib/__tests__/reportsRetry.test.tsx` (существующая Reports render-инфраструктура) добавлен describe «Reports export feedback»: CSV→`preparingCsv`, Excel→`preparingXlsx`, PDF→`generatingPdf`; сообщение исчезает после успеха и после ошибки; кнопки экспорта недоступны во время операции; повторное нажатие игнорируется (deliver вызван один раз); prepared-PDF → появляется Save PDF. Deferred-промисы для детерминизма.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(expenses): scope remembered currency cache to account`, запушен в `origin/main`. Навигационная архитектура, схема, RLS, FX, receipt flows не затронуты.
+Ветка `main`. Один атомарный commit `feat(reports): show format-specific export feedback`, запушен в `origin/main`. Export builders/доставка, FX, схема, RLS не затронуты.
 
 ## Следующий шаг
 
@@ -23,14 +24,13 @@ _Обновлено: 2026-11-26 · автор витка: Claude · задача
 
 ## Открытые решения и риски
 
-- Кэш — module-level, поэтому в тестах требуется `__resetLastManualCurrencyCacheForTests()` в `beforeEach` (вызывается в `lastCurrency.test.ts`). Editor-тесты мокают `lib/lastCurrency`, так что их изоляция не зависит от кэша.
-- Account-keyed boundary — наименьший робастный механизм сброса состояния; data-effect не зависит от `accountId` (ремаунт делает reload), что также избегает прежней loading-осцилляции с нестабильным `t` в тестах.
-- `typecheck` зелёный; targeted `expenseEditorScreen` + `lastCurrency` 45/45; полный `test:ci` — см. виток. Живой device-verify не проводился.
+- `activeFormat` — единственный источник истины для «идёт экспорт»; `exporting` выведен из него, дубликата состояния нет.
+- `export.exporting` больше не используется кодом, но ключ оставлен в i18n, чтобы не делать несвязанную правку.
+- `typecheck` зелёный; targeted `reportsRetry` 11/11; полный `test:ci` — см. виток. Живой browser-verify не делался (экран за авторизацией).
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Кэш `lib/lastCurrency.ts` строго account-scoped и хранит только код валюты — не класть туда транзакционные данные и не делать его глобальным без ключа аккаунта.
-- Не возвращать screen-local кэш валюты (sessionCurrencyRef) — он не переживает remount и не закрывает гонку нового инстанса.
-- Сохранять account-keyed boundary: тело редактора должно ремаунтиться при смене аккаунта.
+- Не менять export state machine сверх добавленного `activeFormat`; дубликат-защита через `exportingRef` остаётся синхронной.
+- Не трогать builders (CSV/XLSX/PDF), доставку, filenames, prepared-PDF lifecycle и Save PDF.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

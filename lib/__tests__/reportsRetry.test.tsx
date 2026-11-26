@@ -108,6 +108,34 @@ function exportButtonCount(renderer: ReactTestRenderer): number {
   return renderer.root.findAllByType(Button).length;
 }
 
+function pressExport(renderer: ReactTestRenderer, label: string) {
+  const button = renderer.root
+    .findAllByType(Button)
+    .find((node) => node.props.label === label);
+  if (!button) {
+    throw new Error(`No export button labelled ${label}`);
+  }
+  (button.props.onPress as () => void)();
+}
+
+const EXPORT_LABELS = ['CSV', 'Excel', 'PDF'];
+
+function exportButtonsDisabled(renderer: ReactTestRenderer): boolean {
+  const buttons = renderer.root
+    .findAllByType(Button)
+    .filter((node) => EXPORT_LABELS.includes(node.props.label as string));
+  return (
+    buttons.length === EXPORT_LABELS.length &&
+    buttons.every((node) => node.props.disabled === true)
+  );
+}
+
+function hasSavePdfButton(renderer: ReactTestRenderer): boolean {
+  return renderer.root
+    .findAllByType(Button)
+    .some((node) => node.props.label === 'export.savePdf');
+}
+
 describe('Reports data-loading retry', () => {
   let errorSpy: ReturnType<typeof jest.spyOn>;
 
@@ -287,6 +315,172 @@ describe('Reports data-loading retry', () => {
 
     expect(hasStatusBanner(renderer)).toBe(false);
     expect(exportButtonCount(renderer)).toBe(3);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+});
+
+describe('Reports export feedback', () => {
+  let errorSpy: ReturnType<typeof jest.spyOn>;
+
+  beforeEach(() => {
+    mockListExpensesByMonth.mockReset();
+    mockListCategoriesForManagement.mockReset();
+    mockDeliverText.mockReset();
+    mockDeliverBinary.mockReset();
+    mockBeginPdfExport.mockReset();
+    errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  // A fully-formed expense so the real CSV/XLSX row builders run without error;
+  // only the delivery layer is mocked.
+  const expenseRow = {
+    id: 'expense-1',
+    receiptId: null,
+    occurredOn: '2026-11-10',
+    merchantName: null,
+    categoryId: 'category-1',
+    categoryName: 'Food',
+    description: '',
+    rawName: null,
+    originalAmountCents: 1000,
+    originalCurrency: 'EUR',
+    amountRsdCents: 0,
+    amountEurCents: 1000,
+    amountUsdCents: 0,
+  };
+
+  async function renderWithData() {
+    mockListExpensesByMonth.mockResolvedValue([expenseRow]);
+    mockListCategoriesForManagement.mockResolvedValue([categoryRow]);
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(<ReportsScreen />);
+    });
+    return renderer;
+  }
+
+  test('CSV export shows CSV-specific feedback until it settles', async () => {
+    const renderer = await renderWithData();
+    const pending = deferred<void>();
+    mockDeliverText.mockReturnValue(pending.promise);
+
+    await act(async () => {
+      pressExport(renderer, 'CSV');
+    });
+
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(true);
+    expect(hasText(renderer, 'export.preparingXlsx')).toBe(false);
+    expect(hasText(renderer, 'export.generatingPdf')).toBe(false);
+    expect(hasText(renderer, 'export.exporting')).toBe(false);
+    // Export actions are unavailable while an export runs.
+    expect(exportButtonsDisabled(renderer)).toBe(true);
+
+    await act(async () => {
+      pending.resolve();
+    });
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(false);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('Excel export shows Excel-specific feedback', async () => {
+    const renderer = await renderWithData();
+    const pending = deferred<void>();
+    mockDeliverBinary.mockReturnValue(pending.promise);
+
+    await act(async () => {
+      pressExport(renderer, 'Excel');
+    });
+
+    expect(hasText(renderer, 'export.preparingXlsx')).toBe(true);
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(false);
+    expect(exportButtonsDisabled(renderer)).toBe(true);
+
+    await act(async () => {
+      pending.resolve();
+    });
+    expect(hasText(renderer, 'export.preparingXlsx')).toBe(false);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('PDF export shows PDF-specific feedback and keeps the Save PDF flow', async () => {
+    const renderer = await renderWithData();
+    const pending = deferred<unknown>();
+    mockBeginPdfExport.mockReturnValue(pending.promise);
+
+    await act(async () => {
+      pressExport(renderer, 'PDF');
+    });
+
+    expect(hasText(renderer, 'export.generatingPdf')).toBe(true);
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(false);
+    expect(exportButtonsDisabled(renderer)).toBe(true);
+    // No prepared PDF yet, so no Save PDF action.
+    expect(hasSavePdfButton(renderer)).toBe(false);
+
+    // A prepared PDF resolves: feedback clears and the Save PDF action appears.
+    await act(async () => {
+      pending.resolve({ kind: 'prepared' });
+    });
+    expect(hasText(renderer, 'export.generatingPdf')).toBe(false);
+    expect(hasSavePdfButton(renderer)).toBe(true);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('export feedback disappears after a failure', async () => {
+    const renderer = await renderWithData();
+    const pending = deferred<void>();
+    mockDeliverText.mockReturnValue(pending.promise);
+
+    await act(async () => {
+      pressExport(renderer, 'CSV');
+    });
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(true);
+
+    await act(async () => {
+      pending.reject(new Error('disk full'));
+    });
+
+    expect(hasText(renderer, 'export.preparingCsv')).toBe(false);
+    expect(hasText(renderer, 'export.failed')).toBe(true);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('a second export press is ignored while one is running', async () => {
+    const renderer = await renderWithData();
+    const pending = deferred<void>();
+    mockDeliverText.mockReturnValue(pending.promise);
+
+    await act(async () => {
+      pressExport(renderer, 'CSV');
+    });
+    await act(async () => {
+      pressExport(renderer, 'CSV');
+    });
+
+    expect(mockDeliverText).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending.resolve();
+    });
 
     await act(async () => {
       renderer.unmount();

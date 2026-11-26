@@ -50,6 +50,16 @@ import { theme, type Colors } from '../../lib/theme';
 
 type CategoryMeta = { group: string; type: ExpenseCategoryType };
 
+// The export operation currently running, so its in-progress message names the
+// format rather than a generic one. PDF is often slower, so it reads differently.
+type ExportFormat = 'csv' | 'xlsx' | 'pdf';
+
+const EXPORTING_MESSAGE_KEY: Record<ExportFormat, string> = {
+  csv: 'export.preparingCsv',
+  xlsx: 'export.preparingXlsx',
+  pdf: 'export.generatingPdf',
+};
+
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -67,7 +77,9 @@ export default function ReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
-  const [exporting, setExporting] = useState(false);
+  const [activeFormat, setActiveFormat] = useState<ExportFormat | null>(null);
+  // Derived, so there is a single source of truth for "an export is running".
+  const exporting = activeFormat !== null;
   const [exportError, setExportError] = useState('');
   const [preparedPdf, setPreparedPdf] = useState<PreparedPdfExport | null>(
     null,
@@ -222,6 +234,7 @@ export default function ReportsScreen() {
   }
 
   async function runExport(
+    format: ExportFormat,
     deliver: (
       rows: ExportRow[],
       columns: ExportColumns,
@@ -232,7 +245,7 @@ export default function ReportsScreen() {
       return;
     }
     exportingRef.current = true;
-    setExporting(true);
+    setActiveFormat(format);
     setExportError('');
     try {
       const rows = buildRows();
@@ -246,12 +259,12 @@ export default function ReportsScreen() {
       );
     } finally {
       exportingRef.current = false;
-      setExporting(false);
+      setActiveFormat(null);
     }
   }
 
   const exportCsv = () =>
-    void runExport((rows, columns, meta) =>
+    void runExport('csv', (rows, columns, meta) =>
       deliverText(
         `fintrack-${visibleMonth}.csv`,
         buildCsv(rows, columns, meta),
@@ -259,7 +272,7 @@ export default function ReportsScreen() {
       ),
     );
   const exportExcel = () =>
-    void runExport((rows, columns, meta) =>
+    void runExport('xlsx', (rows, columns, meta) =>
       deliverBinary(
         `fintrack-${visibleMonth}.xlsx`,
         buildXlsx(rows, columns, meta),
@@ -273,7 +286,7 @@ export default function ReportsScreen() {
     const generation = pdfLifecycleRef.current?.begin() ?? 0;
     setPreparedPdf(null);
     exportingRef.current = true;
-    setExporting(true);
+    setActiveFormat('pdf');
     setExportError('');
     const rows = buildRows();
     const filename = `fintrack-${visibleMonth}.pdf`;
@@ -298,7 +311,7 @@ export default function ReportsScreen() {
       })
       .finally(() => {
         exportingRef.current = false;
-        setExporting(false);
+        setActiveFormat(null);
       });
   };
 
@@ -412,14 +425,14 @@ export default function ReportsScreen() {
               </View>
             </View>
 
-            {exporting ? (
+            {activeFormat ? (
               <View style={styles.exportingRow}>
                 <ActivityIndicator
                   color={colors.action.primary.fill}
                   size="small"
                 />
                 <Text style={styles.exportingText}>
-                  {t('export.exporting')}
+                  {t(EXPORTING_MESSAGE_KEY[activeFormat])}
                 </Text>
               </View>
             ) : null}
