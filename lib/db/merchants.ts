@@ -6,6 +6,7 @@ import {
 import { merchantAliasesWithIncoming } from '../receipts';
 import { supabase } from '../supabase';
 import { authenticatedUserId } from './internal';
+import { fetchAllRows } from './pagination';
 import type {
   ManagedMerchant,
   Merchant,
@@ -50,6 +51,7 @@ type MerchantManagementQueryRow = MerchantQueryRow & {
 };
 
 type ExpenseMerchantReferenceRow = {
+  id: string;
   merchant_id: string | null;
 };
 
@@ -136,22 +138,27 @@ export async function createMerchant(
 export async function listMerchantsForManagement(): Promise<
   ManagedMerchant[]
 > {
-  const [merchants, expenseResult] = await Promise.all([
+  const userId = await authenticatedUserId();
+  // Merchant list is a small per-account reference set; expense references
+  // feeding usage counts can be large, so exhaust PostgREST pagination with a
+  // deterministic order by id. Scope to the user explicitly (consistent with
+  // category management) on top of RLS.
+  const [merchants, expenseRows] = await Promise.all([
     listMerchants(),
-    supabase
-      .from('expenses')
-      .select('merchant_id')
-      .not('merchant_id', 'is', null),
+    fetchAllRows<ExpenseMerchantReferenceRow>((from, to) =>
+      supabase
+        .from('expenses')
+        .select('id,merchant_id')
+        .eq('user_id', userId)
+        .not('merchant_id', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
   ]);
-  if (expenseResult.error) {
-    throw expenseResult.error;
-  }
 
   const counts = merchantUsageCounts(
     merchants.map((merchant) => merchant.id),
-    (expenseResult.data as unknown as ExpenseMerchantReferenceRow[]).map(
-      (expense) => expense.merchant_id,
-    ),
+    expenseRows.map((expense) => expense.merchant_id),
   );
 
   return merchants.map((merchant) => ({
@@ -241,15 +248,19 @@ async function loadMerchantReferences(
   sourceIds: readonly string[],
   userId: string,
 ): Promise<MerchantReferenceRow[]> {
-  const { data, error } = await supabase
-    .from(table)
-    .select('id,merchant_id,user_id')
-    .in('merchant_id', [...sourceIds])
-    .eq('user_id', userId);
-  if (error) {
-    throw error;
-  }
-  return data as unknown as MerchantReferenceRow[];
+  // Exhaust every page so the merge rollback snapshot is complete: a snapshot
+  // truncated at the row limit could leave some re-pointed references
+  // unrestored if a later step failed. Deterministic order by id; any page
+  // failure rejects before any mutation runs.
+  return fetchAllRows<MerchantReferenceRow>((from, to) =>
+    supabase
+      .from(table)
+      .select('id,merchant_id,user_id')
+      .in('merchant_id', [...sourceIds])
+      .eq('user_id', userId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
 }
 
 async function restoreMerchantReferences(

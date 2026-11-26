@@ -4,6 +4,7 @@ import {
 } from '../categoryManagement';
 import { supabase } from '../supabase';
 import { authenticatedUserId } from './internal';
+import { fetchAllRows } from './pagination';
 import type {
   Category,
   CategoryInput,
@@ -29,6 +30,7 @@ type CategoryManagementQueryRow = CategoryQueryRow & {
 };
 
 type ExpenseCategoryReferenceRow = {
+  id: string;
   category_id: string;
 };
 
@@ -90,31 +92,33 @@ export async function listCategoriesForManagement(): Promise<
   ManagedCategory[]
 > {
   const userId = await authenticatedUserId();
-  const [categoryResult, expenseResult] = await Promise.all([
+  // The categories list is a small per-account reference set, but the expense
+  // reference rows feeding usage counts can be large, so they must exhaust
+  // PostgREST pagination (deterministic order by id) rather than read one page.
+  const [categoryResult, expenseRows] = await Promise.all([
     supabase
       .from('categories')
       .select(CATEGORY_MANAGEMENT_SELECT)
       .eq('user_id', userId)
       .order('sort', { ascending: true }),
-    supabase
-      .from('expenses')
-      .select('category_id')
-      .eq('user_id', userId),
+    fetchAllRows<ExpenseCategoryReferenceRow>((from, to) =>
+      supabase
+        .from('expenses')
+        .select('id,category_id')
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
   ]);
   if (categoryResult.error) {
     throw categoryResult.error;
-  }
-  if (expenseResult.error) {
-    throw expenseResult.error;
   }
 
   const rows =
     categoryResult.data as unknown as CategoryManagementQueryRow[];
   const counts = categoryUsageCounts(
     rows.map((category) => category.id),
-    (
-      expenseResult.data as unknown as ExpenseCategoryReferenceRow[]
-    ).map((expense) => expense.category_id),
+    expenseRows.map((expense) => expense.category_id),
   );
 
   return rows.map((row) => ({
@@ -212,15 +216,19 @@ async function loadCategoryReferences(
   sourceIds: readonly string[],
   userId: string,
 ): Promise<CategoryReferenceRow[]> {
-  const { data, error } = await supabase
-    .from(table)
-    .select('id,category_id,user_id')
-    .in('category_id', [...sourceIds])
-    .eq('user_id', userId);
-  if (error) {
-    throw error;
-  }
-  return data as unknown as CategoryReferenceRow[];
+  // Exhaust every page: the merge/delete rollback restores exactly the rows in
+  // this snapshot, so a snapshot truncated at the row limit would leave some
+  // moved references unrestored if a later step failed. Deterministic order by
+  // id; any page failure rejects before any mutation runs.
+  return fetchAllRows<CategoryReferenceRow>((from, to) =>
+    supabase
+      .from(table)
+      .select('id,category_id,user_id')
+      .in('category_id', [...sourceIds])
+      .eq('user_id', userId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
 }
 
 async function restoreCategoryReferences(

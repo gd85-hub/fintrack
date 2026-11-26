@@ -46,6 +46,13 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 
 ## Fixed
 
+### BUG-9 · ✅ Management/reference reads could stop at the PostgREST row limit
+
+- **Area:** category & merchant management (usage counts) and category/merchant merge/delete reference snapshots
+- **Evidence:** `listCategoriesForManagement`, `listMerchantsForManagement`, `loadCategoryReferences` and `loadMerchantReferences` each issued a single unpaginated `.select()`. Usage counts could be undercounted past the row limit, and — more seriously — a merge/delete rollback restores exactly the pre-loaded snapshot, so a snapshot truncated at the limit could leave some re-pointed references unrestored if a later step failed.
+- **Resolution:** all four reads now exhaust PostgREST pages through the shared `fetchAllRows` helper with deterministic `order('id', { ascending: true })` and `.range()`. Any page failure rejects the whole operation before any mutation runs, so merge/delete never starts on a partial snapshot. The small per-account categories/merchants lists stay single-reads by design; expense references are selected as `id,category_id` / `id,merchant_id` (the `id` enables stable ordering).
+- **Coverage:** multi-page usage counts for categories and merchants; merge `affectedExpenses` counting rows beyond the first page; a later-page read error aborting before any `update`/`delete`; plus the existing re-point/rollback characterization tests. See `BUG-7` for the earlier Home/Analytics/Reports pagination fix this extends.
+
 ### BUG-6 · ✅ Serbian grouped amount input was rejected
 
 - **Area:** money input parsing
@@ -73,7 +80,7 @@ Each open bug records severity, affected area, code evidence, reproduction, and 
 - **Resolution:** monthly and ranged expense datasets plus category/merchant breakdowns now exhaust bounded `.range()` pages with deterministic `occurred_on`, `created_at`, `id` ordering. Any failed page rejects the complete load; no partial result is returned.
 - **Coverage:** empty/small/exact/multi-page/partial datasets, a server cap below the requested size, first/later-page errors, equal timestamps, and a 1,001-row financial total/group invariant.
 - **Limitation:** offset pagination is reliable for stable data but is not snapshot-isolated from concurrent writes.
-- **Commit:** `PENDING`.
+- **Commit:** `8f27e38` — prevent silent truncation of expense queries.
 
 ### OPS-1 · ✅ Per-account category migration applied
 

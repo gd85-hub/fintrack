@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import {
   createMerchant,
+  listMerchantsForManagement,
   MerchantAlreadyExistsError,
   mergeMerchants,
 } from '../db';
@@ -30,25 +31,88 @@ function selectInEqClient(data: unknown[]) {
   return { client: { select }, eq, inFilter, select };
 }
 
-function updateInEqClient(error: unknown = null) {
-  const eq = jest.fn(async () => ({ error }));
-  const inFilter = jest.fn(() => ({ eq }));
-  const update = jest.fn(() => ({ in: inFilter }));
-  return { client: { update }, eq, inFilter, update };
+type PageOptions = { errorFrom?: number; serverLimit?: number };
+
+// A page loader for fetchAllRows: stateless in `from`, so one client answers
+// every page; a slice past the end returns [] and ends the loop. serverLimit
+// caps each page below the requested range (forcing multiple pages); errorFrom
+// fails from that offset onward.
+function pageRange(data: unknown[], options: PageOptions = {}) {
+  return jest.fn(async (from: number, to: number) => {
+    if (options.errorFrom !== undefined && from >= options.errorFrom) {
+      return { data: null, error: { message: `read-page-${from}` } };
+    }
+    const requested = to - from + 1;
+    const returned = Math.min(requested, options.serverLimit ?? requested);
+    return { data: data.slice(from, from + returned), error: null };
+  });
 }
 
-function updateEqEqClient(error: unknown = null) {
-  const finalEq = jest.fn(async () => ({ error }));
-  const firstEq = jest.fn(() => ({ eq: finalEq }));
-  const update = jest.fn(() => ({ eq: firstEq }));
-  return { client: { update }, finalEq, firstEq, update };
+// Paginated management usage read: select → eq → not → order → range.
+function pagedMerchantCountClient(data: unknown[], options: PageOptions = {}) {
+  const range = pageRange(data, options);
+  const order = jest.fn(() => ({ range }));
+  const notFilter = jest.fn(() => ({ order }));
+  const eq = jest.fn(() => ({ not: notFilter }));
+  const select = jest.fn(() => ({ eq }));
+  return { client: { select }, eq, notFilter, order, range, select };
 }
 
-function deleteInEqClient(error: unknown = null) {
-  const eq = jest.fn(async () => ({ error }));
-  const inFilter = jest.fn(() => ({ eq }));
-  const deleteRows = jest.fn(() => ({ in: inFilter }));
-  return { client: { delete: deleteRows }, deleteRows, eq, inFilter };
+// Combined reference-table client: paginated read (select → in → eq → order →
+// range) plus update (update → in → eq), so one memoized client serves both the
+// snapshot read and its re-point/restore writes regardless of call order.
+function refTableClient(
+  data: unknown[],
+  options: PageOptions & { updateError?: unknown } = {},
+) {
+  const range = pageRange(data, options);
+  const readOrder = jest.fn(() => ({ range }));
+  const readEq = jest.fn(() => ({ order: readOrder }));
+  const readIn = jest.fn(() => ({ eq: readEq }));
+  const select = jest.fn(() => ({ in: readIn }));
+  const updateEq = jest.fn(async () => ({ error: options.updateError ?? null }));
+  const updateIn = jest.fn(() => ({ eq: updateEq }));
+  const update = jest.fn(() => ({ in: updateIn }));
+  return { client: { select, update }, range, update, updateEq, updateIn };
+}
+
+// merchants table for mergeMerchants mutations: alias update (update → eq → eq)
+// and source delete (delete → in → eq). The snapshot read is supplied
+// separately as the first from() call.
+function merchantsMutationClient(
+  options: { aliasError?: unknown; deleteError?: unknown } = {},
+) {
+  const aliasSecondEq = jest.fn(async () => ({ error: options.aliasError ?? null }));
+  const aliasFirstEq = jest.fn(() => ({ eq: aliasSecondEq }));
+  const update = jest.fn(() => ({ eq: aliasFirstEq }));
+  const deleteEq = jest.fn(async () => ({ error: options.deleteError ?? null }));
+  const deleteIn = jest.fn(() => ({ eq: deleteEq }));
+  const deleteRows = jest.fn(() => ({ in: deleteIn }));
+  return {
+    client: { delete: deleteRows, update },
+    deleteEq,
+    deleteIn,
+    deleteRows,
+    update,
+  };
+}
+
+function installTables(map: Record<string, unknown>) {
+  fromMock.mockImplementation((table: unknown) => {
+    const client = map[table as string];
+    if (!client) {
+      throw new Error(`Unexpected from(${String(table)})`);
+    }
+    return client;
+  });
+}
+
+// listMerchants: select → eq('active', true) → order('name').
+function listMerchantsClient(data: unknown[]) {
+  const order = jest.fn(async () => ({ data, error: null }));
+  const activeEq = jest.fn(() => ({ order }));
+  const select = jest.fn(() => ({ eq: activeEq }));
+  return { client: { select }, activeEq, order, select };
 }
 
 const target = {
@@ -240,56 +304,42 @@ describe('mergeMerchants', () => {
 
   test('re-points every reference, merges aliases, and deletes sources', async () => {
     const merchantQuery = selectInEqClient([target, sourceA, sourceB]);
-    const expenseQuery = selectInEqClient([
+    const expenses = refTableClient([
       { id: 'expense-a', merchant_id: 'source-a', user_id: 'user-1' },
       { id: 'expense-b', merchant_id: 'source-b', user_id: 'user-1' },
     ]);
-    const receiptQuery = selectInEqClient([
+    const receipts = refTableClient([
       { id: 'receipt-a', merchant_id: 'source-a', user_id: 'user-1' },
     ]);
-    const subscriptionQuery = selectInEqClient([
-      {
-        id: 'subscription-b',
-        merchant_id: 'source-b',
-        user_id: 'user-1',
-      },
+    const subscriptions = refTableClient([
+      { id: 'subscription-b', merchant_id: 'source-b', user_id: 'user-1' },
     ]);
-    const expenseUpdate = updateInEqClient();
-    const receiptUpdate = updateInEqClient();
-    const subscriptionUpdate = updateInEqClient();
-    const aliasUpdate = updateEqEqClient();
-    const sourceDelete = deleteInEqClient();
-
-    fromMock
-      .mockReturnValueOnce(merchantQuery.client)
-      .mockReturnValueOnce(expenseQuery.client)
-      .mockReturnValueOnce(receiptQuery.client)
-      .mockReturnValueOnce(subscriptionQuery.client)
-      .mockReturnValueOnce(expenseUpdate.client)
-      .mockReturnValueOnce(receiptUpdate.client)
-      .mockReturnValueOnce(subscriptionUpdate.client)
-      .mockReturnValueOnce(aliasUpdate.client)
-      .mockReturnValueOnce(sourceDelete.client);
+    const merchants = merchantsMutationClient();
+    installTables({
+      merchants: merchants.client,
+      expenses: expenses.client,
+      receipts: receipts.client,
+      subscriptions: subscriptions.client,
+    });
+    // The merchant snapshot is the first from() call; alias update and source
+    // delete fall through to the dispatch above.
+    fromMock.mockReturnValueOnce(merchantQuery.client);
 
     await expect(
       mergeMerchants('target', ['source-a', 'source-b']),
     ).resolves.toEqual({ affectedExpenses: 2 });
 
-    for (const referenceUpdate of [
-      expenseUpdate,
-      receiptUpdate,
-      subscriptionUpdate,
-    ]) {
-      expect(referenceUpdate.update).toHaveBeenCalledWith({
+    for (const reference of [expenses, receipts, subscriptions]) {
+      expect(reference.update).toHaveBeenCalledWith({
         merchant_id: 'target',
       });
-      expect(referenceUpdate.inFilter).toHaveBeenCalledWith(
-        'merchant_id',
-        ['source-a', 'source-b'],
-      );
-      expect(referenceUpdate.eq).toHaveBeenCalledWith('user_id', 'user-1');
+      expect(reference.updateIn).toHaveBeenCalledWith('merchant_id', [
+        'source-a',
+        'source-b',
+      ]);
+      expect(reference.updateEq).toHaveBeenCalledWith('user_id', 'user-1');
     }
-    expect(aliasUpdate.update).toHaveBeenCalledWith({
+    expect(merchants.update).toHaveBeenCalledWith({
       aliases: [
         'Target alias',
         'Source A',
@@ -299,54 +349,149 @@ describe('mergeMerchants', () => {
       ],
       type_id: null,
     });
-    expect(sourceDelete.inFilter).toHaveBeenCalledWith('id', [
+    expect(merchants.deleteIn).toHaveBeenCalledWith('id', [
       'source-a',
       'source-b',
     ]);
-    expect(sourceDelete.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(merchants.deleteEq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+
+  test('counts affected expenses across every reference page', async () => {
+    const merchantQuery = selectInEqClient([target, sourceA]);
+    // Server caps reference pages at two rows; the third expense only appears
+    // on a later page and must still be counted and re-pointed.
+    const expenses = refTableClient(
+      [
+        { id: 'expense-a', merchant_id: 'source-a', user_id: 'user-1' },
+        { id: 'expense-b', merchant_id: 'source-a', user_id: 'user-1' },
+        { id: 'expense-c', merchant_id: 'source-a', user_id: 'user-1' },
+      ],
+      { serverLimit: 2 },
+    );
+    const receipts = refTableClient([]);
+    const subscriptions = refTableClient([]);
+    const merchants = merchantsMutationClient();
+    installTables({
+      merchants: merchants.client,
+      expenses: expenses.client,
+      receipts: receipts.client,
+      subscriptions: subscriptions.client,
+    });
+    fromMock.mockReturnValueOnce(merchantQuery.client);
+
+    await expect(
+      mergeMerchants('target', ['source-a']),
+    ).resolves.toEqual({ affectedExpenses: 3 });
+    expect(expenses.range.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  test('aborts before any mutation when a reference page fails', async () => {
+    const merchantQuery = selectInEqClient([target, sourceA]);
+    const expenses = refTableClient(
+      [
+        { id: 'expense-a', merchant_id: 'source-a', user_id: 'user-1' },
+        { id: 'expense-b', merchant_id: 'source-a', user_id: 'user-1' },
+        { id: 'expense-c', merchant_id: 'source-a', user_id: 'user-1' },
+      ],
+      { serverLimit: 2, errorFrom: 2 },
+    );
+    const receipts = refTableClient([]);
+    const subscriptions = refTableClient([]);
+    const merchants = merchantsMutationClient();
+    installTables({
+      merchants: merchants.client,
+      expenses: expenses.client,
+      receipts: receipts.client,
+      subscriptions: subscriptions.client,
+    });
+    fromMock.mockReturnValueOnce(merchantQuery.client);
+
+    await expect(
+      mergeMerchants('target', ['source-a']),
+    ).rejects.toMatchObject({ message: 'read-page-2' });
+    expect(expenses.update).not.toHaveBeenCalled();
+    expect(receipts.update).not.toHaveBeenCalled();
+    expect(subscriptions.update).not.toHaveBeenCalled();
+    expect(merchants.update).not.toHaveBeenCalled();
+    expect(merchants.deleteRows).not.toHaveBeenCalled();
   });
 
   test('restores already moved references when a later update fails', async () => {
     const merchantQuery = selectInEqClient([target, sourceA]);
-    const expenseQuery = selectInEqClient([
+    const expenses = refTableClient([
       { id: 'expense-a', merchant_id: 'source-a', user_id: 'user-1' },
     ]);
-    const receiptQuery = selectInEqClient([
+    const receipts = refTableClient([
       { id: 'receipt-a', merchant_id: 'source-a', user_id: 'user-1' },
     ]);
-    const subscriptionQuery = selectInEqClient([]);
-    const expenseUpdate = updateInEqClient();
-    const receiptUpdate = updateInEqClient();
-    const subscriptionUpdate = updateInEqClient({ message: 'write failed' });
-    const receiptRestore = updateInEqClient();
-    const expenseRestore = updateInEqClient();
-
-    fromMock
-      .mockReturnValueOnce(merchantQuery.client)
-      .mockReturnValueOnce(expenseQuery.client)
-      .mockReturnValueOnce(receiptQuery.client)
-      .mockReturnValueOnce(subscriptionQuery.client)
-      .mockReturnValueOnce(expenseUpdate.client)
-      .mockReturnValueOnce(receiptUpdate.client)
-      .mockReturnValueOnce(subscriptionUpdate.client)
-      .mockReturnValueOnce(receiptRestore.client)
-      .mockReturnValueOnce(expenseRestore.client);
+    const subscriptions = refTableClient([], {
+      updateError: { message: 'write failed' },
+    });
+    const merchants = merchantsMutationClient();
+    installTables({
+      merchants: merchants.client,
+      expenses: expenses.client,
+      receipts: receipts.client,
+      subscriptions: subscriptions.client,
+    });
+    fromMock.mockReturnValueOnce(merchantQuery.client);
 
     await expect(
       mergeMerchants('target', ['source-a']),
     ).rejects.toEqual({ message: 'write failed' });
 
-    expect(receiptRestore.update).toHaveBeenCalledWith({
+    // Updated tables are restored from the complete snapshot.
+    expect(receipts.update).toHaveBeenCalledWith({
       merchant_id: 'source-a',
     });
-    expect(receiptRestore.inFilter).toHaveBeenCalledWith('id', [
-      'receipt-a',
-    ]);
-    expect(expenseRestore.update).toHaveBeenCalledWith({
+    expect(receipts.updateIn).toHaveBeenCalledWith('id', ['receipt-a']);
+    expect(expenses.update).toHaveBeenCalledWith({
       merchant_id: 'source-a',
     });
-    expect(expenseRestore.inFilter).toHaveBeenCalledWith('id', [
-      'expense-a',
+    expect(expenses.updateIn).toHaveBeenCalledWith('id', ['expense-a']);
+  });
+});
+
+describe('listMerchantsForManagement', () => {
+  beforeEach(() => {
+    getSessionMock.mockReset();
+    fromMock.mockReset();
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+  });
+
+  test('counts merchant usage across every expense page', async () => {
+    const merchantsList = listMerchantsClient([
+      {
+        id: 'merchant-1',
+        name: 'LIDL',
+        aliases: [],
+        created_at: '2026-08-01T10:00:00Z',
+        updated_at: '2026-08-01T10:00:00Z',
+      },
     ]);
+    // Server caps expense pages at two rows; the third reference only appears on
+    // a later page and must still be counted.
+    const expenses = pagedMerchantCountClient(
+      [
+        { id: 'expense-a', merchant_id: 'merchant-1' },
+        { id: 'expense-b', merchant_id: 'merchant-1' },
+        { id: 'expense-c', merchant_id: 'merchant-1' },
+      ],
+      { serverLimit: 2 },
+    );
+    installTables({
+      merchants: merchantsList.client,
+      expenses: expenses.client,
+    });
+
+    const result = await listMerchantsForManagement();
+
+    expect(result[0]).toMatchObject({ id: 'merchant-1', usageCount: 3 });
+    expect(expenses.range.mock.calls.length).toBeGreaterThan(1);
+    expect(expenses.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(expenses.order).toHaveBeenCalledWith('id', { ascending: true });
   });
 });
