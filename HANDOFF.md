@@ -1,22 +1,21 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: RETRY-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: CURRENCY-INPUT-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Экран «Отчёты» получил Retry при ошибке загрузки данных — теперь все пять аудированных read-экранов (Home, Analytics, Categories, Merchants, Reports) имеют load-error recovery. Экспортные форматы/builders/delivery, FX, схема, RLS, PDF и другие экраны не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Новый manual expense открывается в запомненной валюте вместо жёсткого RSD. Приоритет: последняя сохранённая валюта (account-scoped) → домашняя валюта → device-default. FX, схема, RLS, receipt currency и display-поведение не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `app/(app)/reports.tsx`: добавлен `retryKey` (в зависимостях data-loading focus-effect); на load-error `StatusBanner` добавлен action `home.retry` → `setRetryKey(+1)`, который перезапрашивает `listExpensesByMonth(visibleMonth)` и `listCategoriesForManagement()` за выбранный месяц, чистит ошибку и показывает индикатор загрузки. Сообщение загрузки переведено с `export.failed` на новый `export.loadFailed`. Экспорт остаётся недоступен (`!loading && !loadError`) до успеха обоих запросов. Active-request cancellation guard и prepared-PDF lifecycle сохранены; Retry не запускает CSV/XLSX/PDF.
-- i18n: добавлен `export.loadFailed` в `ru.ts`/`en.ts` (EN «Couldn't load report data. Try again.», RU «Не удалось загрузить данные отчёта. Попробуйте ещё раз.»); `export.failed` без изменений.
-- Тесты: новый `lib/__tests__/reportsRetry.test.tsx` рендерит реальный экран с моками db/exportDelivery/exportPdfIntegration и `useFocusEffect` как effect. Покрыто: failed load → Retry с `export.loadFailed`; Retry рефетчит оба датасета за выбранный месяц; во время retry загрузка восстановлена и экспорт недоступен; успешный retry восстанавливает экспорт или empty-state; повторный сбой остаётся recoverable; Retry не вызывает export delivery.
-- `BUGS.md`: добавлен `BUG-11` (fixed).
+- Добавлен `lib/lastCurrency.ts`: `readLastManualCurrency(accountId)` / `rememberLastManualCurrency(accountId, currency)` поверх уже установленного AsyncStorage. Ключ account-scoped (`last_manual_currency:<id>`) — изоляция аккаунтов на устройстве. Значение проходит через `normalizeCurrencyCode` (custom-валюты сохраняются, не ограничены supported-home set). Read-сбой → null (fallback); write-сбой → лог, без throw (успешное сохранение не превращается в провал). Хранится только код валюты, никаких сумм/мест/категорий.
+- `components/ExpenseEditorScreen.tsx`: внешний компонент читает `useAuth().user.id` и `useHomeCurrency().homeCurrency`; в его loading-фазе (`Promise.all`) резолвит `readLastManualCurrency` только для нового expense и передаёт `initialCurrency` + `accountId` в форму до того, как она станет интерактивной (поздний ответ не перезатирает выбор пользователя). Форма: `currency` инициализируется `initialExpense?.originalCurrency ?? initialCurrency`. В `handleSave` после успешного `insertExpense` (только создание) — `void rememberLastManualCurrency(accountId, currency)`; при edit/fail/cancel/receipt не вызывается. Фокус и форм-инициализация сохранены.
+- Тесты: новый `lib/__tests__/lastCurrency.test.ts` (read/write, normalize, invalid→fallback, account-scoped key, read/write-failure non-fatal, custom currency). Расширен `lib/__tests__/expenseEditorScreen.test.tsx` (моки `useAuth`/`useHomeCurrency`/`../lastCurrency`): нет запомненной → home currency; валидная запомненная → restored; custom → restored; успешное создание → remember с сохранённой валютой; провал/без сохранения/edit → remember не вызывается; edit открывается в оригинальной валюте и не читает preference.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(reports): allow retry after data loading failure`, запушен в `origin/main`. Экспорт, FX, схема, RLS, другие экраны и StatusBanner-компонент не затронуты.
+Ветка `main`. Один атомарный commit `feat(expenses): remember last manual expense currency`, запушен в `origin/main`. Миграции, RLS, FX, frozen-anchor, receipt currency selection и display-валюты не затронуты.
 
 ## Следующий шаг
 
@@ -24,13 +23,14 @@ _Обновлено: 2026-11-26 · автор витка: Claude · задача
 
 ## Открытые решения и риски
 
-- Docs-only: закрыт `DELETE-01` — аудит подтвердил `ConfirmDialog` на всех необратимых удалениях (покупка на Home, ручная трата, категория, место); код не менялся.
-- Retry переиспользует существующий паттерн (Home/Analytics); StatusBanner не редизайнился, его опциональный `action` уже поддерживался.
-- `typecheck` зелёный; targeted `reportsRetry` 6/6; полный `test:ci` — см. виток.
+- Preference резолвится в loading-фазе внешнего экрана (до монтирования формы), поэтому поздний AsyncStorage-ответ не перезаписывает валюту, выбранную пользователем. Это не cross-device sync.
+- Docs-only: закрыт `EXPENSE-02` — аудит подтвердил существующий DS Toast в `handleSave` (`toast.success`), код не дублировался.
+- `typecheck` зелёный; targeted `lastCurrency` 11/11, `expenseEditorScreen` 19/19; полный `test:ci` — см. виток.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не менять export builders/delivery, filenames, FX, схему, RLS, PDF-движок, другие экраны и `StatusBanner`-компонент.
-- Не использовать `export.failed` для ошибок загрузки данных — для этого есть `export.loadFailed`.
+- `lastCurrency` хранит только код валюты — никогда не добавлять туда суммы, manual RSD, merchant, описание, категорию или иные транзакционные данные.
+- Не ограничивать запоминаемую валюту списком supported-home currencies (custom-контракт).
+- Не запоминать валюту при edit/receipt/cancel/fail/простом выборе без сохранения.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

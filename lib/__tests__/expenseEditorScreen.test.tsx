@@ -43,6 +43,31 @@ jest.mock('../../contexts/ToastContext', () => ({
   useToast: () => ({ error: mockToastError, success: mockToastSuccess }),
 }));
 
+const mockUser = { id: 'user-1' };
+jest.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: mockUser }),
+}));
+
+const mockHomeCurrency = { value: 'RSD' };
+jest.mock('../../contexts/HomeCurrencyContext', () => ({
+  useHomeCurrency: () => ({
+    homeCurrency: mockHomeCurrency.value,
+    loading: false,
+    setHomeCurrency: () => {},
+  }),
+}));
+
+const mockReadLastManualCurrency =
+  jest.fn<(accountId: string | null) => Promise<string | null>>();
+const mockRememberLastManualCurrency =
+  jest.fn<(accountId: string | null, currency: string) => Promise<void>>();
+jest.mock('../lastCurrency', () => ({
+  readLastManualCurrency: (accountId: string | null) =>
+    mockReadLastManualCurrency(accountId),
+  rememberLastManualCurrency: (accountId: string | null, currency: string) =>
+    mockRememberLastManualCurrency(accountId, currency),
+}));
+
 jest.mock('../../lib/db', () => ({
   deleteExpense: (id: string) => mockDeleteExpense(id),
   getExpense: (id: string) => mockGetExpense(id),
@@ -87,6 +112,7 @@ jest.mock('../../components/ConfirmDialog', () => ({
 
 // Imported after the mocks so the screen picks them up.
 import { ExpenseEditorScreen } from '../../components/ExpenseEditorScreen';
+import { ReceiptCurrencySelector } from '../../components/ReceiptCurrencySelector';
 
 type DsButtonProps = {
   accessibilityLabel?: string;
@@ -192,6 +218,11 @@ beforeEach(() => {
   mockListCategories.mockResolvedValue([CATEGORY]);
   mockListMerchants.mockReset();
   mockListMerchants.mockResolvedValue([]);
+  mockHomeCurrency.value = 'RSD';
+  mockReadLastManualCurrency.mockReset();
+  mockReadLastManualCurrency.mockResolvedValue(null);
+  mockRememberLastManualCurrency.mockReset();
+  mockRememberLastManualCurrency.mockResolvedValue(undefined);
 });
 
 describe('Expense editor buttons', () => {
@@ -345,5 +376,103 @@ describe('Expense editor buttons', () => {
 
     press(tree.root, 'common.back');
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+function currencyValue(root: ReactTestInstance): string {
+  return root.findByType(ReceiptCurrencySelector).props.value as string;
+}
+
+function changeCurrency(root: ReactTestInstance, code: string) {
+  act(() => {
+    root.findByType(ReceiptCurrencySelector).props.onChange(code);
+  });
+}
+
+describe('Expense editor remembered currency', () => {
+  test('a new expense without a remembered currency opens in the home currency', async () => {
+    mockHomeCurrency.value = 'EUR';
+    mockReadLastManualCurrency.mockResolvedValue(null);
+
+    const tree = await renderEditor();
+
+    expect(currencyValue(tree.root)).toBe('EUR');
+    expect(mockReadLastManualCurrency).toHaveBeenCalledWith('user-1');
+  });
+
+  test('a new expense restores a remembered currency over the home currency', async () => {
+    mockHomeCurrency.value = 'RSD';
+    mockReadLastManualCurrency.mockResolvedValue('EUR');
+
+    const tree = await renderEditor();
+
+    expect(currencyValue(tree.root)).toBe('EUR');
+  });
+
+  test('a new expense restores a remembered custom currency', async () => {
+    mockHomeCurrency.value = 'RSD';
+    mockReadLastManualCurrency.mockResolvedValue('THB');
+
+    const tree = await renderEditor();
+
+    expect(currencyValue(tree.root)).toBe('THB');
+  });
+
+  test('a successful creation remembers the saved currency', async () => {
+    const tree = await renderEditor();
+    changeCurrency(tree.root, 'EUR');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    expect(mockInsertExpense).toHaveBeenCalledTimes(1);
+    expect(mockRememberLastManualCurrency).toHaveBeenCalledWith(
+      'user-1',
+      'EUR',
+    );
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed creation does not remember the currency', async () => {
+    mockInsertExpense.mockRejectedValue(new Error('network down'));
+
+    const tree = await renderEditor();
+    changeCurrency(tree.root, 'EUR');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    expect(mockRememberLastManualCurrency).not.toHaveBeenCalled();
+  });
+
+  test('leaving the form without saving does not remember the currency', async () => {
+    const tree = await renderEditor();
+    changeCurrency(tree.root, 'EUR');
+    typeAmount(tree.root, '12,50');
+    pickCategory(tree.root, CATEGORY.id);
+
+    expect(mockRememberLastManualCurrency).not.toHaveBeenCalled();
+  });
+
+  test('editing an expense opens in its original currency and reads no preference', async () => {
+    const tree = await renderEditor('expense-1');
+
+    // EXPENSE.originalCurrency is EUR.
+    expect(currencyValue(tree.root)).toBe('EUR');
+    expect(mockReadLastManualCurrency).not.toHaveBeenCalled();
+  });
+
+  test('a successful edit does not remember the currency', async () => {
+    const tree = await renderEditor('expense-1');
+    await act(async () => {
+      press(tree.root, 'common.save');
+    });
+
+    expect(mockUpdateExpense).toHaveBeenCalledTimes(1);
+    expect(mockRememberLastManualCurrency).not.toHaveBeenCalled();
   });
 });

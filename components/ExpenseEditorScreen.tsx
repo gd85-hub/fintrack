@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 
+import { useAuth } from '../contexts/AuthContext';
+import { useHomeCurrency } from '../contexts/HomeCurrencyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useColors } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
@@ -34,6 +36,10 @@ import {
   parseLocalISO,
   todayLocalISO,
 } from '../lib/dates';
+import {
+  readLastManualCurrency,
+  rememberLastManualCurrency,
+} from '../lib/lastCurrency';
 import { RateUnavailableError, ratesForExpense } from '../lib/fx';
 import { isSupportedHomeCurrency } from '../lib/homeCurrency';
 import {
@@ -63,6 +69,11 @@ type ExpenseFormProps = {
   initialExpense: Expense | null;
   categories: Category[];
   initialMerchants: Merchant[];
+  // Currency a new form opens with (last manual currency or home currency),
+  // resolved before the form mounts. Ignored when editing an existing expense.
+  initialCurrency: string;
+  // Account the saved currency is remembered under; null when signed out.
+  accountId: string | null;
 };
 
 type ConversionPreview =
@@ -79,6 +90,8 @@ function ExpenseForm({
   initialExpense,
   categories,
   initialMerchants,
+  initialCurrency,
+  accountId,
 }: ExpenseFormProps) {
   const router = useRouter();
   const { locale, t } = useLanguage();
@@ -88,7 +101,7 @@ function ExpenseForm({
     initialExpense ? centsToInput(initialExpense.originalAmountCents) : '',
   );
   const [currency, setCurrency] = useState(
-    initialExpense?.originalCurrency ?? 'RSD',
+    initialExpense?.originalCurrency ?? initialCurrency,
   );
   const [manualRsdInput, setManualRsdInput] = useState(
     initialExpense &&
@@ -275,6 +288,10 @@ function ExpenseForm({
         await updateExpense(initialExpense.id, input);
       } else {
         await insertExpense(input);
+        // Remember the currency only after a successful manual creation. This
+        // is fire-and-forget and swallows its own errors, so a storage failure
+        // never turns a saved expense into a failed save.
+        void rememberLastManualCurrency(accountId, currency);
       }
       toast.success(
         t(initialExpense ? 'toast.changesSaved' : 'toast.expenseSaved'),
@@ -531,11 +548,17 @@ export function ExpenseEditorScreen({
   const router = useRouter();
   const { t } = useLanguage();
   const { styles } = useExpenseEditorTheme();
+  const { user } = useAuth();
+  const { homeCurrency } = useHomeCurrency();
+  const accountId = user?.id ?? null;
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [expense, setExpense] = useState<Expense | null>(null);
+  // Resolved during loading so the form opens with the right currency and a
+  // late storage read can never overwrite a user's in-form selection.
+  const [initialCurrency, setInitialCurrency] = useState(homeCurrency);
   const [focusKey, setFocusKey] = useState(0);
 
   useFocusEffect(
@@ -551,12 +574,18 @@ export function ExpenseEditorScreen({
       listCategories(),
       listMerchants(),
       expenseId ? getExpense(expenseId) : Promise.resolve(null),
+      // Only a new expense restores a remembered currency; editing keeps the
+      // expense's own original currency.
+      expenseId
+        ? Promise.resolve(null)
+        : readLastManualCurrency(accountId),
     ])
       .then(
         ([
           loadedCategories,
           loadedMerchants,
           loadedExpense,
+          lastCurrency,
         ]) => {
           if (!active) {
             return;
@@ -570,6 +599,9 @@ export function ExpenseEditorScreen({
           setCategories(loadedCategories);
           setMerchants(loadedMerchants);
           setExpense(loadedExpense);
+          if (!expenseId) {
+            setInitialCurrency(lastCurrency ?? homeCurrency);
+          }
         },
       )
       .catch((error: unknown) => {
@@ -587,7 +619,7 @@ export function ExpenseEditorScreen({
     return () => {
       active = false;
     };
-  }, [expenseId, t]);
+  }, [accountId, expenseId, homeCurrency, t]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -614,7 +646,9 @@ export function ExpenseEditorScreen({
 
   return (
     <ExpenseForm
+      accountId={accountId}
       categories={categories}
+      initialCurrency={initialCurrency}
       initialExpense={expense}
       initialMerchants={merchants}
       key={focusKey}
