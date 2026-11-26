@@ -273,6 +273,8 @@ export const en = {
     addPlace: '+ Add place',
     title: 'Manage places',
     loadFailed: "Couldn't load places. Try again.",
+    existsAdd:
+      'A place named "{{name}}" already exists. Select it from the list.',
     existsRename:
       'A place named "{{name}}" already exists. Merge the records instead of renaming.',
     renameFailed: "Couldn't rename the place. Try again.",

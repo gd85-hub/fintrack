@@ -13,8 +13,10 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useColors } from '../contexts/ThemeContext';
 import {
   createMerchant,
+  MerchantAlreadyExistsError,
   type Merchant,
 } from '../lib/db';
+import { findMerchantNameCollision } from '../lib/merchantManagement';
 import { filterAndSortMerchants } from '../lib/merchantSearch';
 import { theme, type Colors } from '../lib/theme';
 
@@ -67,6 +69,15 @@ export function MerchantPicker({
       return;
     }
 
+    // Preflight against the already-loaded list: an obvious duplicate never
+    // reaches Supabase. The picker stays open so the user can pick the existing
+    // record themselves (we never select it for them).
+    const collision = findMerchantNameCollision(merchants, trimmedName);
+    if (collision) {
+      setErrorMessage(t('merchant.existsAdd', { name: collision.name }));
+      return;
+    }
+
     setSubmitting(true);
     setErrorMessage('');
 
@@ -77,6 +88,14 @@ export function MerchantPicker({
       setName('');
       close();
     } catch (error: unknown) {
+      // Race fallback: another client/device created the same merchant after
+      // this list loaded, so the DB unique index rejected the insert.
+      if (error instanceof MerchantAlreadyExistsError) {
+        setErrorMessage(
+          t('merchant.existsAdd', { name: error.merchantName }),
+        );
+        return;
+      }
       console.error('Unable to create merchant:', error);
       setErrorMessage(t('merchant.addFailed'));
     } finally {

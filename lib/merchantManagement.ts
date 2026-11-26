@@ -18,12 +18,16 @@ type MerchantNameCandidate = {
   name: string;
 };
 
-export function findMerchantRenameCollision<
+// Finds an existing merchant whose name normalizes to the same key as
+// `nextName`, optionally ignoring one row by id. Single normalization contract
+// (`normalizeMerchantName`) shared by create preflight and rename collision, so
+// the two can never diverge. Returns null for a blank/normalizes-to-empty name.
+export function findMerchantNameCollision<
   T extends MerchantNameCandidate,
 >(
   merchants: readonly T[],
-  merchantId: string,
   nextName: string,
+  excludeMerchantId?: string,
 ): T | null {
   const nextKey = normalizeMerchantName(nextName);
   if (!nextKey) {
@@ -33,10 +37,22 @@ export function findMerchantRenameCollision<
   return (
     merchants.find(
       (merchant) =>
-        merchant.id !== merchantId &&
+        merchant.id !== excludeMerchantId &&
         normalizeMerchantName(merchant.name) === nextKey,
     ) ?? null
   );
+}
+
+// Rename collision: the row being renamed must not count against itself.
+// Thin wrapper over findMerchantNameCollision to keep existing rename semantics.
+export function findMerchantRenameCollision<
+  T extends MerchantNameCandidate,
+>(
+  merchants: readonly T[],
+  merchantId: string,
+  nextName: string,
+): T | null {
+  return findMerchantNameCollision(merchants, nextName, merchantId);
 }
 
 export function merchantUsageCounts(

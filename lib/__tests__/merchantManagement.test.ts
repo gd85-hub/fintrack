@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-import { createMerchant, mergeMerchants } from '../db';
 import {
+  createMerchant,
+  MerchantAlreadyExistsError,
+  mergeMerchants,
+} from '../db';
+import {
+  findMerchantNameCollision,
   findMerchantRenameCollision,
   merchantUsageCounts,
   requireMerchantName,
@@ -98,6 +103,37 @@ describe('requireMerchantName', () => {
 });
 
 describe('merchant management helpers', () => {
+  test('finds a normalized create collision across the loaded list', () => {
+    const merchants = [
+      { id: 'a', name: 'LIDL' },
+      { id: 'b', name: 'Кафе Москва' },
+    ];
+
+    expect(findMerchantNameCollision(merchants, 'LIDL')).toEqual(
+      merchants[0],
+    );
+    expect(findMerchantNameCollision(merchants, 'lidl')).toEqual(
+      merchants[0],
+    );
+    expect(findMerchantNameCollision(merchants, '  LIDL  ')).toEqual(
+      merchants[0],
+    );
+    expect(findMerchantNameCollision(merchants, ' кафе москва ')).toEqual(
+      merchants[1],
+    );
+    expect(findMerchantNameCollision(merchants, 'Maxi')).toBeNull();
+    expect(findMerchantNameCollision(merchants, '   ')).toBeNull();
+  });
+
+  test('excludes a given merchant id from create collisions', () => {
+    const merchants = [{ id: 'a', name: 'LIDL' }];
+
+    expect(findMerchantNameCollision(merchants, 'lidl', 'a')).toBeNull();
+    expect(findMerchantNameCollision(merchants, 'lidl', 'other')).toEqual(
+      merchants[0],
+    );
+  });
+
   test('finds a normalized rename collision but ignores the same row', () => {
     const merchants = [
       { id: 'current', name: 'Другое место' },
@@ -162,6 +198,33 @@ describe('createMerchant', () => {
       type_id: null,
       aliases: [],
     });
+  });
+
+  test('maps a unique-violation (23505) to MerchantAlreadyExistsError', async () => {
+    const single = jest.fn(async () => ({
+      data: null,
+      error: { code: '23505', message: 'duplicate key value' },
+    }));
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    fromMock.mockReturnValue({ insert });
+
+    await expect(createMerchant('  LIDL  ')).rejects.toBeInstanceOf(
+      MerchantAlreadyExistsError,
+    );
+    await expect(createMerchant('  LIDL  ')).rejects.toMatchObject({
+      merchantName: 'LIDL',
+    });
+  });
+
+  test('propagates a non-duplicate database error unchanged', async () => {
+    const dbError = { code: '42501', message: 'permission denied' };
+    const single = jest.fn(async () => ({ data: null, error: dbError }));
+    const select = jest.fn(() => ({ single }));
+    const insert = jest.fn(() => ({ select }));
+    fromMock.mockReturnValue({ insert });
+
+    await expect(createMerchant('LIDL')).rejects.toBe(dbError);
   });
 });
 

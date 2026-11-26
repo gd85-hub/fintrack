@@ -14,6 +14,21 @@ import type {
   RenameMerchantResult,
 } from './types';
 
+// Thrown when a merchant insert hits the `(user_id, lower(name))` unique index
+// (Postgres code 23505). Carries the attempted name so the UI can name the
+// duplicate. This covers the race where another client/device created the same
+// merchant after the picker loaded its list; the client-side preflight handles
+// the common case.
+export class MerchantAlreadyExistsError extends Error {
+  readonly merchantName: string;
+
+  constructor(merchantName: string) {
+    super(`Merchant already exists: ${merchantName}`);
+    this.name = 'MerchantAlreadyExistsError';
+    this.merchantName = merchantName;
+  }
+}
+
 type MerchantTypeQueryRow = {
   id: string;
   emoji: string;
@@ -102,6 +117,9 @@ export async function createMerchant(
     .single();
 
   if (error) {
+    if ((error as { code?: string }).code === '23505') {
+      throw new MerchantAlreadyExistsError(trimmedName);
+    }
     throw error;
   }
 
