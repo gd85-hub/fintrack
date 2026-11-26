@@ -4,6 +4,7 @@ import { createMerchant, mergeMerchants } from '../db';
 import {
   findMerchantRenameCollision,
   merchantUsageCounts,
+  requireMerchantName,
 } from '../merchantManagement';
 import { supabase } from '../supabase';
 
@@ -65,6 +66,36 @@ const sourceB = {
   name: 'Source B',
   aliases: ['B alias'],
 };
+
+describe('requireMerchantName', () => {
+  test('returns a clean name unchanged', () => {
+    expect(requireMerchantName('LIDL')).toBe('LIDL');
+  });
+
+  test('trims surrounding whitespace', () => {
+    expect(requireMerchantName('  LIDL  ')).toBe('LIDL');
+  });
+
+  test('preserves a Unicode name after trimming', () => {
+    expect(requireMerchantName('  Кафе Москва  ')).toBe('Кафе Москва');
+  });
+
+  test('rejects an empty string', () => {
+    expect(() => requireMerchantName('')).toThrow('Укажите название места.');
+  });
+
+  test('rejects a whitespace-only name', () => {
+    expect(() => requireMerchantName('   ')).toThrow(
+      'Укажите название места.',
+    );
+  });
+
+  test('rejects tabs and newlines only', () => {
+    expect(() => requireMerchantName('\t\n')).toThrow(
+      'Укажите название места.',
+    );
+  });
+});
 
 describe('merchant management helpers', () => {
   test('finds a normalized rename collision but ignores the same row', () => {

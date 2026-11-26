@@ -1,35 +1,34 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: REPORTS-UI-01_
+_Обновлено: 2026-11-26 · автор витка: Claude · задача: MERCHANT-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Кнопки экспорта на экране «Отчёты» переведены на общий DS `Button`. Это consistency-refactor, не редизайн: экспортная логика, доставка, фильтры валют, iOS-сценарий PDF и `MonthPicker` не тронуты. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Валидация имени места (merchant) на запись сведена к единому helper: создание и переименование ведут себя одинаково. Остальная merchant-логика (aliases, collision detection, merge/delete, receipt resolution, схема, RLS, UI, i18n) не тронута. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `app/(app)/reports.tsx`: ручные `Pressable` + локальные стили (`exportButton`, `exportButtonText`, `disabled`) для CSV / Excel / PDF и «Сохранить PDF» заменены на `components/ds/Button` (`variant="primary"`, `size="medium"`). Удалены три неиспользуемых стиля; добавлен layout-wrapper `actionItem` (`flexBasis: 0`, `flexGrow: 1`, `minWidth: theme.scale.size.controlMinWidth`).
-- Сохранены labels, handlers (`exportCsv`/`exportExcel`/`exportPdf`/`savePdf`), порядок и условия недоступности: CSV/Excel/PDF — `disabled={buttonsDisabled}`; «Сохранить PDF» — `loading={savingPdf}` + `disabled={exporting}` (та же итоговая непрожимаемость, что и прежнее `savingPdf || exporting`), появляется только при `preparedPdf`, `fullWidth`.
-- Responsive layout сохранён: `actions` остаётся `row` + `flexWrap: wrap` + gap; обёртки делят строку равными колонками на широком экране и переносятся на узком. Общий «Экспортируем…» + `ActivityIndicator` оставлены как есть — export state machine не переделывалась.
-- `Pressable`, `Text`, `ActivityIndicator` оставлены (ещё нужны триггеру месяца, подписям и индикаторам). `components/ds/Button.tsx` не менялся.
+- В `lib/merchantManagement.ts` добавлен чистый helper `requireMerchantName(name: string): string`: `trim()`, при пустом/из одних пробелов результате бросает существующее сообщение «Укажите название места.», иначе возвращает trimmed-строку.
+- `lib/db/merchants.ts`: `createMerchant` теперь валидирует имя через `requireMerchantName` до обращения к Supabase (раньше делал только `name.trim()` и вставлял результат — пустое имя могло просочиться). `renameMerchant` использует тот же helper вместо собственной inline-проверки. Валидация больше не дублируется.
+- `lib/__tests__/merchantManagement.test.ts`: добавлены unit-тесты helper (`'LIDL'`→`'LIDL'`, `' LIDL '`→`'LIDL'`, Unicode `' Кафе Москва '`→`'Кафе Москва'`, `''`/`' '`/`'\t\n'`→throws). Существующий `createMerchant`-тест (`'  Новое место  '` → insert `name: 'Новое место'`) по-прежнему проходит, подтверждая неизменное поведение. Большой mocked-Supabase harness ради этой задачи не вводился.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `refactor(reports): use design-system export buttons`, запушен в `origin/main`. Экспортная логика, валюты, backend, MonthPicker и DS Button не затронуты.
+Ветка `main`. Один атомарный commit `fix(merchants): reject blank names`, запушен в `origin/main`. Схема, миграции, RLS, UI, i18n, aliases/merge/delete и receipt resolution не затронуты.
 
 ## Следующий шаг
 
-Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy. Опционально — живой визуальный просмотр «Отчётов» на Web (экран за авторизацией, поэтому в этом витке проверено кодом + DS Button render-тестами, без браузерной автоматизации).
+Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy.
 
 ## Открытые решения и риски
 
-- Живой Web-визуальный просмотр не делался: экран `(app)/reports` за авторизацией, требует dev-сервера Expo и сессии Supabase; проблемная Chrome Desktop automation по условию задачи не используется. Корректность подтверждена `typecheck`, DS Button render-тестами и ревью кода (handlers/порядок/disabled неизменны).
-- `test:ci` медленнее параллельного прогона (~50 c, `--runInBand`), но стабилен — осознанный размен из CI-01.
+- Helper валидирует только пустоту/пробелы; нормализация, дедупликация и collision detection остаются отдельными (`normalizeMerchantName`, `findMerchantRenameCollision`) и не менялись.
+- `typecheck` зелёный; targeted `merchantManagement.test.ts` 11/11; полный `test:ci` 903/903.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не трогать `components/ds/Button.tsx`, `MonthPicker`, экспортные builders (CSV/XLSX/PDF), доставку, имена файлов, iOS prepared-PDF lifecycle и Android export.
-- Не переносить export state machine на per-button loading сверх уже сделанного «Сохранить PDF».
+- Не трогать merchant aliases, collision detection, merge/delete, receipt merchant resolution, схему/миграции, RLS, UI, i18n и category logic.
+- `requireMerchantName` — единственный путь валидации имени на запись; не возвращать inline-проверки в `createMerchant`/`renameMerchant`.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

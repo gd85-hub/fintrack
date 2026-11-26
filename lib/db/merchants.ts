@@ -1,6 +1,7 @@
 import {
   findMerchantRenameCollision,
   merchantUsageCounts,
+  requireMerchantName,
 } from '../merchantManagement';
 import { merchantAliasesWithIncoming } from '../receipts';
 import { supabase } from '../supabase';
@@ -87,12 +88,13 @@ export async function createMerchant(
   name: string,
   aliases: string[] = [],
 ): Promise<Merchant> {
+  const trimmedName = requireMerchantName(name);
   const userId = await authenticatedUserId();
   const { data, error } = await supabase
     .from('merchants')
     .insert({
       user_id: userId,
-      name: name.trim(),
+      name: trimmedName,
       type_id: null,
       aliases,
     })
@@ -144,10 +146,7 @@ export async function renameMerchant(
   merchantId: string,
   nextName: string,
 ): Promise<RenameMerchantResult> {
-  const trimmedName = nextName.trim();
-  if (!trimmedName) {
-    throw new Error('Укажите название места.');
-  }
+  const trimmedName = requireMerchantName(nextName);
 
   const userId = await authenticatedUserId();
   const { data, error } = await supabase

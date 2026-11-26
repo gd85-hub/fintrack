@@ -1,5 +1,18 @@
 import { normalizeMerchantName } from './receipts';
 
+// Single source of truth for a merchant's name on write. Both createMerchant
+// and renameMerchant pass user input through here, so the repository can never
+// persist an empty or whitespace-only name even if a future UI path skips its
+// own validation. Returns the trimmed name; throws the existing user-facing
+// message when nothing is left after trimming.
+export function requireMerchantName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('Укажите название места.');
+  }
+  return trimmed;
+}
+
 type MerchantNameCandidate = {
   id: string;
   name: string;
