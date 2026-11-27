@@ -1,36 +1,37 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-26 · автор витка: Claude · задача: REPORTS-LOADING-01_
+_Обновлено: 2026-11-27 · автор витка: Claude · задача: DUP-01_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Прогресс экспорта на экране «Отчёты» теперь зависит от формата (CSV/Excel/PDF) вместо общего сообщения. Экспортные builders, доставка, схема, FX и retry-логика не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Добавлена чистая детерминированная логика определения вероятного дубля чека (`lib/receiptDuplicates.ts`) — первый шаг P0 «QR + photo duplicate protection». Только matching-логика: retrieval кандидатов, preflight в save-flow и предупреждение в UI — это DUP-02 и в этом витке не делались. Схема, RLS, FX, парсинг чеков и `saveFiscalReceipt` не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `app/(app)/reports.tsx`: введён типизированный `ExportFormat = 'csv' | 'xlsx' | 'pdf'` и состояние `activeFormat` (вместо булева `exporting`, который теперь производный: `exporting = activeFormat !== null` — без дублирования состояния). `runExport(format, deliver)` и `exportPdf` ставят/снимают `activeFormat`; строка прогресса выводит `t(EXPORTING_MESSAGE_KEY[activeFormat])`. Карта ключей: csv→`export.preparingCsv`, xlsx→`export.preparingXlsx`, pdf→`export.generatingPdf`.
-- i18n: добавлены `export.preparingCsv` / `preparingXlsx` / `generatingPdf` в `en.ts`/`ru.ts` (EN: Preparing CSV… / Preparing Excel… / Generating PDF…; RU: Подготавливаем CSV… / Подготавливаем Excel… / Создаём PDF…). Старый `export.exporting` оставлен нетронутым.
-- Сохранено без изменений: синхронная дубликат-защита (`exportingRef`), `buttonsDisabled`, обработка ошибок (`export.failed`/`shareUnavailable`), prepared-PDF lifecycle, отдельное состояние Save PDF (`savingPdf`), CSV/XLSX/PDF builders и доставка, выбор месяца и retry загрузки.
-- Тесты: в `lib/__tests__/reportsRetry.test.tsx` (существующая Reports render-инфраструктура) добавлен describe «Reports export feedback»: CSV→`preparingCsv`, Excel→`preparingXlsx`, PDF→`generatingPdf`; сообщение исчезает после успеха и после ошибки; кнопки экспорта недоступны во время операции; повторное нажатие игнорируется (deliver вызван один раз); prepared-PDF → появляется Save PDF. Deferred-промисы для детерминизма.
+- `lib/receiptDuplicates.ts`: `matchReceiptDuplicate(incoming, candidate)` — симметричный, pure. Вход `ReceiptDuplicateInput` (`totalCents`, `currency`, `occurredOn`, опц. `occurredAt`, `merchantId`, `merchantName`, `merchantLabel`, `taxId`) — только реально доступные/выводимые поля; стабильного фискального номера в контракте нет и он не выдумывается. Переиспользует `isPositiveCents`/`normalizeCurrencyCode` (money), `normalizeMerchantName` (receipts), `parseLocalISO` (dates).
+- **Контракт matching (всё обязательно для probable):** совпадение положительного integer-cent `total`; совпадение нормализованной валюты; совпадение валидной локальной даты; «осмысленная» merchant-идентичность — равный `merchantId` ИЛИ равное нормализованное имя. **Усиление:** равный tax-id и совпадающий точный timestamp. **Блокировка:** конфликт известных tax-id, либо заметно разные известные времена. `null` никогда не равенство. Результат `{ isProbableDuplicate, confidence: 'confirmed'|'probable'|'none', evidence }`.
+- **Confidence:** `confirmed` — все обязательные + совпавший точный timestamp (оба `occurredAt`, |Δ| ≤ 60 c — узкое окно только для суб-минутных различий форматирования одного и того же инстанта); `probable` — обязательные выполнены, но без timestamp-доказательства (напр. date-only OCR против QR); `none` — иначе или при блокировке. Локальная дата берётся из уже-локального `occurredOn` или литерального префикса `occurredAt` (без UTC-сдвига).
+- Тесты: `lib/__tests__/receiptDuplicates.test.ts` (27) — QR↔OCR одного чека; дважды QR (confirmed) / дважды фото (probable); другая валюта/total/merchant/дата; конфликт tax-id; заметно разные времена; OCR без времени; нормализованное/кириллица-латиница имя; missing/invalid total/currency/date/merchant; custom-валюта; граница локальной даты без UTC-сдвига; детерминизм и симметрия. `supabase` замокан (helper её не использует).
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `feat(reports): show format-specific export feedback`, запушен в `origin/main`. Export builders/доставка, FX, схема, RLS не затронуты.
+Ветка `main`. Один атомарный commit `feat(receipts): add deterministic duplicate detection`, запушен в `origin/main`. Новый файл + тесты + docs; прикладной save/parse/UI не трогались.
 
 ## Следующий шаг
 
-Вернуться к висящему ручному этапу REPORTS-02.3: проверка Web PDF после отдельного Web deploy.
+DUP-02: подключить `matchReceiptDuplicate` к save-flow и показать предупреждение (пользователь решает сам), без auto-merge/delete. Интеграция — ниже в «Открытых решениях».
 
 ## Открытые решения и риски
 
-- `activeFormat` — единственный источник истины для «идёт экспорт»; `exporting` выведен из него, дубликата состояния нет.
-- `export.exporting` больше не используется кодом, но ключ оставлен в i18n, чтобы не делать несвязанную правку.
-- `typecheck` зелёный; targeted `reportsRetry` 11/11; полный `test:ci` — см. виток. Живой browser-verify не делался (экран за авторизацией).
+- **Интеграция DUP-02:** retrieval кандидатов — выбрать существующие чеки того же `user_id` за ту же локальную дату (и при наличии — тот же `merchant_id`/нормализованное имя и `total`) через общий paginated helper; маппить каждую строку `receipts` + входящий `ParsedReceipt` в `ReceiptDuplicateInput` (дату входящего — через `parsedReceiptDate`/префикс `occurredAt`); вызвать `matchReceiptDuplicate`; при `isProbableDuplicate` показать предупреждение в review перед сохранением. Save не блокировать и ничего не мёржить автоматически.
+- **Ограничения:** нет стабильного фискального номера → абсолютная идентичность недоступна; `confirmed` опирается на точный timestamp. Две разные покупки с одинаковыми merchant/total/currency/датой и без времени классифицируются как probable (это предупреждение, не авто-действие).
+- `typecheck` зелёный; targeted `receiptDuplicates` 27/27; полный `test:ci` — см. виток.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Не менять export state machine сверх добавленного `activeFormat`; дубликат-защита через `exportingRef` остаётся синхронной.
-- Не трогать builders (CSV/XLSX/PDF), доставку, filenames, prepared-PDF lifecycle и Save PDF.
+- `matchReceiptDuplicate` — pure и детерминированный: без fuzzy-матчинга, произвольных весов, конвертации валют и спекулятивных идентификаторов. Timestamp-окно 60 c менять только с обоснованием.
+- Не считать совпадение одного tax-id доказательством одной покупки; null не равенство.
+- DUP-02 (retrieval/save/UI) здесь не реализован — не смешивать с этим витком.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.
