@@ -40,7 +40,7 @@ describe('matchReceiptDuplicate', () => {
   test('a QR and an OCR capture of the same purchase are a probable duplicate', () => {
     const result = matchReceiptDuplicate(qr, ocr);
     expect(result.isProbableDuplicate).toBe(true);
-    // Date-only OCR against a QR receipt is probable, not confirmed.
+    // Date-only OCR against a QR receipt is probable, not a strong identity claim.
     expect(result.confidence).toBe('probable');
     expect(result.evidence).toMatchObject({
       total: true,
@@ -58,11 +58,11 @@ describe('matchReceiptDuplicate', () => {
     );
   });
 
-  test('the same QR receipt added twice is a confirmed duplicate', () => {
+  test('the same QR receipt added twice is a strong duplicate', () => {
     const result = matchReceiptDuplicate(qr, { ...qr });
     expect(result.isProbableDuplicate).toBe(true);
     // Both carry the same exact timestamp and tax id.
-    expect(result.confidence).toBe('confirmed');
+    expect(result.confidence).toBe('strong');
     expect(result.evidence.timestamp).toBe(true);
     expect(result.evidence.merchantId).toBe(true);
     expect(result.evidence.taxId).toBe(true);
@@ -135,7 +135,7 @@ describe('matchReceiptDuplicate', () => {
       occurredAt: '2026-11-10T19:30:30+02:00',
     });
     expect(result.isProbableDuplicate).toBe(true);
-    expect(result.confidence).toBe('confirmed');
+    expect(result.confidence).toBe('strong');
     expect(result.evidence.timestampConflict).toBe(false);
   });
 
@@ -230,6 +230,58 @@ describe('matchReceiptDuplicate', () => {
     expect(matchReceiptDuplicate(lateQr, nextDayOcr).evidence.date).toBe(
       false,
     );
+  });
+
+  test('a just-after-midnight local date is not pulled back a day by the offset', () => {
+    // 00:15 at +01:00 is 23:15 UTC on the previous day; the local calendar date
+    // must be the later day, from the literal prefix — never the UTC day.
+    const afterMidnightQr: ReceiptDuplicateInput = {
+      ...qr,
+      occurredAt: '2026-03-15T00:15:00+01:00',
+    };
+    expect(
+      matchReceiptDuplicate(afterMidnightQr, {
+        ...ocr,
+        occurredOn: '2026-03-15',
+      }).evidence.date,
+    ).toBe(true);
+    expect(
+      matchReceiptDuplicate(afterMidnightQr, {
+        ...ocr,
+        occurredOn: '2026-03-14',
+      }).evidence.date,
+    ).toBe(false);
+  });
+
+  test('a blank merchant name falls back to a meaningful label', () => {
+    const result = matchReceiptDuplicate(
+      { ...ocr, merchantName: '   ', merchantLabel: 'UNIVEREXPORT' },
+      { ...ocr, merchantName: 'Univerexport' },
+    );
+    expect(result.evidence.merchantName).toBe(true);
+    expect(result.isProbableDuplicate).toBe(true);
+  });
+
+  test('an offset-less or invalid timestamp is not exact-time evidence', () => {
+    // Same wall-clock text without an offset on both sides: not a confirmed
+    // instant, so it neither strengthens to 'strong' nor conflicts.
+    const noOffset: ReceiptDuplicateInput = {
+      ...qr,
+      occurredAt: '2026-11-10T19:30:00',
+    };
+    const result = matchReceiptDuplicate(noOffset, { ...noOffset });
+    expect(result.isProbableDuplicate).toBe(true);
+    expect(result.confidence).toBe('probable');
+    expect(result.evidence.timestamp).toBe(false);
+    expect(result.evidence.timestampConflict).toBe(false);
+
+    const garbage: ReceiptDuplicateInput = {
+      ...qr,
+      occurredAt: 'not-a-timestamp',
+    };
+    expect(
+      matchReceiptDuplicate(garbage, { ...garbage }).evidence.timestamp,
+    ).toBe(false);
   });
 
   test('is deterministic across repeated calls', () => {

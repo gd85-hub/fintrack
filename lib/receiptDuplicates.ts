@@ -52,7 +52,10 @@ export type ReceiptDuplicateEvidence = {
   timestampConflict: boolean;
 };
 
-export type ReceiptDuplicateConfidence = 'confirmed' | 'probable' | 'none';
+// 'strong' rather than 'confirmed': no field in the receipt contract proves
+// absolute receipt identity (there is no stable fiscal receipt number), so even
+// the best match is advisory, not definitive.
+export type ReceiptDuplicateConfidence = 'strong' | 'probable' | 'none';
 
 export type ReceiptDuplicateMatch = {
   isProbableDuplicate: boolean;
@@ -109,9 +112,15 @@ function resolveLocalDate(input: ReceiptDuplicateInput): string | null {
 }
 
 function normalizedMerchant(input: ReceiptDuplicateInput): string | null {
-  const source = input.merchantName ?? input.merchantLabel ?? '';
-  const key = normalizeMerchantName(source);
-  return key ? key : null;
+  // Prefer the merchant name, but a blank/whitespace name must not hide an
+  // available meaningful label, so fall back to the label when the name
+  // normalizes to nothing.
+  const fromName = normalizeMerchantName(input.merchantName ?? '');
+  if (fromName) {
+    return fromName;
+  }
+  const fromLabel = normalizeMerchantName(input.merchantLabel ?? '');
+  return fromLabel ? fromLabel : null;
 }
 
 function nonEmptyEqual(
@@ -128,8 +137,15 @@ function normalizeTaxId(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+// A timestamp is exact-time evidence only when it carries both a time and an
+// explicit UTC designator or numeric offset. An offset-less or malformed string
+// would be parsed in the device's local zone (non-deterministic), so it is not
+// treated as evidence.
+const OFFSET_TIMESTAMP =
+  /[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)$/u;
+
 function parseInstant(value: string | null | undefined): number | null {
-  if (!value) {
+  if (!value || !OFFSET_TIMESTAMP.test(value)) {
     return null;
   }
   const ms = Date.parse(value);
@@ -197,13 +213,13 @@ export function matchReceiptDuplicate(
     return { isProbableDuplicate: false, confidence: 'none', evidence };
   }
 
-  // A matching exact timestamp is the strongest deterministic identity signal
-  // available (there is no fiscal receipt number in the contract). Without it —
-  // e.g. a date-only OCR receipt matched against a QR one — the match is only
-  // probable, never confirmed.
+  // A matching exact timestamp is the strongest deterministic signal available
+  // (there is no fiscal receipt number in the contract), but still not proof of
+  // identity. Without it — e.g. a date-only OCR receipt matched against a QR one
+  // — the match is only probable.
   return {
     isProbableDuplicate: true,
-    confidence: timestamp ? 'confirmed' : 'probable',
+    confidence: timestamp ? 'strong' : 'probable',
     evidence,
   };
 }

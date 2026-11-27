@@ -4,3 +4,4 @@ export * from './merchants';
 export * from './expenses';
 export * from './analytics';
 export * from './fiscalReceipts';
+export * from './receiptDuplicates';
