@@ -1,42 +1,41 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-27 · автор витка: Claude · задача: DUP-02A_
+_Обновлено: 2026-11-27 · автор витка: Claude · задача: DUP-02B_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Добавлен read-only репозиторный `findReceiptDuplicates`: по входящему чеку возвращает существующие вероятные дубли аккаунта. Это data-access часть DUP-02; пользовательская интеграция (предупреждение в review/save) — DUP-02B, здесь НЕ сделана. Save-flow, OCR/QR-парсинг, схема, RLS и FX не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+Защита от дублей чеков завершена до пользовательского уровня: review перед сохранением нового чека проверяет вероятные дубли и показывает advisory-предупреждение; пользователь решает сам. DUP-01 (matcher), DUP-02A (retrieval) и теперь DUP-02B (UI) все в проде. Авто-merge/delete/блокировки нет. Схема, RLS, FX, OCR/QR-парсинг не менялись. Предыдущий виток (REPORTS-02.3, векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `lib/db/receiptDuplicates.ts` → `findReceiptDuplicates(incoming)`:
-  - **Контракт даты кандидата:** кандидаты — чеки, у которых есть expense на ту же локальную дату (`expenses.occurred_on`, авторитетная сохранённая дата). НЕ выводится из `receipts.occurred_at` (timestamptz может не сохранить локальный префикс) и НЕ из OCR `raw_json` (там может быть до-подтверждённый ответ модели). Дата кандидата берётся из сопоставленной `expenses.occurred_on`.
-  - **Account isolation:** `authenticatedUserId()` + явный `.eq('user_id', userId)` на обоих запросах, поверх RLS.
-  - **Query/пагинация:** два запроса — expenses (`select id,receipt_id,occurred_on` c `.eq(user).eq(occurred_on).not(receipt_id is null)`) и receipts (`.in('id', receiptIds)` с embed `merchant:merchants!receipts_merchant_id_fkey(name)`). Оба через `fetchAllRows` с `order('id')`. Не фильтруется по merchant_id (имя-матчинг QR/OCR остаётся возможным). Один чек → один кандидат (dedupe `receipt_id`); saved `total`/`currency`, не суммы конвертаций. Ошибка любой страницы пробрасывается (не превращается в «дублей нет»).
-  - **Return:** `ReceiptDuplicateCandidate[]` = `{ receiptId, source, merchantId, merchantName, merchantLabel, occurredOn, occurredAt, totalCents, currency, match }` (включая evidence/confidence из `matchReceiptDuplicate`). Пусто при отсутствии совпадений и при невалидной входящей дате.
-- Hardening матчера `lib/receiptDuplicates.ts`: `confidence 'confirmed'` → `'strong'` (ни одно поле не доказывает абсолютную идентичность — всё advisory); `parseInstant` требует явный offset/`Z` (offset-less/битые метки не становятся exact-time доказательством через локальный `Date.parse`); fallback: пустое имя места → осмысленный label. Консервативная политика и 60-сек допуск сохранены.
-- Тесты: `lib/__tests__/dbReceiptDuplicates.test.ts` (13, mocked Supabase, table-keyed dispatch + пагинация) и расширенный `lib/__tests__/receiptDuplicates.test.ts` (30, +boundary 00:15 +01:00, label-fallback, offset-less timestamp).
+- `app/(app)/receipt/review.tsx`: для нового чека `handleSave` → `checkDuplicatesThenSave`: валидация → `findReceiptDuplicates(buildDuplicateInput())` до любой записи. Нет совпадений → обычное сохранение. Есть → `DuplicateWarningDialog`. `buildDuplicateInput` строится из подтверждённых значений формы (total/currency/occurredOn/merchant), не из устаревшего OCR-черновика; `occurredAt`/`taxId`/`merchantLabel` из draft. Edit-режим обходит детект (прежний `saveReview`); delete-all `ConfirmDialog` сохранён.
+- Lifecycle/race: `inFlightRef` (sync-guard от повторных Save/Save-anyway/Save-without-checking), `checkTokenRef` (отбрасывает stale-результаты при смене draft/навигации — effect на `[draft, editReceiptId]` + cleanup на unmount). `performSave` всегда чистит `inFlightRef` в finally → failed save retryable. Диалог модальный, поэтому «Save anyway» идёт по текущему снапшоту; «Вернуться к проверке» просто закрывает, следующий Save перепроверяет.
+- Check-failure: `duplicateCheckFailed` → `StatusBanner` (warning) с «Повторить» + DS Button «Сохранить без проверки». Не оставляет в loading.
+- `components/DuplicateWarningDialog.tsx` (новый): non-destructive advisory модал (DS Button, токены). Показывает merchant/дату/сумму+валюту/источник, число совпадений при >1, сортировка strong→probable + детерминированный id-tiebreak. «Вернуться к проверке» (primary) / «Всё равно сохранить» (surface). Никогда не называет совпадение подтверждённым.
+- i18n: `review.duplicate.*` (RU/EN): title/description/count/back/saveAnyway/checking/checkFailed/retry/saveWithoutChecking/sourceQr/sourcePhoto.
+- Тесты: `lib/__tests__/receiptReviewDuplicate.test.tsx` (15, full render review): no-match сохраняет; дубль → предупреждение до записи; strong/probable advisory; Back → без записи + форма сохранена; Save anyway ровно один save; быстрые повторные нажатия → один save; corrected date/currency/total/merchant в детекте; смена поля после Back → перепроверка; stale после unmount → ничего; check-fail ≠ no-matches; retry/save-without-checking; failed save retryable; edit обходит детект; delete-all confirm сохранён.
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `feat(receipts): retrieve probable duplicate candidates`, запушен в `origin/main`. Новый репозиторный файл + hardening матчера + тесты + docs; save/parse/UI не трогались.
+Ветка `main`. Один атомарный commit `feat(receipts): warn before saving probable duplicate receipts`, запушен в `origin/main`. Новый компонент + review-интеграция + i18n + тесты + docs; save builders/parsers/FX/схема не трогались.
 
 ## Следующий шаг
 
-DUP-02B: вызвать `findReceiptDuplicates` в review/save flow (построить `IncomingReceiptForDuplicates` из `ParsedReceipt`: дату — через `parsedReceiptDate`), при непустом результате показать advisory-предупреждение; пользователь решает. Без auto-merge/delete/блокировки.
+Фича завершена. Опционально — живая проверка на устройстве (экран за авторизацией; здесь покрыто render-тестами).
 
 ## Открытые решения и риски
 
-- Пользовательской защиты ещё НЕТ — только retrieval. Не заявлять, что защита от дублей завершена.
-- `confirmed`→`strong`: даже сильный матч advisory (нет стабильного фискального номера). Timestamp-доказательство — только при явном offset.
-- Если входящая дата невалидна — `findReceiptDuplicates` возвращает `[]` (не ошибка): нет базы для account-scoped выборки.
-- `typecheck` зелёный; targeted `dbReceiptDuplicates` 13/13, `receiptDuplicates` 30/30; полный `test:ci` — см. виток.
+- Предупреждение advisory: `strong` и `probable` оба только предупреждают, ничего не блокируют/не мёржат.
+- Candidate retrieval (DUP-02A) использует `.in('id', receiptIds)` по всем чекам за дату — на один день объём мал; при реальной проблеме размера запроса — bounded batching отдельной задачей (scalability consideration, не трогалось здесь).
+- Снимок подтверждения привязан к модальности диалога (поле нельзя менять, пока диалог открыт); смена поля требует Back → следующий Save перепроверяет.
+- `typecheck` зелёный; targeted `receiptReviewDuplicate` 15/15, `receiptDuplicates`/`dbReceiptDuplicates` зелёные; полный `test:ci` 1034/1034. Живой browser/device-verify не делался.
 - Остальные открытые риски — прежние, по REPORTS-02.3: фактическое browser/OS сохранение PDF остаётся manual verification.
 
 ## Не трогать
 
-- Дата кандидата — только из `expenses.occurred_on`; не выводить из `receipts.occurred_at`/`raw_json`.
-- Не фильтровать кандидатов исключительно по `merchant_id` (сломает QR/OCR имя-матчинг).
-- `matchReceiptDuplicate` остаётся pure/детерминированным; 60-сек окно и политику менять только с обоснованием.
-- DUP-02B (review/save/UI) здесь не реализован — не смешивать.
+- Детект только для НОВОГО чека; edit обходит его. Никакого авто-merge/delete/блокировки.
+- `buildDuplicateInput` — только подтверждённые значения формы, не raw OCR.
+- Не использовать destructive `ConfirmDialog` для advisory-предупреждения; `DuplicateWarningDialog` — non-destructive.
+- Не ослаблять lifecycle-защиту (inFlightRef / checkTokenRef): они предотвращают двойные записи и stale-варнинги.
 - Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.

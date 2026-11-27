@@ -215,6 +215,21 @@ export const en = {
     uncategorizedMissing: 'The "Uncategorized" category wasn\'t found',
     purchaseNotFound: 'Purchase not found',
     receiptNotFound: 'Receipt not found',
+    duplicate: {
+      checking: 'Checking for duplicates…',
+      title: 'Possible duplicate',
+      description:
+        'You may have already added this receipt. Check the existing purchase before saving.',
+      count: '{{count}} possible matches',
+      back: 'Back to review',
+      saveAnyway: 'Save anyway',
+      checkFailed:
+        "Couldn't check for duplicates. Try again, or save without checking.",
+      retry: 'Try again',
+      saveWithoutChecking: 'Save without checking',
+      sourceQr: 'QR receipt',
+      sourcePhoto: 'Photo receipt',
+    },
     itemNotFound: 'Purchase item not found',
     prepareFailed: "Couldn't prepare the receipt. Try again.",
     goHome: 'Back home',

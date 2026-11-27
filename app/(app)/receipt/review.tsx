@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,14 +13,21 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { CategoryPicker } from '../../../components/CategoryPicker';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { DatePicker } from '../../../components/DatePicker';
+import {
+  DuplicateWarningDialog,
+  type DuplicateWarningRow,
+} from '../../../components/DuplicateWarningDialog';
 import { LoadingScreen } from '../../../components/LoadingScreen';
 import { MerchantPicker } from '../../../components/MerchantPicker';
 import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySelector';
+import { Button } from '../../../components/ds/Button';
+import { StatusBanner } from '../../../components/ds/StatusBanner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import { useColors } from '../../../contexts/ThemeContext';
 import { useToast } from '../../../contexts/ToastContext';
 import {
+  findReceiptDuplicates,
   getFiscalReceiptForEdit,
   listCategories,
   listMerchants,
@@ -29,7 +36,9 @@ import {
   type Category,
   type FiscalReceiptEditDraft,
   type FiscalReceiptMerchantInput,
+  type IncomingReceiptForDuplicates,
   type Merchant,
+  type ReceiptDuplicateCandidate,
 } from '../../../lib/db';
 import {
   formatLongDate,
@@ -162,6 +171,20 @@ export default function ReviewReceiptScreen() {
   const [saving, setSaving] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  // Probable-duplicate advisory state. `duplicateMatches` non-empty shows the
+  // warning dialog; `checkingDuplicates` shows progress; `duplicateCheckFailed`
+  // offers retry / save-without-checking.
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<
+    ReceiptDuplicateCandidate[] | null
+  >(null);
+  const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
+  // Synchronous guard against overlapping check/save attempts (state updates are
+  // async, so a ref is what actually stops a double press).
+  const inFlightRef = useRef(false);
+  // Invalidates a duplicate check whose draft/account/navigation has moved on, so
+  // a stale resolved result can never pop a warning or drive a save.
+  const checkTokenRef = useRef(0);
 
   useEffect(() => {
     if (!isEditMode && !draft) {
@@ -373,6 +396,25 @@ export default function ReviewReceiptScreen() {
     };
   }, [draft, editReceiptId, isEditMode]);
 
+  // A different draft or edit target must not inherit the previous receipt's
+  // duplicate decision, and any in-flight check for it is invalidated.
+  useEffect(() => {
+    checkTokenRef.current += 1;
+    inFlightRef.current = false;
+    setCheckingDuplicates(false);
+    setDuplicateMatches(null);
+    setDuplicateCheckFailed(false);
+  }, [draft, editReceiptId]);
+
+  // Leaving the screen invalidates any in-flight check so a late result can
+  // never act on an unmounted/navigated-away draft.
+  useEffect(
+    () => () => {
+      checkTokenRef.current += 1;
+    },
+    [],
+  );
+
   const includedItems = useMemo(
     () => items.filter((item) => item.included),
     [items],
@@ -537,31 +579,40 @@ export default function ReviewReceiptScreen() {
     setErrorMessage('');
   };
 
-  const saveReview = async (allowEmptyEdit: boolean) => {
+  // Validates the current form and resolves the merchant to save with, or null
+  // (having set an error message). Used by every save path so validation and the
+  // duplicate-check input stay in sync with what would actually be written.
+  const collectSaveInput = (
+    allowEmptyEdit: boolean,
+  ): {
+    merchant: FiscalReceiptMerchantInput | null;
+    currency: string;
+    totalCents: number;
+  } | null => {
     setErrorMessage('');
     if (!includedItems.length && !allowEmptyEdit) {
       setErrorMessage(t('review.keepOneItem'));
-      return;
+      return null;
     }
     if (hasInvalidIncludedAmounts) {
       setErrorMessage(t('review.fixIncludedAmounts'));
-      return;
+      return null;
     }
     if (hasInvalidManualRsdTotal) {
       setErrorMessage(t('review.validTotalOrEmpty'));
-      return;
+      return null;
     }
     if (!parseLocalISO(occurredOn)) {
       setErrorMessage(t('review.validDate'));
-      return;
+      return null;
     }
     if (!receiptCurrency) {
       setErrorMessage(t('review.currencyMissing'));
-      return;
+      return null;
     }
     if (receiptTotalCents === null) {
       setErrorMessage(t('review.totalMissing'));
-      return;
+      return null;
     }
 
     let merchant: FiscalReceiptMerchantInput | null = null;
@@ -577,9 +628,20 @@ export default function ReviewReceiptScreen() {
           ? t('review.pickExistingPlace')
           : t('review.enterNewPlaceName'),
       );
-      return;
+      return null;
     }
 
+    return { merchant, currency: receiptCurrency, totalCents: receiptTotalCents };
+  };
+
+  // The actual write. Callers set `inFlightRef` before invoking; it is always
+  // cleared here, so a failed save stays retryable. currency/totalCents are the
+  // validated non-null values from collectSaveInput.
+  const performSave = async (
+    merchant: FiscalReceiptMerchantInput | null,
+    currency: string,
+    totalCents: number,
+  ) => {
     setSaving(true);
     try {
       let deleted = false;
@@ -591,7 +653,7 @@ export default function ReviewReceiptScreen() {
           merchant,
           merchantLabel: receiptMerchantLabel,
           occurredOn,
-          currency: receiptCurrency,
+          currency,
           manualRsdTotalCents,
           expenses: items.map((item) => {
             if (!item.expenseId) {
@@ -618,9 +680,9 @@ export default function ReviewReceiptScreen() {
           // the receipt.
           receipt: {
             ...draft,
-            currency: receiptCurrency,
+            currency,
             occurredOn,
-            totalCents: receiptTotalCents,
+            totalCents,
           },
           ...(draft.source === 'ocr_photo' ? { rawReceipt: draft } : {}),
           merchant,
@@ -675,7 +737,95 @@ export default function ReviewReceiptScreen() {
     } finally {
       setSaving(false);
       setConfirmDeleteAll(false);
+      inFlightRef.current = false;
     }
+  };
+
+  // Edit path (and the delete-all confirmation): no duplicate detection.
+  const saveReview = async (allowEmptyEdit: boolean) => {
+    if (inFlightRef.current) {
+      return;
+    }
+    const input = collectSaveInput(allowEmptyEdit);
+    if (!input) {
+      return;
+    }
+    inFlightRef.current = true;
+    await performSave(input.merchant, input.currency, input.totalCents);
+  };
+
+  // Builds the duplicate-check input from the validated values that would be
+  // saved — the human-confirmed total, selected currency, form date and merchant
+  // — never the outdated OCR draft values.
+  const buildDuplicateInput = (): IncomingReceiptForDuplicates => ({
+    totalCents: receiptTotalCents,
+    currency: receiptCurrency,
+    occurredOn,
+    occurredAt: draft?.occurredAt ?? null,
+    merchantId: merchantMode === 'existing' ? merchantId : null,
+    merchantName: selectedMerchantName,
+    merchantLabel: receiptMerchantLabel,
+    taxId: draft?.taxId ?? null,
+  });
+
+  // New-receipt path: validate, check for probable duplicates, then either warn
+  // or save. Never mutates before the user's decision.
+  const checkDuplicatesThenSave = async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+    const input = collectSaveInput(false);
+    if (!input || !input.merchant) {
+      return;
+    }
+    inFlightRef.current = true;
+    const token = (checkTokenRef.current += 1);
+    setCheckingDuplicates(true);
+    setDuplicateCheckFailed(false);
+    setErrorMessage('');
+
+    let matches: ReceiptDuplicateCandidate[] = [];
+    let failed = false;
+    try {
+      matches = await findReceiptDuplicates(buildDuplicateInput());
+    } catch (error: unknown) {
+      console.error('Unable to check for duplicate receipts:', error);
+      failed = true;
+    }
+    // A newer draft/navigation superseded this check: drop its result entirely.
+    if (token !== checkTokenRef.current) {
+      return;
+    }
+    setCheckingDuplicates(false);
+    if (failed) {
+      setDuplicateCheckFailed(true);
+      inFlightRef.current = false;
+      return;
+    }
+    if (matches.length > 0) {
+      setDuplicateMatches(matches);
+      inFlightRef.current = false;
+      return;
+    }
+    await performSave(input.merchant, input.currency, input.totalCents);
+  };
+
+  // "Save anyway" / "Save without checking": proceed with the current snapshot,
+  // bypassing the duplicate check, exactly once.
+  const saveBypassingDuplicateCheck = async () => {
+    if (inFlightRef.current) {
+      return;
+    }
+    const input = collectSaveInput(false);
+    if (!input || !input.merchant) {
+      setDuplicateMatches(null);
+      setDuplicateCheckFailed(false);
+      return;
+    }
+    setDuplicateMatches(null);
+    setDuplicateCheckFailed(false);
+    inFlightRef.current = true;
+    await performSave(input.merchant, input.currency, input.totalCents);
   };
 
   const handleSave = async () => {
@@ -683,8 +833,43 @@ export default function ReviewReceiptScreen() {
       setConfirmDeleteAll(true);
       return;
     }
-    await saveReview(false);
+    if (isEditMode) {
+      await saveReview(false);
+      return;
+    }
+    await checkDuplicatesThenSave();
   };
+
+  // Stronger matches first, then a deterministic id tiebreak, formatted for the
+  // warning dialog with the receipt's own currency and local date.
+  const duplicateWarningRows: DuplicateWarningRow[] = (duplicateMatches ?? [])
+    .slice()
+    .sort((left, right) => {
+      const rank = (candidate: ReceiptDuplicateCandidate) =>
+        candidate.match.confidence === 'strong' ? 0 : 1;
+      const byRank = rank(left) - rank(right);
+      return byRank !== 0
+        ? byRank
+        : left.receiptId.localeCompare(right.receiptId);
+    })
+    .map((candidate) => ({
+      receiptId: candidate.receiptId,
+      merchant:
+        candidate.merchantName ??
+        candidate.merchantLabel ??
+        t('common.notSet'),
+      dateLabel: formatLongDate(candidate.occurredOn, locale),
+      amountLabel:
+        candidate.totalCents !== null && candidate.currency
+          ? `${formatMoney(candidate.totalCents)} ${candidate.currency}`
+          : '—',
+      sourceLabel:
+        candidate.source === 'fiscal_qr'
+          ? t('review.duplicate.sourceQr')
+          : candidate.source === 'ocr_photo'
+            ? t('review.duplicate.sourcePhoto')
+            : null,
+    }));
 
   return (
     <View style={styles.screen}>
@@ -1088,26 +1273,50 @@ export default function ReviewReceiptScreen() {
           </Text>
         ) : null}
 
+        {duplicateCheckFailed ? (
+          <View style={styles.duplicateCheckFailed}>
+            <StatusBanner
+              action={{
+                label: t('review.duplicate.retry'),
+                onPress: () => void checkDuplicatesThenSave(),
+              }}
+              message={t('review.duplicate.checkFailed')}
+              tone="warning"
+            />
+            <Button
+              disabled={saving}
+              fullWidth
+              label={t('review.duplicate.saveWithoutChecking')}
+              onPress={() => void saveBypassingDuplicateCheck()}
+              size="medium"
+              variant="surface"
+            />
+          </View>
+        ) : null}
+
         <Pressable
           accessibilityRole="button"
           disabled={
             saving ||
+            checkingDuplicates ||
             hasInvalidIncludedAmounts ||
             hasInvalidManualRsdTotal ||
             draftBlockers.length > 0
           }
           onPress={() => void handleSave()}
+          testID="save-receipt"
           style={({ pressed }) => [
             styles.primaryButton,
             (pressed ||
               saving ||
+              checkingDuplicates ||
               hasInvalidIncludedAmounts ||
               hasInvalidManualRsdTotal ||
               draftBlockers.length > 0) &&
               styles.disabled,
           ]}
         >
-          {saving ? (
+          {saving || checkingDuplicates ? (
             <ActivityIndicator color={colors.action.primary.content} />
           ) : (
             <Text style={styles.primaryButtonText}>
@@ -1115,6 +1324,12 @@ export default function ReviewReceiptScreen() {
             </Text>
           )}
         </Pressable>
+
+        {checkingDuplicates ? (
+          <Text style={styles.checkingText}>
+            {t('review.duplicate.checking')}
+          </Text>
+        ) : null}
       </ScrollView>
 
       {/* Also reachable for a photo draft whose date the model could not read:
@@ -1136,6 +1351,18 @@ export default function ReviewReceiptScreen() {
         onConfirm={() => void saveReview(true)}
         title={t('review.deleteConfirmTitle')}
         visible={isEditMode && confirmDeleteAll}
+      />
+
+      <DuplicateWarningDialog
+        matches={duplicateWarningRows}
+        onBack={() => {
+          if (!saving) {
+            setDuplicateMatches(null);
+          }
+        }}
+        onSaveAnyway={() => void saveBypassingDuplicateCheck()}
+        saving={saving}
+        visible={duplicateMatches !== null && duplicateMatches.length > 0}
       />
     </View>
   );
@@ -1168,6 +1395,11 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   categorizingText: {
     color: c.text.secondary,
     fontSize: theme.fontSizes.caption,
+  },
+  checkingText: {
+    color: c.text.secondary,
+    fontSize: theme.fontSizes.caption,
+    textAlign: 'center',
   },
   confirmTotalButton: {
     alignItems: 'center',
@@ -1213,6 +1445,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   disabled: {
     opacity: theme.opacity.disabled,
+  },
+  duplicateCheckFailed: {
+    gap: theme.spacing.sm,
   },
   errorText: {
     color: c.status.error.content,
