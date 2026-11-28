@@ -254,6 +254,17 @@ function saveWithoutCheckingButton(renderer: ReactTestRenderer) {
   )[0];
 }
 
+// The editable amount field of the first receipt item (mockT returns the key, so
+// every item amount input shares this accessibility label).
+function itemAmountInput(renderer: ReactTestRenderer) {
+  return renderer.root.findAll(
+    (node) =>
+      Boolean(node.props) &&
+      node.props.accessibilityLabel === 'review.itemAmountA11y' &&
+      typeof node.props.onChangeText === 'function',
+  )[0];
+}
+
 let errorSpy: ReturnType<typeof jest.spyOn>;
 
 beforeEach(() => {
@@ -864,6 +875,214 @@ describe('receipt review duplicate warning', () => {
     });
     await flush();
     expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('double Save anyway plus an attempt during the write perform one write', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    const dialog = warningDialog(renderer);
+
+    await act(async () => {
+      (dialog.props.onSaveAnyway as () => void)();
+      (dialog.props.onSaveAnyway as () => void)();
+    });
+    // The first write is still pending; a further save attempt must be blocked by
+    // the active-write guard, which invalidation never released.
+    await pressSave(renderer);
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('double Save without checking plus an attempt during the write perform one write', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+    mockFindReceiptDuplicates.mockRejectedValue(new Error('network down'));
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    const bypass = saveWithoutCheckingButton(renderer).props.onPress as () => void;
+
+    await act(async () => {
+      bypass();
+      bypass();
+    });
+    await pressSave(renderer);
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('blur or a field change during an active write does not release its guard', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // no match -> a write starts and is pending
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    // Invalidate the session while the write runs: by leaving the screen and by
+    // editing a persisted field. Neither may release the active write's guard.
+    await act(async () => {
+      blurScreen();
+    });
+    await act(async () => {
+      itemAmountInput(renderer).props.onChangeText('42,00');
+    });
+
+    // A further save attempt stays blocked by the still-held guard.
+    await pressSave(renderer);
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('editing item data during a pending check cannot save stale data', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // check in flight
+
+    // Edit a persisted item field (amount) while the check is pending.
+    await act(async () => {
+      itemAmountInput(renderer).props.onChangeText('99,99');
+    });
+
+    // The now-stale check resolves with no matches; it must not save.
+    await act(async () => {
+      pending.resolve([]);
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an old confirmation callback cannot authorize a newer check with identical fields', async () => {
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    // Capture the confirmation bound to this check's session.
+    const staleSaveAnyway = warningDialog(renderer).props.onSaveAnyway as () => void;
+
+    // Advance the session without changing any field value: leave and return.
+    await act(async () => {
+      blurScreen();
+    });
+    await act(async () => {
+      focusScreen();
+    });
+
+    // A fresh check shows a new warning for a new session, fields identical.
+    await pressSave(renderer);
+    expect(warningDialog(renderer).props.visible).toBe(true);
+
+    // The old callback carries the old session and must not authorize the new one.
+    await act(async () => {
+      staleSaveAnyway();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('a stale write completion does not clear a newer draft or navigate', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // no match -> a write starts and is pending
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    // A new draft replaces the one being saved while the write is in flight.
+    await act(async () => {
+      mockDraftHolder.draft = newDraft();
+      renderer.update(<ReviewReceiptScreen />);
+    });
+    mockClearDraft.mockClear();
+    (mockRouter.replace as unknown as jest.Mock).mockClear();
+
+    // The stale write completes: it must not clear the newer draft or navigate.
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+
+    expect(mockClearDraft).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an account change remounts and cannot authorize an old pending check', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    const categoryLoadsBefore = mockListCategories.mock.calls.length;
+    await pressSave(renderer); // check in flight for user-1
+
+    // Switch the authenticated account mid-check; the wrapper remounts the screen.
+    await act(async () => {
+      mockAuthHolder.userId = 'user-2';
+      renderer.update(<ReviewReceiptScreen />);
+    });
+    // Reference data was reloaded for the new account, not reused.
+    expect(mockListCategories.mock.calls.length).toBeGreaterThan(
+      categoryLoadsBefore,
+    );
+
+    // The previous account's check resolves with a duplicate; it must not act on
+    // the new account's screen.
+    await act(async () => {
+      pending.resolve([candidate()]);
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+    expect(warningDialog(renderer).props.visible).toBe(false);
 
     await act(async () => {
       renderer.unmount();

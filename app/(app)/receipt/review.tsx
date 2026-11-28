@@ -132,10 +132,16 @@ function routeParam(
   return first?.trim() || null;
 }
 
+// Account-boundary wrapper: a change of authenticated account fully remounts the
+// review screen, so the new account never inherits the previous account's loaded
+// categories, merchants, items, pending duplicate check or approval.
 export default function ReviewReceiptScreen() {
-  const { t, locale } = useLanguage();
   const { user } = useAuth();
-  const accountId = user?.id ?? null;
+  return <ReviewReceiptScreenInner key={user?.id ?? 'anonymous'} />;
+}
+
+function ReviewReceiptScreenInner() {
+  const { t, locale } = useLanguage();
   const { draft, clearDraft } = useReceiptDraft();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
@@ -182,65 +188,86 @@ export default function ReviewReceiptScreen() {
     ReceiptDuplicateCandidate[] | null
   >(null);
   const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
-  // Token of the in-flight check/save operation, or null when idle. This is both
-  // the synchronous double-press guard (state updates are async) and the owner
-  // stamp: cleanup only releases the guard when the token still matches, so a
-  // superseded operation can never free a newer one's lock.
-  const inFlightRef = useRef<number | null>(null);
-  // Bumped whenever the active account, draft, navigation session or validated
-  // snapshot moves on, so a stale resolved check can never pop a warning or save.
-  const checkTokenRef = useRef(0);
-  // The validated snapshot key a check (or a "save anyway" authorization) was made
-  // against. A save only proceeds while the live snapshot still equals it, so a
-  // field edited behind a stale result can never be written under that approval.
-  const checkedSnapshotRef = useRef<string | null>(null);
+  // --- Duplicate-check / save lifecycle -------------------------------------
+  // Two ownership axes are kept deliberately separate:
+  //  * cancellable duplicate-check work (a session that invalidation voids), and
+  //  * an active database write (never cancellable once it has started).
+  // Invalidating a check must never release an active write's guard.
 
-  // Matching-relevant snapshot: account identity plus every value that feeds the
-  // duplicate query or the write. If any of these change, an outstanding check or
-  // approval is void.
-  const buildSnapshotKey = () =>
-    JSON.stringify([
-      accountId,
-      confirmedReceiptTotalCents,
-      receiptCurrency,
+  // Monotonic id of the current cancellable review session. Advanced by anything
+  // that voids an outstanding check/approval: a draft or edit-target change, a
+  // change to any persisted save-payload field, or leaving the screen. (Account
+  // changes remount the whole screen via the wrapper above, so they are handled
+  // structurally rather than tracked here.)
+  const sessionRef = useRef(0);
+  // A duplicate check is awaiting its result. Synchronous guard against starting a
+  // second check; released by invalidation, because a check is cancellable.
+  const checkInFlightRef = useRef(false);
+  // A database write is running. Synchronous guard against overlapping writes and
+  // against confirming again mid-write. NEVER cleared by invalidation — only in
+  // the write's own finally — because a started mutation cannot be cancelled.
+  const writeInFlightRef = useRef(false);
+  // The session an outstanding advisory warning / failed-check banner belongs to,
+  // or null. A bypass ("save anyway" / "save without checking") is authorized for
+  // exactly this session and is consumed once.
+  const approvalRef = useRef<number | null>(null);
+  // Render mirror of approvalRef so each dialog/banner render closes over the
+  // session its buttons authorize. An older button closure carries an older
+  // session and cannot drive a newer approval even when the field values match.
+  const [approvalSession, setApprovalSession] = useState<number | null>(null);
+
+  // Everything a save persists. A change to any of it voids an outstanding
+  // check/approval, so a save can never write values that were never checked —
+  // including per-item amount/inclusion/category/description and the manual FX
+  // equivalent, not only the duplicate-match fields.
+  const savePayloadKey = useMemo(
+    () =>
+      JSON.stringify({
+        occurredOn,
+        currency: receiptCurrency,
+        total: confirmedReceiptTotalCents,
+        manualRsd: manualRsdInput.trim(),
+        merchantMode,
+        merchantId,
+        merchantName: merchantName.trim(),
+        items: items.map((item) => ({
+          amountCents: item.amountCents,
+          included: item.included,
+          categoryId: item.categoryId,
+          description: item.description.trim() || item.rawName,
+          rawName: item.rawName,
+        })),
+      }),
+    [
       occurredOn,
+      receiptCurrency,
+      confirmedReceiptTotalCents,
+      manualRsdInput,
       merchantMode,
       merchantId,
-      merchantName.trim(),
-    ]);
+      merchantName,
+      items,
+    ],
+  );
 
-  // Acquires the operation guard. Returns a token, or null when another operation
-  // already holds it (synchronous repeated-press protection).
-  const beginOperation = (): number | null => {
-    if (inFlightRef.current !== null) {
-      return null;
-    }
-    const token = (checkTokenRef.current += 1);
-    inFlightRef.current = token;
-    return token;
-  };
-
-  // True while `token` is still the current operation (not superseded).
-  const operationIsCurrent = (token: number) => token === checkTokenRef.current;
-
-  // Releases the guard only if `token` still owns it, so cleanup from a stale
-  // operation can never unlock a newer one.
-  const endOperation = (token: number) => {
-    if (inFlightRef.current === token) {
-      inFlightRef.current = null;
-    }
-  };
-
-  // Voids any outstanding check/approval: advances the token (dropping pending
-  // results), releases the guard, clears the checked snapshot and decision state.
+  // Voids outstanding cancellable work: advances the session, drops a pending
+  // check and any approval, and clears the decision UI. It deliberately does NOT
+  // touch writeInFlightRef — an active write keeps its guard and runs to
+  // completion, with its UI effects gated on the session separately.
   const invalidatePendingDuplicateWork = () => {
-    checkTokenRef.current += 1;
-    inFlightRef.current = null;
-    checkedSnapshotRef.current = null;
+    sessionRef.current += 1;
+    checkInFlightRef.current = false;
+    approvalRef.current = null;
+    setApprovalSession(null);
     setCheckingDuplicates(false);
     setDuplicateMatches(null);
     setDuplicateCheckFailed(false);
   };
+
+  // A save (check continuation, bypass or edit) may start only when neither a
+  // check nor a write is already in flight.
+  const canStartSave = () =>
+    !checkInFlightRef.current && !writeInFlightRef.current;
 
   useEffect(() => {
     if (!isEditMode && !draft) {
@@ -452,25 +479,16 @@ export default function ReviewReceiptScreen() {
     };
   }, [draft, editReceiptId, isEditMode]);
 
-  // Any change to the account, draft, edit target or a matching-relevant field
-  // voids an outstanding check or "save anyway" approval, so a stale result can
-  // never drive a write or show an obsolete warning for values that have moved on.
+  // Any change to the draft, edit target or a persisted save-payload field voids
+  // an outstanding check or approval, so a stale result can never drive a write or
+  // show an obsolete warning for values that have since moved on. (Account changes
+  // are handled by the remount wrapper.)
   useEffect(() => {
     invalidatePendingDuplicateWork();
     // invalidate* only touches stable refs/setters; we key on the identity values
     // deliberately, not on the helper closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    accountId,
-    draft,
-    editReceiptId,
-    confirmedReceiptTotalCents,
-    receiptCurrency,
-    occurredOn,
-    merchantMode,
-    merchantId,
-    merchantName,
-  ]);
+  }, [savePayloadKey, draft, editReceiptId]);
 
   // Leaving the screen (blur, and also unmount) invalidates any in-flight check so
   // a late result can never save or warn after the user has navigated away.
@@ -703,16 +721,20 @@ export default function ReviewReceiptScreen() {
     return { merchant, currency: receiptCurrency, totalCents: receiptTotalCents };
   };
 
-  // The actual write. Callers acquire `token` via beginOperation before invoking;
-  // the guard is always released here (only if this token still owns it), so a
-  // failed save stays retryable. currency/totalCents are the validated non-null
-  // values from collectSaveInput.
-  const performSave = async (
+  // The database write — the non-cancellable phase. `writeInFlightRef` is released
+  // only here, so a failed write stays retryable. Completion side-effects (success
+  // toast, draft clearing, navigation, error toast) run only while this write's
+  // `session` is still current, so a write that outlived its review session never
+  // clears a newer draft, navigates a different session or shows account-
+  // inappropriate feedback. currency/totalCents are the validated non-null values
+  // from collectSaveInput.
+  const runWrite = async (
+    session: number,
     merchant: FiscalReceiptMerchantInput | null,
     currency: string,
     totalCents: number,
-    token: number,
   ) => {
+    writeInFlightRef.current = true;
     setSaving(true);
     try {
       let deleted = false;
@@ -778,52 +800,66 @@ export default function ReviewReceiptScreen() {
       } catch {
         console.error('Unable to learn receipt item categories.');
       }
-      toast.success(
-        t(isEditMode ? 'toast.changesSaved' : 'toast.receiptSaved'),
-      );
-      if (!isEditMode) {
-        clearDraft();
-      }
-      if (isEditMode) {
-        const homeMonth = deleted
-          ? editDraft?.occurredOn.slice(0, 7)
-          : occurredOn.slice(0, 7);
-        router.replace(
-          homeMonth ? `/(app)?month=${homeMonth}` : '/(app)',
+      // The write succeeded. Only act on the UI while this write still owns the
+      // current session; otherwise the user has moved on and these effects would
+      // disturb a newer draft/session.
+      if (session === sessionRef.current) {
+        toast.success(
+          t(isEditMode ? 'toast.changesSaved' : 'toast.receiptSaved'),
         );
-      } else {
-        router.replace('/(app)');
+        if (!isEditMode) {
+          clearDraft();
+        }
+        if (isEditMode) {
+          const homeMonth = deleted
+            ? editDraft?.occurredOn.slice(0, 7)
+            : occurredOn.slice(0, 7);
+          router.replace(
+            homeMonth ? `/(app)?month=${homeMonth}` : '/(app)',
+          );
+        } else {
+          router.replace('/(app)');
+        }
       }
     } catch (error: unknown) {
       console.error('Unable to save receipt review:', error);
-      toast.error(
-        error instanceof RateUnavailableError
-          ? t('editor.ratesLoadFailed')
-          : error instanceof Error && error.message
-            ? error.message
-            : isEditMode
-              ? t('review.saveChangesFailed')
-              : t('review.saveReceiptFailed'),
-      );
+      if (session === sessionRef.current) {
+        toast.error(
+          error instanceof RateUnavailableError
+            ? t('editor.ratesLoadFailed')
+            : error instanceof Error && error.message
+              ? error.message
+              : isEditMode
+                ? t('review.saveChangesFailed')
+                : t('review.saveReceiptFailed'),
+        );
+      }
     } finally {
+      // A started mutation cannot be unwound; always release the write guard so a
+      // failed write stays retryable. No competing write can exist (the guard
+      // blocked one), so clearing saving here is safe.
+      writeInFlightRef.current = false;
       setSaving(false);
       setConfirmDeleteAll(false);
-      endOperation(token);
     }
   };
 
-  // Edit path (and the delete-all confirmation): no duplicate detection.
-  const saveReview = async (allowEmptyEdit: boolean) => {
-    const token = beginOperation();
-    if (token === null) {
+  // Edit path (and the delete-all confirmation): no duplicate detection, straight
+  // to the write under the current session.
+  const saveEdit = async (allowEmptyEdit: boolean) => {
+    if (!canStartSave()) {
       return;
     }
     const input = collectSaveInput(allowEmptyEdit);
     if (!input) {
-      endOperation(token);
       return;
     }
-    await performSave(input.merchant, input.currency, input.totalCents, token);
+    await runWrite(
+      sessionRef.current,
+      input.merchant,
+      input.currency,
+      input.totalCents,
+    );
   };
 
   // Builds the duplicate-check input from the validated values that would be
@@ -843,20 +879,17 @@ export default function ReviewReceiptScreen() {
   // New-receipt path: validate, check for probable duplicates, then either warn
   // or save. Never mutates before the user's decision.
   const checkDuplicatesThenSave = async () => {
-    const token = beginOperation();
-    if (token === null) {
+    if (!canStartSave()) {
       return;
     }
     const input = collectSaveInput(false);
     if (!input || !input.merchant) {
-      endOperation(token);
       return;
     }
-    // Bind this check to the account it started under and the snapshot it is
-    // validating; the no-match continuation only saves if both still hold.
-    const checkedAccount = accountId;
-    const snapshot = buildSnapshotKey();
-    checkedSnapshotRef.current = snapshot;
+    const session = sessionRef.current;
+    checkInFlightRef.current = true;
+    approvalRef.current = null;
+    setApprovalSession(null);
     setCheckingDuplicates(true);
     setDuplicateCheckFailed(false);
     setErrorMessage('');
@@ -869,60 +902,62 @@ export default function ReviewReceiptScreen() {
       console.error('Unable to check for duplicate receipts:', error);
       failed = true;
     }
-    // A newer draft/account/field change, or leaving the screen, superseded this
-    // check: its result and guard now belong to that newer state — drop it.
-    if (!operationIsCurrent(token)) {
+    // Superseded by invalidation (draft/edit-target/field change or blur) or by a
+    // remount (account change): a fresh read of the current session proves it. The
+    // check is cancellable, so leave the guard to whoever owns the session now.
+    if (session !== sessionRef.current) {
       return;
     }
-    // Defensive: account or snapshot moved without advancing the token.
-    if (checkedAccount !== accountId || buildSnapshotKey() !== snapshot) {
-      invalidatePendingDuplicateWork();
-      return;
-    }
+    checkInFlightRef.current = false;
     setCheckingDuplicates(false);
     if (failed) {
-      // Keep the checked snapshot so "save without checking" can authorize it.
+      approvalRef.current = session;
+      setApprovalSession(session);
       setDuplicateCheckFailed(true);
-      endOperation(token);
       return;
     }
     if (matches.length > 0) {
-      // Keep the checked snapshot so "save anyway" can authorize exactly it.
+      approvalRef.current = session;
+      setApprovalSession(session);
       setDuplicateMatches(matches);
-      endOperation(token);
       return;
     }
-    await performSave(input.merchant, input.currency, input.totalCents, token);
+    await runWrite(session, input.merchant, input.currency, input.totalCents);
   };
 
-  // "Save anyway" / "Save without checking": save the exact snapshot the check ran
-  // against, bypassing a fresh check, exactly once. If any field changed since the
-  // check, the invalidation effect has already cleared the snapshot (and the
-  // warning/banner), so this refuses and the user must press Save again.
-  const saveBypassingDuplicateCheck = async () => {
+  // "Save anyway" / "Save without checking": authorize the write for exactly the
+  // session this button was rendered for, exactly once. A stale or duplicate
+  // callback (older session, or after the approval was consumed) is a harmless
+  // no-op, and it never touches an active write's guard.
+  const saveBypassingDuplicateCheck = async (approvedSession: number | null) => {
+    if (!canStartSave()) {
+      return;
+    }
     if (
-      checkedSnapshotRef.current === null ||
-      checkedSnapshotRef.current !== buildSnapshotKey()
+      approvedSession === null ||
+      approvalRef.current === null ||
+      approvalRef.current !== approvedSession
     ) {
-      invalidatePendingDuplicateWork();
       return;
     }
-    const token = beginOperation();
-    if (token === null) {
-      return;
-    }
+    // Consume the approval once. approvalRef is cleared on any invalidation, so a
+    // non-null match here means the session is still current.
+    approvalRef.current = null;
+    setApprovalSession(null);
     const input = collectSaveInput(false);
     if (!input || !input.merchant) {
-      checkedSnapshotRef.current = null;
       setDuplicateMatches(null);
       setDuplicateCheckFailed(false);
-      endOperation(token);
       return;
     }
-    checkedSnapshotRef.current = null;
     setDuplicateMatches(null);
     setDuplicateCheckFailed(false);
-    await performSave(input.merchant, input.currency, input.totalCents, token);
+    await runWrite(
+      sessionRef.current,
+      input.merchant,
+      input.currency,
+      input.totalCents,
+    );
   };
 
   const handleSave = async () => {
@@ -931,7 +966,7 @@ export default function ReviewReceiptScreen() {
       return;
     }
     if (isEditMode) {
-      await saveReview(false);
+      await saveEdit(false);
       return;
     }
     await checkDuplicatesThenSave();
@@ -1384,7 +1419,7 @@ export default function ReviewReceiptScreen() {
               disabled={saving}
               fullWidth
               label={t('review.duplicate.saveWithoutChecking')}
-              onPress={() => void saveBypassingDuplicateCheck()}
+              onPress={() => void saveBypassingDuplicateCheck(approvalSession)}
               size="medium"
               variant="surface"
             />
@@ -1445,7 +1480,7 @@ export default function ReviewReceiptScreen() {
             setConfirmDeleteAll(false);
           }
         }}
-        onConfirm={() => void saveReview(true)}
+        onConfirm={() => void saveEdit(true)}
         title={t('review.deleteConfirmTitle')}
         visible={isEditMode && confirmDeleteAll}
       />
@@ -1455,11 +1490,12 @@ export default function ReviewReceiptScreen() {
         onBack={() => {
           if (!saving) {
             // Returning to review drops the approval; the next Save re-checks.
-            checkedSnapshotRef.current = null;
+            approvalRef.current = null;
+            setApprovalSession(null);
             setDuplicateMatches(null);
           }
         }}
-        onSaveAnyway={() => void saveBypassingDuplicateCheck()}
+        onSaveAnyway={() => void saveBypassingDuplicateCheck(approvalSession)}
         saving={saving}
         visible={duplicateMatches !== null && duplicateMatches.length > 0}
       />
