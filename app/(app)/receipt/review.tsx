@@ -56,6 +56,7 @@ import {
 import {
   learnItemCategoryRules,
   resolveCategoriesForItems,
+  upsertItemCategoryRules,
 } from '../../../lib/itemCategorization';
 import {
   findMatchingMerchant,
@@ -137,10 +138,20 @@ function routeParam(
 // categories, merchants, items, pending duplicate check or approval.
 export default function ReviewReceiptScreen() {
   const { user } = useAuth();
-  return <ReviewReceiptScreenInner key={user?.id ?? 'anonymous'} />;
+  const accountId = user?.id ?? null;
+  return (
+    <ReviewReceiptScreenInner
+      accountId={accountId}
+      key={accountId ?? 'anonymous'}
+    />
+  );
 }
 
-function ReviewReceiptScreenInner() {
+function ReviewReceiptScreenInner({
+  accountId,
+}: {
+  accountId: string | null;
+}) {
   const { t, locale } = useLanguage();
   const { draft, clearDraft } = useReceiptDraft();
   const colors = useColors();
@@ -194,11 +205,12 @@ function ReviewReceiptScreenInner() {
   //  * an active database write (never cancellable once it has started).
   // Invalidating a check must never release an active write's guard.
 
-  // Monotonic id of the current cancellable review session. Advanced by anything
-  // that voids an outstanding check/approval: a draft or edit-target change, a
-  // change to any persisted save-payload field, or leaving the screen. (Account
-  // changes remount the whole screen via the wrapper above, so they are handled
-  // structurally rather than tracked here.)
+  // Monotonic id of the current cancellable review session, and the identity an
+  // approval is bound to. Advanced by anything that voids outstanding work (a
+  // draft or edit-target change, a persisted-field change, or leaving the screen)
+  // AND at the start of every check attempt, so each check — even a repeat with
+  // unchanged fields — gets a unique identity that an older confirmation/Back
+  // callback cannot match. (Account changes remount the screen via the wrapper.)
   const sessionRef = useRef(0);
   // A duplicate check is awaiting its result. Synchronous guard against starting a
   // second check; released by invalidation, because a check is cancellable.
@@ -789,6 +801,10 @@ function ReviewReceiptScreenInner() {
         });
       }
       try {
+        // Bind rule learning to the account that owned this save. If the account
+        // changed while persistence was pending, the writer rejects rather than
+        // learning this receipt's selections under the new account — a real
+        // ownership guard, not merely hidden UI feedback.
         await learnItemCategoryRules(
           items.map((item) => ({
             rawName: item.rawName,
@@ -796,6 +812,7 @@ function ReviewReceiptScreenInner() {
             categoryId: item.included ? item.categoryId : null,
             excluded: !item.included,
           })),
+          (rules) => upsertItemCategoryRules(rules, accountId),
         );
       } catch {
         console.error('Unable to learn receipt item categories.');
@@ -886,7 +903,9 @@ function ReviewReceiptScreenInner() {
     if (!input || !input.merchant) {
       return;
     }
-    const session = sessionRef.current;
+    // Advance the session so this check attempt has a unique authorization
+    // identity, distinct from any previous check in this same review session.
+    const session = (sessionRef.current += 1);
     checkInFlightRef.current = true;
     approvalRef.current = null;
     setApprovalSession(null);
@@ -1488,12 +1507,19 @@ function ReviewReceiptScreenInner() {
       <DuplicateWarningDialog
         matches={duplicateWarningRows}
         onBack={() => {
-          if (!saving) {
-            // Returning to review drops the approval; the next Save re-checks.
-            approvalRef.current = null;
-            setApprovalSession(null);
-            setDuplicateMatches(null);
+          // Bound to this warning's approval identity: an older Back closure must
+          // not dismiss a newer warning. Returning to review drops the approval;
+          // the next Save re-checks.
+          if (
+            saving ||
+            approvalSession === null ||
+            approvalRef.current !== approvalSession
+          ) {
+            return;
           }
+          approvalRef.current = null;
+          setApprovalSession(null);
+          setDuplicateMatches(null);
         }}
         onSaveAnyway={() => void saveBypassingDuplicateCheck(approvalSession)}
         saving={saving}

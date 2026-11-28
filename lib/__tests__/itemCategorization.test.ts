@@ -317,4 +317,66 @@ describe('item category learning', () => {
       { onConflict: 'user_id,normalized_name' },
     );
   });
+
+  test('rejects learning when the authenticated account no longer matches', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-2' } } },
+      error: null,
+    }));
+
+    await upsertItemCategoryRules(
+      [
+        {
+          normalizedName: 'mleko',
+          categoryId: 'groceries',
+          displayName: 'Молоко',
+          action: 'categorize',
+        },
+      ],
+      'user-1',
+    );
+
+    // No database access at all once the account changed under a pending save.
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  test('writes when the expected account still matches', async () => {
+    getSessionMock.mockImplementation(async () => ({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    }));
+    const existingQuery = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      in: jest.fn(async () => ({ data: [], error: null })),
+    };
+    const upsertQuery = {
+      upsert: jest.fn(async () => ({ error: null })),
+    };
+    fromMock
+      .mockReturnValueOnce(existingQuery)
+      .mockReturnValueOnce(upsertQuery);
+
+    await upsertItemCategoryRules(
+      [
+        {
+          normalizedName: 'mleko',
+          categoryId: 'groceries',
+          displayName: 'Молоко',
+          action: 'categorize',
+        },
+      ],
+      'user-1',
+    );
+
+    expect(upsertQuery.upsert).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          user_id: 'user-1',
+          normalized_name: 'mleko',
+        }),
+      ],
+      { onConflict: 'user_id,normalized_name' },
+    );
+  });
 });

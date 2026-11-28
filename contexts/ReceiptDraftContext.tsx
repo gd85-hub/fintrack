@@ -19,8 +19,23 @@ const ReceiptDraftContext = createContext<ReceiptDraftContextValue | null>(
   null,
 );
 
-export function ReceiptDraftProvider({ children }: { children: ReactNode }) {
+export function ReceiptDraftProvider({
+  children,
+  accountId = null,
+}: {
+  children: ReactNode;
+  accountId?: string | null;
+}) {
   const [draft, setDraftState] = useState<ParsedReceipt | null>(null);
+  // Scope the draft to the authenticated account: when it changes, reset the
+  // draft during render (React's reset-state-on-prop-change pattern) so one
+  // account's in-progress receipt can never be inherited by another, with no
+  // window where a stale draft is read between the change and an effect.
+  const [lastAccountId, setLastAccountId] = useState<string | null>(accountId);
+  if (accountId !== lastAccountId) {
+    setLastAccountId(accountId);
+    setDraftState(null);
+  }
   const clearDraft = useCallback(() => setDraftState(null), []);
   const setDraft = useCallback((value: ParsedReceipt) => {
     setDraftState(value);

@@ -80,7 +80,7 @@ export default function AppLayout() {
     <DisplayCurrencyProvider>
       <HomeCurrencyProvider>
         <SecondaryCurrencyProvider>
-          <ReceiptDraftProvider>
+          <ReceiptDraftProvider accountId={session.user.id}>
             <AppNavigator />
           </ReceiptDraftProvider>
         </SecondaryCurrencyProvider>

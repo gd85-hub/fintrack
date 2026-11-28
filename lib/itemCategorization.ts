@@ -349,12 +349,19 @@ export async function resolveCategoriesForItems(
 
 export async function upsertItemCategoryRules(
   rules: readonly ItemCategoryRuleWrite[],
+  expectedUserId?: string | null,
 ): Promise<void> {
   if (rules.length === 0) {
     return;
   }
 
   const userId = await authenticatedUserId();
+  // Bound to the originating account: if the authenticated account changed since
+  // the caller captured it (e.g. an account switch during a pending save), reject
+  // rather than learn one account's selections under another.
+  if (expectedUserId != null && expectedUserId !== userId) {
+    return;
+  }
   const normalizedNames = rules.map(({ normalizedName }) => normalizedName);
   const { data: existingData, error: existingError } = await supabase
     .from('item_category_rules')

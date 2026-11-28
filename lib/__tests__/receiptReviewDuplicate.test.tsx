@@ -113,10 +113,24 @@ jest.mock('../db', () => ({
   findReceiptDuplicates: (input: unknown) => mockFindReceiptDuplicates(input),
 }));
 
+// Records the account the rule writer is bound to, so tests assert that learning
+// after a save is scoped to the originating account.
+const mockUpsertRules =
+  jest.fn<(rules: unknown, expectedUserId?: string | null) => Promise<void>>();
 jest.mock('../itemCategorization', () => ({
   resolveCategoriesForItems: async (items: unknown[]) =>
     (items as unknown[]).map(() => null),
-  learnItemCategoryRules: async () => {},
+  // Invoke the caller's bound writer so the originating account is observable.
+  learnItemCategoryRules: async (
+    selections: unknown,
+    writer?: (rules: unknown) => Promise<void>,
+  ) => {
+    if (writer) {
+      await writer(selections);
+    }
+  },
+  upsertItemCategoryRules: (rules: unknown, expectedUserId?: string | null) =>
+    mockUpsertRules(rules, expectedUserId),
 }));
 
 jest.mock('../supabase', () => ({ supabase: {} }));
@@ -289,6 +303,8 @@ beforeEach(() => {
   mockUpdateFiscalReceipt.mockResolvedValue({ deleted: false });
   mockFindReceiptDuplicates.mockReset();
   mockFindReceiptDuplicates.mockResolvedValue([]);
+  mockUpsertRules.mockReset();
+  mockUpsertRules.mockResolvedValue(undefined);
   errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -1083,6 +1099,115 @@ describe('receipt review duplicate warning', () => {
 
     expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
     expect(warningDialog(renderer).props.visible).toBe(false);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an old confirmation cannot save a re-checked warning with identical fields', async () => {
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // warning A
+    const staleSaveAnyway = warningDialog(renderer).props.onSaveAnyway as () => void;
+
+    // Back, then check again with no field changes at all -> warning B.
+    await act(async () => {
+      warningDialog(renderer).props.onBack();
+    });
+    await pressSave(renderer);
+    expect(warningDialog(renderer).props.visible).toBe(true);
+
+    // The confirmation bound to check A must not authorize check B's approval,
+    // even though the fields are identical (unique per-check identity).
+    await act(async () => {
+      staleSaveAnyway();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an obsolete bypass cannot authorize a retried failed check', async () => {
+    mockFindReceiptDuplicates.mockRejectedValueOnce(new Error('network down'));
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // failed check A
+    const staleBypass = saveWithoutCheckingButton(renderer).props
+      .onPress as () => void;
+
+    // Retry -> failed check B (new identity), same fields.
+    mockFindReceiptDuplicates.mockRejectedValueOnce(new Error('still down'));
+    await act(async () => {
+      renderer.root.findByType(StatusBanner).props.action.onPress();
+    });
+    await flush();
+    expect(renderer.root.findAllByType(StatusBanner).length).toBe(1);
+
+    // The bypass bound to failed check A must not authorize check B.
+    await act(async () => {
+      staleBypass();
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an obsolete Back callback cannot dismiss a newer warning', async () => {
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // warning A
+    const staleBack = warningDialog(renderer).props.onBack as () => void;
+
+    // Back, then re-check -> warning B is shown.
+    await act(async () => {
+      warningDialog(renderer).props.onBack();
+    });
+    await pressSave(renderer);
+    expect(warningDialog(renderer).props.visible).toBe(true);
+
+    // The old Back closure must not dismiss the newer warning.
+    await act(async () => {
+      staleBack();
+    });
+    expect(warningDialog(renderer).props.visible).toBe(true);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an account change during persistence learns under the originating account only', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+
+    const renderer = await renderReview(); // account user-1
+    await pressSave(renderer); // no match -> persistence pending
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    // The account switches while persistence is pending (remounts the screen).
+    await act(async () => {
+      mockAuthHolder.userId = 'user-2';
+      renderer.update(<ReviewReceiptScreen />);
+    });
+    mockUpsertRules.mockClear();
+
+    // The write completes; rule learning is bound to the originating account.
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+
+    expect(mockUpsertRules).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(mockUpsertRules).not.toHaveBeenCalledWith(expect.anything(), 'user-2');
 
     await act(async () => {
       renderer.unmount();

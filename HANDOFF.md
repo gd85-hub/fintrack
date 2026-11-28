@@ -1,50 +1,54 @@
 # HANDOFF — Fintrack
-_Обновлено: 2026-11-28 · автор витка: Claude · задача: DUP-02B.2_
+_Обновлено: 2026-11-28 · автор витка: Claude · задача: DUP-02B.3_
 
 Это краткая дельта. Долгий контекст и обязательные правила — в `README.md` и `AGENTS.md`.
 
 ## Где мы
 
-Защита от дублей чеков доведена до пользовательского уровня и теперь имеет чёткий, явный жизненный цикл: отменяемая проверка дублей отделена от активной записи в базу. DUP-01 (matcher), DUP-02A (retrieval), DUP-02B (UI), DUP-02B.1 (первый hardening) и DUP-02B.2 (разделение проверки и записи). Авто-merge/delete/блокировок нет. Схема, RLS, FX, OCR/QR-парсинг не менялись.
+Защита от дублей чеков имеет явный жизненный цикл: отменяемая проверка отделена от записи (DUP-02B.2), каждая проверка имеет уникальную «личность», а побочные эффекты сохранения (обучение правил, черновик) привязаны к аккаунту (DUP-02B.3). Цепочка: DUP-01 (matcher), DUP-02A (retrieval), DUP-02B (UI), DUP-02B.1/.2/.3 (hardening). Авто-merge/delete/блокировок нет. Схема, RLS, FX, OCR/QR-парсинг, политика матчинга и дизайн предупреждения не менялись.
 
-**Важно про прод:** merge в `main` не доказывает деплой. DUP-01/02A/02B/02B.1/02B.2 влиты в `main`, но из репозитория нельзя заключить, что соответствующая web/Android-сборка выпущена пользователям. Статус «в проде» подтверждается отдельно фактом деплоя. Предыдущий виток REPORTS-02.3 (векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
+**Важно про прод:** merge в `main` не доказывает деплой. DUP-01…02B.3 влиты в `main`, но из репозитория нельзя заключить, что соответствующая web/Android-сборка выпущена пользователям. Статус «в проде» подтверждается отдельно фактом деплоя. REPORTS-02.3 (векторный PDF на Web) остаётся актуальным и ждёт ручной проверки после отдельного Web deploy.
 
 ## Только что сделано
 
-- `app/(app)/receipt/review.tsx`: отменяемая проверка дублей и активная запись разведены на две независимые оси владения.
-  - `sessionRef` — монотонный id текущей отменяемой сессии (двигается при смене draft, edit-target или любого сохраняемого поля, и при blur). `checkInFlightRef` — идёт проверка (sync-guard, снимается инвалидацией). `writeInFlightRef` — идёт запись (sync-guard, снимается **только** в `finally` самой записи; инвалидация её не трогает). Отмена проверки/approval больше не разблокирует активную запись.
-  - `savePayloadKey` (`useMemo`) включает **все** сохраняемые поля, в т.ч. по каждой позиции (сумма, включение, категория, описание) и ручной RSD-эквивалент; он же — зависимость инвалидирующего эффекта. Асинхронные продолжения сверяются со свежим `sessionRef.current`.
-  - Approval привязан к сессии: `approvalRef` (sync, consume-once) + `approvalSession` (state-зеркало, которое замыкают кнопки диалога/баннера). Старый callback несёт старую сессию и не авторизует новую даже при идентичных полях.
-  - `runWrite` гейтит success/error-toast, `clearDraft` и navigation по совпадению сессии → устаревшая запись не очистит чужой черновик, не уведёт на другой экран/аккаунт. `finally` всегда снимает `writeInFlightRef` → failed save retryable.
-  - Экран обёрнут в account-boundary: `ReviewReceiptScreen` читает `useAuth` и рендерит `ReviewReceiptScreenInner` с `key={user.id}`. Смена аккаунта ремаунтит экран → перезагрузка категорий/мест/позиций нового аккаунта, старые проверка/approval отброшены.
-- Тесты: `lib/__tests__/receiptReviewDuplicate.test.tsx` — +7 сценариев (double «Save anyway»/«без проверки» + попытка во время записи = один write; blur/правка поля во время записи не снимают её guard; правка позиции во время проверки не сохраняет устаревшее; старый callback не авторизует новую проверку при идентичных полях; устаревшее завершение записи не чистит новый черновик/не навигацирует; смена аккаунта ремаунтит и не переиспользует reference data / не авторизует старую проверку). «Failed save retryable» — прежний тест. Итого 31/31.
-- Доки: `BUGS.md` (BUG-13: follow-up findings/resolution/coverage), `CHANGELOG.md` (Fixed), `BACKLOG.md` (DUP-02B.2 ✅).
+- `app/(app)/receipt/review.tsx`:
+  - **Уникальная личность проверки (defect 1):** `checkDuplicatesThenSave` теперь двигает сессию — `const session = (sessionRef.current += 1)`. Approval, «Save anyway»/«Save without checking» и `onBack` привязаны к этому id (`approvalRef` + render-зеркало `approvalSession`). Устаревший callback не авторизует и не закрывает новую проверку даже при идентичных полях.
+  - **Account-safe обучение правил (defect 2):** `runWrite` вызывает `learnItemCategoryRules(selections, (rules) => upsertItemCategoryRules(rules, accountId))`, биндя обучение к аккаунту, под которым шло сохранение. `accountId` снова приходит пропом из account-boundary-обёртки.
+- `lib/itemCategorization.ts`: `upsertItemCategoryRules(rules, expectedUserId?)` — если текущий аутентифицированный аккаунт не совпал с `expectedUserId`, запись отклоняется (ни одного обращения к БД). Тип `RuleWriter` совместим (доп. параметр опционален).
+- `contexts/ReceiptDraftContext.tsx` + `app/(app)/_layout.tsx` (**defect 3**): `ReceiptDraftProvider` получил `accountId` и сбрасывает черновик при смене аккаунта прямо во время рендера (reset-state-on-prop-change) — без окна устаревшего чтения и без ремаунта currency-провайдеров/навигатора. Layout передаёт `accountId={session.user.id}`.
+- Тесты:
+  - `receiptReviewDuplicate.test.tsx`: itemCategorization-мок теперь вызывает переданный writer и фиксирует `expectedUserId` (`mockUpsertRules`); +4 сценария (старый confirm не сохраняет перепроверенное предупреждение при идентичных полях; устаревший bypass не авторизует повторную неудачную проверку; устаревший Back не закрывает новое предупреждение; смена аккаунта во время записи учит правила только под originating-аккаунтом).
+  - `itemCategorization.test.ts`: +2 unit-теста на владение writer (reject при несовпадении аккаунта / запись при совпадении).
+  - `receiptDraftContext.test.tsx` (новый): черновик переживает рендер при том же аккаунте и сбрасывается при смене / sign-out→другой sign-in.
+- Доки: `BUGS.md` (BUG-13: DUP-02B.3 findings/resolution/coverage), `CHANGELOG.md` (Fixed), `BACKLOG.md` (DUP-02B.3 ✅).
 
 ## Состояние origin/main
 
-Ветка `main`. Один атомарный commit `fix(receipts): isolate duplicate checks from active save operations`, запушен в `origin/main`. Только review-экран + его тест + docs; save builders/parsers/FX/схема/матчинг-политика/UI предупреждения не трогались.
+Ветка `main`. Один атомарный commit `fix(receipts): isolate duplicate approvals and account side effects`, запушен в `origin/main`. Затронуты review-экран, `itemCategorization.ts`, `ReceiptDraftContext.tsx`, `(app)/_layout.tsx` + тесты + docs. Политика матчинга/retrieval/схема/RLS/FX/парсинг/дизайн предупреждения не трогались.
 
 ## Следующий шаг
 
-Задача закрыта. Опционально — живая проверка на устройстве (экран за авторизацией; здесь покрыто render-тестами с управляемым focus/account/deferred-промисами).
+Задача закрыта. Опционально — живая проверка на устройстве (экран за авторизацией; здесь покрыто render/unit-тестами с управляемыми focus/account/deferred-промисами).
 
 ## Открытые решения и риски
 
-- Предупреждение остаётся advisory: `strong` и `probable` только предупреждают, ничего не блокируют/не мёржат.
-- «Уже начавшуюся» запись в БД отменить нельзя — защищаются только её UI-эффекты (toast/clearDraft/navigation) через гейт по сессии; сам mutation доходит до базы.
-- Основные поля ввода заморожены при `saving` (`editable={!saving}`), поэтому при обычном сохранении пользователь не инвалидирует свою же запись; правка во время *проверки* (не записи) намеренно инвалидирует и требует нового Save.
-- `useFocusEffect`/`useAuth` в тесте замоканы управляемой реализацией; реальное поведение React Navigation / Supabase-сессии здесь не прогоняется.
-- Candidate retrieval (DUP-02A) использует `.in('id', receiptIds)` по чекам за дату — на один день объём мал; bounded batching — отдельная задача при реальной проблеме размера запроса.
-- `typecheck` зелёный; `receiptReviewDuplicate` 31/31. Полный `test:ci` — прогнать в коммите. Живой browser/device-verify не делался.
+- Предупреждение остаётся advisory: `strong` и `probable` только предупреждают.
+- «Уже начавшуюся» запись в БД отменить нельзя — защищаются её UI-эффекты (гейт по сессии) и обучение правил (гейт по аккаунту в writer); сам receipt-mutation доходит до базы.
+- Смена аккаунта без sign-out в приложении штатно не достижима (sign-out → Redirect размонтирует провайдеры); account-scope черновика и remount review — защита на случай in-place смены и покрыты тестами с управляемым `useAuth`.
+- `useFocusEffect`/`useAuth` в тестах замоканы управляемыми реализациями; реальное поведение React Navigation/Supabase-сессии здесь не прогоняется.
+- Candidate retrieval (DUP-02A) `.in('id', receiptIds)` по чекам за дату — bounded batching отдельной задачей при реальной проблеме размера.
+- `typecheck` зелёный; `receiptReviewDuplicate`/`itemCategorization`/`receiptDraftContext` зелёные. Полный `test:ci` — прогнать в коммите.
 - REPORTS-02.3: фактическое browser/OS-сохранение PDF остаётся manual verification после Web deploy.
 
 ## Не трогать
 
 - Детект только для НОВОГО чека; edit обходит его. Никакого авто-merge/delete/блокировки.
 - `buildDuplicateInput` — только подтверждённые значения формы, не raw OCR.
-- Не сливать обратно обе оси владения: `writeInFlightRef` снимается только в `finally` записи; инвалидация (`invalidatePendingDuplicateWork`) не должна её трогать. `savePayloadKey` должен покрывать все сохраняемые поля.
-- Approval потребляется один раз и привязан к сессии (`approvalRef`/`approvalSession`); не возвращать авторизацию по совпадению значений полей.
-- Не убирать account-boundary (`key` по аккаунту) у review-экрана.
-- Не использовать destructive `ConfirmDialog` для advisory-предупреждения; `DuplicateWarningDialog` — non-destructive.
+- Не сливать обе оси владения: `writeInFlightRef` снимается только в `finally` записи; инвалидация не трогает её. `savePayloadKey` покрывает все сохраняемые поля.
+- Каждая проверка двигает `sessionRef` → не возвращать переиспользование одной личности проверки; approval/«Save anyway»/«без проверки»/Back привязаны к ней, потребляются один раз.
+- Обучение правил привязано к originating-аккаунту (`upsertItemCategoryRules(rules, expectedUserId)`); не убирать account-guard и не определять аккаунт заново внутри writer без проверки.
+- `ReceiptDraftProvider` должен оставаться account-scoped (`accountId` + reset-on-change); не ремаунтить ради этого сторонние провайдеры/навигатор.
+- Account-boundary (`key` по аккаунту) у review-экрана оставить.
+- `DuplicateWarningDialog` — non-destructive; не использовать destructive `ConfirmDialog` для advisory.
 - Не вводить глобальный state-machine фреймворк; не утверждать, что начавшаяся запись в БД отменяема/откатываема.
-- Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок должен оставаться lazy-loaded.
+- Не переносить pdfmake/VFS в общий или native entry; Web PDF-движок остаётся lazy-loaded.
