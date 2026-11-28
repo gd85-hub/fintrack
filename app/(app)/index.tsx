@@ -51,6 +51,12 @@ import {
   type RateLookup,
 } from '../../lib/homeDisplay';
 import {
+  buildPurchaseUnits,
+  groupExpensesByDate,
+  type ExpenseGroup,
+  type PurchaseUnit,
+} from '../../lib/homePurchaseGrouping';
+import {
   collapseIdenticalPurchaseItems,
   decideHomeRowPresentation,
   resolveHomeRowHeader,
@@ -58,16 +64,8 @@ import {
 import { type Currency, formatMoney } from '../../lib/money';
 import { theme, type Colors } from '../../lib/theme';
 
-type ExpenseGroup = {
-  date: string;
-  expenses: Expense[];
-};
-
-export type PurchaseUnit = {
-  expenses: Expense[];
-  key: string;
-  receiptId: string | null;
-};
+export { buildPurchaseUnits } from '../../lib/homePurchaseGrouping';
+export type { PurchaseUnit } from '../../lib/homePurchaseGrouping';
 
 export type HomeDaySection = {
   data: PurchaseUnit[];
@@ -104,39 +102,6 @@ function amountForCurrency(expense: Expense, currency: Currency): number {
   }
 
   return expense.amountRsdCents;
-}
-
-export function buildPurchaseUnits(
-  expenses: readonly Expense[],
-): PurchaseUnit[] {
-  const units: PurchaseUnit[] = [];
-  const receiptUnitIndexes = new Map<string, number>();
-
-  for (const expense of expenses) {
-    if (expense.receiptId === null) {
-      units.push({
-        expenses: [expense],
-        key: `expense:${expense.id}`,
-        receiptId: null,
-      });
-      continue;
-    }
-
-    const existingIndex = receiptUnitIndexes.get(expense.receiptId);
-    if (existingIndex !== undefined) {
-      units[existingIndex]?.expenses.push(expense);
-      continue;
-    }
-
-    receiptUnitIndexes.set(expense.receiptId, units.length);
-    units.push({
-      expenses: [expense],
-      key: `receipt:${expense.receiptId}`,
-      receiptId: expense.receiptId,
-    });
-  }
-
-  return units;
 }
 
 export function buildDaySections(
@@ -442,21 +407,6 @@ function DayCardSeparator() {
   return <View style={styles.dayCardGap} />;
 }
 
-function groupExpenses(expenses: Expense[]): ExpenseGroup[] {
-  const groups = new Map<string, Expense[]>();
-
-  for (const expense of expenses) {
-    const group = groups.get(expense.occurredOn) ?? [];
-    group.push(expense);
-    groups.set(expense.occurredOn, group);
-  }
-
-  return [...groups.entries()].map(([date, groupedExpenses]) => ({
-    date,
-    expenses: groupedExpenses,
-  }));
-}
-
 function expensesNeedAnchorRate(
   expenses: readonly Expense[],
   displayCurrency: string,
@@ -712,7 +662,7 @@ export default function HomeScreen() {
   );
 
   const groups = useMemo(
-    () => groupExpenses(visibleExpenses),
+    () => groupExpensesByDate(visibleExpenses),
     [visibleExpenses],
   );
   const rateAt = useMemo<RateLookup>(() => {
