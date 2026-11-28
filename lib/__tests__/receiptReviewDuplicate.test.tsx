@@ -23,9 +23,52 @@ const mockT = (key: string) => key;
 
 const mockParams: { receiptId?: string } = {};
 
-jest.mock('expo-router', () => ({
-  router: { back: jest.fn(), replace: jest.fn() },
-  useLocalSearchParams: () => mockParams,
+// Controllable focus lifecycle: useFocusEffect runs its effect on mount (focus)
+// and the returned cleanup on blur and unmount, mirroring React Navigation. Tests
+// drive blur/refocus without unmounting via blurScreen()/focusScreen().
+const mockFocus: {
+  blurHandlers: Set<() => void>;
+  focusHandlers: Set<() => void>;
+} = { blurHandlers: new Set(), focusHandlers: new Set() };
+
+jest.mock('expo-router', () => {
+  const React = require('react');
+  return {
+    router: { back: jest.fn(), replace: jest.fn() },
+    useLocalSearchParams: () => mockParams,
+    useFocusEffect: (effect: () => undefined | (() => void)) => {
+      React.useEffect(() => {
+        let cleanup = effect();
+        const onBlur = () => {
+          if (cleanup) {
+            cleanup();
+          }
+          cleanup = undefined;
+        };
+        const onFocus = () => {
+          cleanup = effect();
+        };
+        mockFocus.blurHandlers.add(onBlur);
+        mockFocus.focusHandlers.add(onFocus);
+        return () => {
+          if (cleanup) {
+            cleanup();
+          }
+          mockFocus.blurHandlers.delete(onBlur);
+          mockFocus.focusHandlers.delete(onFocus);
+        };
+      }, []);
+    },
+  };
+});
+
+// The active account the screen reads via useAuth; tests flip it to simulate an
+// account switch while a check is in flight.
+const mockAuthHolder: { userId: string | null } = { userId: 'user-1' };
+jest.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: mockAuthHolder.userId ? { id: mockAuthHolder.userId } : null,
+  }),
 }));
 
 const mockDraftHolder: { draft: unknown } = { draft: null };
@@ -194,11 +237,31 @@ function warningDialog(renderer: ReactTestRenderer) {
   return renderer.root.findByType(DuplicateWarningDialog);
 }
 
+// Simulate leaving / returning to the screen without unmounting it.
+function blurScreen() {
+  mockFocus.blurHandlers.forEach((handler) => handler());
+}
+function focusScreen() {
+  mockFocus.focusHandlers.forEach((handler) => handler());
+}
+
+function saveWithoutCheckingButton(renderer: ReactTestRenderer) {
+  return renderer.root.findAll(
+    (node) =>
+      Boolean(node.props) &&
+      node.props.label === 'review.duplicate.saveWithoutChecking' &&
+      typeof node.props.onPress === 'function',
+  )[0];
+}
+
 let errorSpy: ReturnType<typeof jest.spyOn>;
 
 beforeEach(() => {
   (mockRouter.back as unknown as jest.Mock).mockReset();
   (mockRouter.replace as unknown as jest.Mock).mockReset();
+  mockFocus.blurHandlers.clear();
+  mockFocus.focusHandlers.clear();
+  mockAuthHolder.userId = 'user-1';
   mockParams.receiptId = undefined;
   mockDraftHolder.draft = newDraft();
   mockClearDraft.mockReset();
@@ -551,6 +614,256 @@ describe('receipt review duplicate warning', () => {
 
     expect(mockFindReceiptDuplicates).not.toHaveBeenCalled();
     expect(mockUpdateFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('a field changed during a pending check drops the stale result', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+
+    // The user edits the date while the check is still in flight.
+    await act(async () => {
+      renderer.root.findByType(DatePicker).props.onChange('2026-11-15');
+    });
+
+    // The now-stale check resolves with a duplicate; it must be ignored.
+    await act(async () => {
+      pending.resolve([candidate()]);
+    });
+    await flush();
+
+    expect(warningDialog(renderer).props.visible).toBe(false);
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('leaving the screen (blur without unmount) stops a pending check from saving', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+
+    // Navigate away without unmounting the persistent screen.
+    await act(async () => {
+      blurScreen();
+    });
+
+    // Even a clean "no matches" result must not save after the user left.
+    await act(async () => {
+      pending.resolve([]);
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+    expect(warningDialog(renderer).props.visible).toBe(false);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('returning to the screen allows a fresh check and save', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValueOnce(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    await act(async () => {
+      blurScreen();
+    });
+    await act(async () => {
+      pending.resolve([candidate()]);
+    });
+    await flush();
+
+    // Back on the screen, a new Save runs a fresh check and saves.
+    await act(async () => {
+      focusScreen();
+    });
+    mockFindReceiptDuplicates.mockResolvedValueOnce([]);
+    await pressSave(renderer);
+
+    expect(mockFindReceiptDuplicates).toHaveBeenCalledTimes(2);
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('an account change during a pending check drops the stale result', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+
+    // The active account switches while the check is in flight.
+    await act(async () => {
+      mockAuthHolder.userId = 'user-2';
+      renderer.update(<ReviewReceiptScreen />);
+    });
+
+    await act(async () => {
+      pending.resolve([candidate()]);
+    });
+    await flush();
+
+    expect(warningDialog(renderer).props.visible).toBe(false);
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('replacing the draft invalidates a pending check', async () => {
+    const pending = deferred<unknown[]>();
+    mockFindReceiptDuplicates.mockReturnValue(pending.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+
+    // A new draft replaces the one being reviewed mid-check.
+    await act(async () => {
+      mockDraftHolder.draft = newDraft();
+      renderer.update(<ReviewReceiptScreen />);
+    });
+
+    await act(async () => {
+      pending.resolve([candidate()]);
+    });
+    await flush();
+
+    expect(warningDialog(renderer).props.visible).toBe(false);
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('a stale Save anyway cannot authorize a changed snapshot', async () => {
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    expect(warningDialog(renderer).props.visible).toBe(true);
+
+    // A matching field changes behind the (modally-prevented) dialog.
+    await act(async () => {
+      renderer.root.findByType(DatePicker).props.onChange('2026-11-20');
+    });
+
+    // The confirmation now refers to a snapshot that no longer holds: no write.
+    await act(async () => {
+      warningDialog(renderer).props.onSaveAnyway();
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('changing a field after a failed check invalidates save-without-checking', async () => {
+    mockFindReceiptDuplicates.mockRejectedValue(new Error('network down'));
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    // Grab the handler itself; the button node unmounts when the banner clears.
+    const bypass = saveWithoutCheckingButton(renderer).props.onPress as () => void;
+
+    // Editing a field voids the failed-check context the bypass belonged to.
+    await act(async () => {
+      renderer.root.findByType(DatePicker).props.onChange('2026-11-21');
+    });
+    expect(renderer.root.findAllByType(StatusBanner).length).toBe(0);
+
+    // The now-stale bypass action no longer authorizes a write.
+    await act(async () => {
+      bypass();
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('rapid Save anyway presses perform exactly one save', async () => {
+    const pendingSave = deferred<void>();
+    mockSaveFiscalReceipt.mockReturnValue(pendingSave.promise);
+    mockFindReceiptDuplicates.mockResolvedValue([candidate()]);
+
+    const renderer = await renderReview();
+    await pressSave(renderer);
+    const dialog = warningDialog(renderer);
+
+    await act(async () => {
+      (dialog.props.onSaveAnyway as () => void)();
+      (dialog.props.onSaveAnyway as () => void)();
+    });
+    await act(async () => {
+      pendingSave.resolve();
+    });
+    await flush();
+
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer.unmount();
+    });
+  });
+
+  test('a superseded check cannot release a newer check guard', async () => {
+    const first = deferred<unknown[]>();
+    const second = deferred<unknown[]>();
+    mockFindReceiptDuplicates
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    const renderer = await renderReview();
+    await pressSave(renderer); // check A
+
+    // A field change supersedes check A and releases its guard.
+    await act(async () => {
+      renderer.root.findByType(DatePicker).props.onChange('2026-11-16');
+    });
+    await pressSave(renderer); // check B acquires the guard
+    expect(mockFindReceiptDuplicates).toHaveBeenCalledTimes(2);
+
+    // Stale check A resolves; it must not free check B's guard.
+    await act(async () => {
+      first.resolve([]);
+    });
+    await flush();
+
+    // A press now would start a third check (and could double-save) if A had
+    // wrongly released B's guard.
+    await pressSave(renderer);
+    expect(mockFindReceiptDuplicates).toHaveBeenCalledTimes(2);
+
+    // Check B resolves and performs the single save.
+    await act(async () => {
+      second.resolve([]);
+    });
+    await flush();
+    expect(mockSaveFiscalReceipt).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       renderer.unmount();

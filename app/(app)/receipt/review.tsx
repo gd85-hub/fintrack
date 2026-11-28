@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { CategoryPicker } from '../../../components/CategoryPicker';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -22,6 +22,7 @@ import { MerchantPicker } from '../../../components/MerchantPicker';
 import { ReceiptCurrencySelector } from '../../../components/ReceiptCurrencySelector';
 import { Button } from '../../../components/ds/Button';
 import { StatusBanner } from '../../../components/ds/StatusBanner';
+import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useReceiptDraft } from '../../../contexts/ReceiptDraftContext';
 import { useColors } from '../../../contexts/ThemeContext';
@@ -133,6 +134,8 @@ function routeParam(
 
 export default function ReviewReceiptScreen() {
   const { t, locale } = useLanguage();
+  const { user } = useAuth();
+  const accountId = user?.id ?? null;
   const { draft, clearDraft } = useReceiptDraft();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors as Colors), [colors]);
@@ -179,12 +182,65 @@ export default function ReviewReceiptScreen() {
     ReceiptDuplicateCandidate[] | null
   >(null);
   const [duplicateCheckFailed, setDuplicateCheckFailed] = useState(false);
-  // Synchronous guard against overlapping check/save attempts (state updates are
-  // async, so a ref is what actually stops a double press).
-  const inFlightRef = useRef(false);
-  // Invalidates a duplicate check whose draft/account/navigation has moved on, so
-  // a stale resolved result can never pop a warning or drive a save.
+  // Token of the in-flight check/save operation, or null when idle. This is both
+  // the synchronous double-press guard (state updates are async) and the owner
+  // stamp: cleanup only releases the guard when the token still matches, so a
+  // superseded operation can never free a newer one's lock.
+  const inFlightRef = useRef<number | null>(null);
+  // Bumped whenever the active account, draft, navigation session or validated
+  // snapshot moves on, so a stale resolved check can never pop a warning or save.
   const checkTokenRef = useRef(0);
+  // The validated snapshot key a check (or a "save anyway" authorization) was made
+  // against. A save only proceeds while the live snapshot still equals it, so a
+  // field edited behind a stale result can never be written under that approval.
+  const checkedSnapshotRef = useRef<string | null>(null);
+
+  // Matching-relevant snapshot: account identity plus every value that feeds the
+  // duplicate query or the write. If any of these change, an outstanding check or
+  // approval is void.
+  const buildSnapshotKey = () =>
+    JSON.stringify([
+      accountId,
+      confirmedReceiptTotalCents,
+      receiptCurrency,
+      occurredOn,
+      merchantMode,
+      merchantId,
+      merchantName.trim(),
+    ]);
+
+  // Acquires the operation guard. Returns a token, or null when another operation
+  // already holds it (synchronous repeated-press protection).
+  const beginOperation = (): number | null => {
+    if (inFlightRef.current !== null) {
+      return null;
+    }
+    const token = (checkTokenRef.current += 1);
+    inFlightRef.current = token;
+    return token;
+  };
+
+  // True while `token` is still the current operation (not superseded).
+  const operationIsCurrent = (token: number) => token === checkTokenRef.current;
+
+  // Releases the guard only if `token` still owns it, so cleanup from a stale
+  // operation can never unlock a newer one.
+  const endOperation = (token: number) => {
+    if (inFlightRef.current === token) {
+      inFlightRef.current = null;
+    }
+  };
+
+  // Voids any outstanding check/approval: advances the token (dropping pending
+  // results), releases the guard, clears the checked snapshot and decision state.
+  const invalidatePendingDuplicateWork = () => {
+    checkTokenRef.current += 1;
+    inFlightRef.current = null;
+    checkedSnapshotRef.current = null;
+    setCheckingDuplicates(false);
+    setDuplicateMatches(null);
+    setDuplicateCheckFailed(false);
+  };
 
   useEffect(() => {
     if (!isEditMode && !draft) {
@@ -396,23 +452,36 @@ export default function ReviewReceiptScreen() {
     };
   }, [draft, editReceiptId, isEditMode]);
 
-  // A different draft or edit target must not inherit the previous receipt's
-  // duplicate decision, and any in-flight check for it is invalidated.
+  // Any change to the account, draft, edit target or a matching-relevant field
+  // voids an outstanding check or "save anyway" approval, so a stale result can
+  // never drive a write or show an obsolete warning for values that have moved on.
   useEffect(() => {
-    checkTokenRef.current += 1;
-    inFlightRef.current = false;
-    setCheckingDuplicates(false);
-    setDuplicateMatches(null);
-    setDuplicateCheckFailed(false);
-  }, [draft, editReceiptId]);
+    invalidatePendingDuplicateWork();
+    // invalidate* only touches stable refs/setters; we key on the identity values
+    // deliberately, not on the helper closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    accountId,
+    draft,
+    editReceiptId,
+    confirmedReceiptTotalCents,
+    receiptCurrency,
+    occurredOn,
+    merchantMode,
+    merchantId,
+    merchantName,
+  ]);
 
-  // Leaving the screen invalidates any in-flight check so a late result can
-  // never act on an unmounted/navigated-away draft.
-  useEffect(
-    () => () => {
-      checkTokenRef.current += 1;
-    },
-    [],
+  // Leaving the screen (blur, and also unmount) invalidates any in-flight check so
+  // a late result can never save or warn after the user has navigated away.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        invalidatePendingDuplicateWork();
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [],
+    ),
   );
 
   const includedItems = useMemo(
@@ -634,13 +703,15 @@ export default function ReviewReceiptScreen() {
     return { merchant, currency: receiptCurrency, totalCents: receiptTotalCents };
   };
 
-  // The actual write. Callers set `inFlightRef` before invoking; it is always
-  // cleared here, so a failed save stays retryable. currency/totalCents are the
-  // validated non-null values from collectSaveInput.
+  // The actual write. Callers acquire `token` via beginOperation before invoking;
+  // the guard is always released here (only if this token still owns it), so a
+  // failed save stays retryable. currency/totalCents are the validated non-null
+  // values from collectSaveInput.
   const performSave = async (
     merchant: FiscalReceiptMerchantInput | null,
     currency: string,
     totalCents: number,
+    token: number,
   ) => {
     setSaving(true);
     try {
@@ -737,21 +808,22 @@ export default function ReviewReceiptScreen() {
     } finally {
       setSaving(false);
       setConfirmDeleteAll(false);
-      inFlightRef.current = false;
+      endOperation(token);
     }
   };
 
   // Edit path (and the delete-all confirmation): no duplicate detection.
   const saveReview = async (allowEmptyEdit: boolean) => {
-    if (inFlightRef.current) {
+    const token = beginOperation();
+    if (token === null) {
       return;
     }
     const input = collectSaveInput(allowEmptyEdit);
     if (!input) {
+      endOperation(token);
       return;
     }
-    inFlightRef.current = true;
-    await performSave(input.merchant, input.currency, input.totalCents);
+    await performSave(input.merchant, input.currency, input.totalCents, token);
   };
 
   // Builds the duplicate-check input from the validated values that would be
@@ -771,15 +843,20 @@ export default function ReviewReceiptScreen() {
   // New-receipt path: validate, check for probable duplicates, then either warn
   // or save. Never mutates before the user's decision.
   const checkDuplicatesThenSave = async () => {
-    if (inFlightRef.current) {
+    const token = beginOperation();
+    if (token === null) {
       return;
     }
     const input = collectSaveInput(false);
     if (!input || !input.merchant) {
+      endOperation(token);
       return;
     }
-    inFlightRef.current = true;
-    const token = (checkTokenRef.current += 1);
+    // Bind this check to the account it started under and the snapshot it is
+    // validating; the no-match continuation only saves if both still hold.
+    const checkedAccount = accountId;
+    const snapshot = buildSnapshotKey();
+    checkedSnapshotRef.current = snapshot;
     setCheckingDuplicates(true);
     setDuplicateCheckFailed(false);
     setErrorMessage('');
@@ -792,40 +869,60 @@ export default function ReviewReceiptScreen() {
       console.error('Unable to check for duplicate receipts:', error);
       failed = true;
     }
-    // A newer draft/navigation superseded this check: drop its result entirely.
-    if (token !== checkTokenRef.current) {
+    // A newer draft/account/field change, or leaving the screen, superseded this
+    // check: its result and guard now belong to that newer state — drop it.
+    if (!operationIsCurrent(token)) {
+      return;
+    }
+    // Defensive: account or snapshot moved without advancing the token.
+    if (checkedAccount !== accountId || buildSnapshotKey() !== snapshot) {
+      invalidatePendingDuplicateWork();
       return;
     }
     setCheckingDuplicates(false);
     if (failed) {
+      // Keep the checked snapshot so "save without checking" can authorize it.
       setDuplicateCheckFailed(true);
-      inFlightRef.current = false;
+      endOperation(token);
       return;
     }
     if (matches.length > 0) {
+      // Keep the checked snapshot so "save anyway" can authorize exactly it.
       setDuplicateMatches(matches);
-      inFlightRef.current = false;
+      endOperation(token);
       return;
     }
-    await performSave(input.merchant, input.currency, input.totalCents);
+    await performSave(input.merchant, input.currency, input.totalCents, token);
   };
 
-  // "Save anyway" / "Save without checking": proceed with the current snapshot,
-  // bypassing the duplicate check, exactly once.
+  // "Save anyway" / "Save without checking": save the exact snapshot the check ran
+  // against, bypassing a fresh check, exactly once. If any field changed since the
+  // check, the invalidation effect has already cleared the snapshot (and the
+  // warning/banner), so this refuses and the user must press Save again.
   const saveBypassingDuplicateCheck = async () => {
-    if (inFlightRef.current) {
+    if (
+      checkedSnapshotRef.current === null ||
+      checkedSnapshotRef.current !== buildSnapshotKey()
+    ) {
+      invalidatePendingDuplicateWork();
+      return;
+    }
+    const token = beginOperation();
+    if (token === null) {
       return;
     }
     const input = collectSaveInput(false);
     if (!input || !input.merchant) {
+      checkedSnapshotRef.current = null;
       setDuplicateMatches(null);
       setDuplicateCheckFailed(false);
+      endOperation(token);
       return;
     }
+    checkedSnapshotRef.current = null;
     setDuplicateMatches(null);
     setDuplicateCheckFailed(false);
-    inFlightRef.current = true;
-    await performSave(input.merchant, input.currency, input.totalCents);
+    await performSave(input.merchant, input.currency, input.totalCents, token);
   };
 
   const handleSave = async () => {
@@ -1357,6 +1454,8 @@ export default function ReviewReceiptScreen() {
         matches={duplicateWarningRows}
         onBack={() => {
           if (!saving) {
+            // Returning to review drops the approval; the next Save re-checks.
+            checkedSnapshotRef.current = null;
             setDuplicateMatches(null);
           }
         }}
